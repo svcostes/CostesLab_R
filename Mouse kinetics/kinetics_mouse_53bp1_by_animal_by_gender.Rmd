@@ -15,6 +15,10 @@ theme_set(theme_grey(base_size = 12))
 ```
 
 ```{r}
+setwd(getwd())
+```
+
+```{r}
 # Defines data files: removing 0 Gy Xray control 294 and 301 (24 and 4 hr respectively)
 list_group = c(seq(206,273),seq(278,293), seq(295,300)) 
 ```
@@ -35,7 +39,7 @@ num_sample = length(list_group)
 # Reads data
 
 # Reads animal ID with information on collection date, strain and gender
-animal_ID <- read.table('/Users/epariset/Desktop/Sylvain/IDvsSpecies.csv',sep=",",header=TRUE)
+animal_ID <- read.table('IDvsSpecies.csv',sep=",",header=TRUE)
 animal_ID$Strain = toupper(animal_ID$Strain) # Turn all ID and strain to upper case in case of typo
 animal_ID$Exp_ID = gsub(" ","",toupper(animal_ID$Exp_ID),fixed = TRUE) # Make all identifier upper case and w/o space
 strain_list = unique(animal_ID$Strain)
@@ -44,7 +48,7 @@ UserID_list = unique(animal_ID$Exp_ID)
 num_UserID = length(UserID_list)
 
 # Reads first file
-foci <- read.table(paste('/Users/epariset/Desktop/Sylvain/average_well/average_well_P',list_group[1],'.txt',sep=""),sep="\t",header=TRUE)
+foci <- read.table(paste('average_well/average_well_P',list_group[1],'.txt',sep=""),sep="\t",header=TRUE)
 foci$UserID = gsub(" ","",toupper(foci$UserID),fixed = TRUE) # Make all identifier upper case and w/o space
 foci$duplicate = 1
 foci <- merge(foci, animal_ID, by.x='UserID', by.y='Exp_ID')
@@ -500,27 +504,6 @@ mean_foci_strain_let$fit = mean_foci_strain_let$RIFmax*mean_foci_strain_let$let*
 # 1-rho for 4 Gy is 80% of RIF(48hrs)
 # Second, because 1 and 4 Gy have RIF clustering for all time point (predominant at 4 hours, but even later RIF/Gy decreases with dose at 24 and 48 hours)
 # we are not forcing intercept to be constant. Instead we are fitting the RIF response and intercept per strain
-
-factors_res <- read.table('/Users/epariset/Desktop/Sylvain/Factors.csv',sep=",",header=TRUE) # defines value of residual damage (percentage of value at 48h): diferent for each strain based on fit optimization
-
-mean_foci_strain_xray$tau = 0 # initialize
-mean_foci_strain_xray$c = 1 # initialize DSB/RIF
-mean_foci_strain_xray$rho = 1 # initialize rho to 1 (true for 0.1 and 1 Gy)
-mean_foci_strain_xray$mean_sub = 0 # initialize mean subtracted by 48 hour time point
-for (i_strain in 1:num_strain) {
-  for (i_dose in 1:3) {
-    keep_ind = mean_foci_strain_xray$Radiation == xray_dose[i_dose] & mean_foci_strain_xray$Strain == strain_list[i_strain]
-    keep_ind2 = mean_foci_strain_xray$Radiation == xray_dose[i_dose] & mean_foci_strain_xray$Strain == strain_list[i_strain] & mean_foci_strain_xray$hour == 48
-    if (sum(keep_ind)>0) { # only add if the condition is met
-      # subtract x% of value at 48h. The x factor is optimized for each strain to get the best fit.
-      mean_foci_strain_xray[keep_ind,]$mean_sub = mean_foci_strain_xray[keep_ind,]$mean - factors_res$Residual_factor[i_strain] * mean_foci_strain_xray[keep_ind2,]$mean
-    }
-  }
-}
-keep_ind = mean_foci_strain_xray$mean_sub<0
-mean_foci_strain_xray[keep_ind,]$mean_sub = 0
-
-# start fitting Xray data, each dose has a different strategy
 
 mean_foci_strain_xray$tau = 0 # initialize
 mean_foci_strain_xray$c = 1 # initialize DSB/RIF
