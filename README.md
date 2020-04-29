@@ -1,2 +1,2 @@
 # CostesLab
-Repository for both R script and Matlab script for the Costes Lab
+Repository for R scripts for the Costes Lab
