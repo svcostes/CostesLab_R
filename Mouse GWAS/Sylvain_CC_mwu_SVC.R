@@ -76,14 +76,12 @@ clusterExport(cl,"t")
 # Note that because of filtering this will be smaller (fewer rows) than the full SNP table ("Sylvain_merged_GENO.txt").
 
 # Read SNP table
-setwd('C:/Users/scostes/Documents/Mouse GWAS/Sascha_Langley_analysis')
+setwd('Mouse GWAS/Sascha_Langley_analysis')
 snps<-read.table("Sylvain_merged_GENO.txt", header=TRUE) 
 snps<-snps[,2:ncol(snps)]
 
 # Read various phenotypes
-#pheno<-read.table("phenotypes_by_UserID_SL.txt",header=TRUE)
-setwd('E:/Sylvain_Backup/Grant work/NASA/Runs/Mice_Analysis')
-pheno<-read.csv("phenotypes_by_UserID_v2.csv",header=TRUE)
+pheno<-read.csv("phenotypes_by_UserID.csv",header=TRUE)
 pheno2<-read.csv("saturation_fit_by_UserID.csv",header=TRUE)
 pheno3<-read.csv("time_fit_Animal.csv",header=TRUE)
 
