@@ -1,0 +1,1710 @@
+---
+Analysis kinetic data from BNL16 run: fit by strain with all and separated gender
+---
+
+```{r}
+require('lattice')
+require('ggplot2')
+require('polynom')
+require('corrplot')
+require('ggpubr')
+require('plyr')
+require('nlme')
+require('plyr')
+theme_set(theme_grey(base_size = 12))
+```
+
+```{r}
+# Defines data files: removing 0 Gy Xray control 294 and 301 (24 and 4 hr respectively)
+list_group = c(seq(206,273),seq(278,293), seq(295,300)) 
+```
+
+```{r}
+# Defines experimental irradiation parameters
+let_list = c('Si 350 MeV/n','Ar 350 MeV/n','Fe 600 MeV/n','X-ray')
+num_let = length(let_list)
+let_list_sub = c('Si','Ar','Fe','Xray')
+let_val = c(63,104,170,1) # Set let of X-ray to 1
+low_dose = c(0.11,0.18,0.3,0.1)
+high_dose = c(0.3,0.5,0.82,1)
+xray_dose = c(0.1,1,4)
+num_sample = length(list_group)
+```
+
+```{r}
+# Reads data
+
+# Reads animal ID with information on collection date, strain and gender
+animal_ID <- read.table('/Users/epariset/Desktop/Sylvain/IDvsSpecies.csv',sep=",",header=TRUE)
+animal_ID$Strain = toupper(animal_ID$Strain) # Turn all ID and strain to upper case in case of typo
+animal_ID$Exp_ID = gsub(" ","",toupper(animal_ID$Exp_ID),fixed = TRUE) # Make all identifier upper case and w/o space
+strain_list = unique(animal_ID$Strain)
+num_strain = length(strain_list)
+UserID_list = unique(animal_ID$Exp_ID)
+num_UserID = length(UserID_list)
+
+# Reads first file
+foci <- read.table(paste('/Users/epariset/Desktop/Sylvain/average_well/average_well_P',list_group[1],'.txt',sep=""),sep="\t",header=TRUE)
+foci$UserID = gsub(" ","",toupper(foci$UserID),fixed = TRUE) # Make all identifier upper case and w/o space
+foci$duplicate = 1
+foci <- merge(foci, animal_ID, by.x='UserID', by.y='Exp_ID')
+
+# Loop over all the other files. If a duplicate file is found, mark it with duplicate string Dup2. If not mark it with Dup1
+flag_dup = 0
+for(i_sample in 2:num_sample) {
+  filename = paste('/Users/epariset/Desktop/Sylvain/average_well/average_well_P',list_group[i_sample],'.txt',sep="")
+  tmp <- read.table(filename,sep="\t",header=TRUE)
+  tmp$UserID = gsub(" ","",toupper(tmp$UserID), fixed = TRUE) # Make all identifier upper case and w/o space
+  duplicate_ind = as.character(foci$Radiation.Type)==as.character(tmp$Radiation.Type[1]) & 
+    foci$Radiation == tmp$Radiation[1] &
+    as.character(tmp$Radiation.Time[1]) == as.character(foci$Radiation.Time)
+  if (sum(duplicate_ind) >0) { # found a duplicate experiment
+    tmp2 = merge(foci[duplicate_ind,],tmp,by.x='UserID',by.y='UserID')
+    if (flag_dup>0) {
+      foci_dup = rbind(foci_dup,tmp2)
+    } else {
+      foci_dup = tmp2
+      flag_dup = 1
+    }
+    tmp$duplicate = 2
+  } else {
+    tmp$duplicate = 1
+  }
+  tmp <- merge(tmp, animal_ID, by.x='UserID', by.y='Exp_ID')
+  foci = rbind(foci, tmp)
+}
+
+# Convert hour factor in actual number. hour is the time post IR in hour
+foci$hour = as.numeric(strsplit(as.character(foci$Radiation.Time),"hr"))
+# Make sure dose is considered numeric
+foci$Radiation = as.numeric(foci$Radiation)
+
+
+# Label high and low dose level for each experiment
+
+foci$dose_level = 'unknown' # Initialization
+foci$fluence = 0 # Initialization
+foci$let = 1 # Initialization
+
+for (i_let in 1:num_let) {
+  keep_ind = foci$Radiation.Type == let_list[i_let]
+  foci[keep_ind,'let'] = let_val[i_let]
+  keep_ind = foci$Radiation == 0 & foci$Radiation.Type == let_list[i_let]
+  foci[keep_ind,'dose_level'] = 'Control'
+  keep_ind = foci$Radiation <= low_dose[i_let] & foci$Radiation >0 & foci$Radiation.Type == let_list[i_let]
+  foci[keep_ind,'dose_level'] = 'Low Dose'
+  foci[keep_ind,'fluence'] = 1.1;
+  keep_ind = foci$Radiation >= high_dose[i_let] & foci$Radiation.Type == let_list[i_let]
+  foci[keep_ind,'dose_level']= 'High Dose'
+  foci[keep_ind,'fluence'] = 3;
+}
+keep_ind = foci$Radiation == 0.41 # this case is only true for Si, it was a mistake
+foci[keep_ind,'fluence'] = 4.1;
+
+# Make sure order of dose level goes from low to high
+foci$dose_level = factor(foci$dose_level,c('Control','Low Dose','High Dose'))
+
+# Set fluence equals to dose for X-ray
+keep_ind = foci$Radiation.Type == let_list[4] & foci$Radiation > 0
+foci[keep_ind,'fluence'] = foci[keep_ind,'Radiation']
+```
+
+```{r}
+# Plots a summary graph for each dose level
+
+dose_level = 'Control'
+keep_ind = foci$Radiation.Type != "Si 350 MeV/n" & foci$dose_level == dose_level
+p<- ggplot(foci[keep_ind,], aes(x=plate, y=avg_nfoci, fill=Radiation.Type )) + 
+  geom_bar(stat = "summary", fun.y = "mean" , width=.8, position = "dodge")  +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  facet_grid(hour~.) +
+  ggtitle(dose_level) 
+print(p)
+
+dose_level = 'Low Dose'
+keep_ind = foci$Radiation.Type != "Si 350 MeV/n" & foci$dose_level == dose_level
+p<- ggplot(foci[keep_ind,], aes(x=plate, y=avg_nfoci, fill=Radiation.Type )) + 
+  geom_bar(stat = "summary", fun.y = "mean" , width=.8, position = "dodge")  +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  facet_grid(hour~.) +
+  ggtitle(dose_level) 
+print(p)
+
+dose_level = 'High Dose'
+keep_ind = foci$Radiation.Type != "Si 350 MeV/n" & foci$dose_level == dose_level
+p<- ggplot(foci[keep_ind,], aes(x=plate, y=avg_nfoci, fill=Radiation.Type )) + 
+  geom_bar(stat = "summary", fun.y = "mean" , width=.8, position = "dodge")  +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  facet_grid(hour~.) +
+  ggtitle(dose_level) 
+print(p)
+```
+
+```{r}
+# Saves data with all genders
+
+# P289 4Gy 48 hr is abnormally high compared to 24 hr - scale down to match duplicate average
+keep_ind = foci$plate=='P289' # 1.62 x higher than its duplicate P290
+foci[keep_ind,]$avg_nfoci = foci[keep_ind,]$avg_nfoci/1.62
+foci[keep_ind,]$avg_foci_no_outl = foci[keep_ind,]$avg_foci_no_outl/1.62
+
+# P240 Ar 48h CC013 Male in position B6 is particularly high - remove this outlier
+keep_ind = !(foci$plate=='P240' & foci$Strain == 'CC013' & foci$Gender == "MALE" & foci$Position == "B6")
+foci <- foci[keep_ind,]
+
+foci_all = foci
+```
+
+# Analysis for males only------------------------------------------------------------------------------------------------------------------
+
+```{r}
+foci = foci_all[foci_all$Gender == "MALE",]
+
+# Fits data avg_nfoci = f(radiation dose) as linear trend to find slope (RIF per Gy) and intersect (background)
+for (i_let in 1:num_let) {
+  keep_ind = (foci$Radiation.Type==let_list[i_let] & foci$num_nuc>20) # Select data for given LET
+  time_list = sort(unique(foci[keep_ind,]$Radiation.Time)) # Make sure time are sorted by shortest to longest
+  num_time = length(time_list)
+  for (i_time in 1:num_time) {
+      keep_ind = (foci$Radiation.Type==let_list[i_let] & foci$num_nuc>20 & foci$Radiation.Time == time_list[i_time] ) # Select data for given LET and time
+      if (i_let < num_let) { # First 3 data sets are high-LET, dose dependence is linear as foci reflects # of tracks
+        fits <- lmList(avg_nfoci ~ poly(Radiation, 1, raw = TRUE) | UserID, data=foci[keep_ind,])
+        avg_backup <- ddply(foci[keep_ind,], "UserID", summarise, mean = mean(avg_nfoci, na.rm=TRUE))
+        tmp_fits = coef(fits)
+        
+        # identify negative slope or NA value. For those, slope is 0 and intercept is average
+        keep_ind = tmp_fits[,2]<0 | is.na(tmp_fits[,1]) | is.na(tmp_fits[,2])
+        tmp_fits[keep_ind,1] = avg_backup$mean[keep_ind]
+        tmp_fits[keep_ind,2] = 0
+        if (i_let == 1 & i_time == 1) {
+          list_fits = tmp_fits
+          coef_fits = cbind(tmp_fits,time_list[i_time],let_list[i_let],rownames(tmp_fits))
+          colnames(list_fits) = c(paste(let_list[i_let],time_list[i_time],"Bgd"),paste(let_list[i_let],time_list[i_time],"FociPerGy"))
+        } else{
+          coef_fits = rbind(coef_fits,cbind(tmp_fits,time_list[i_time],let_list[i_let],rownames(tmp_fits)))
+          colnames(tmp_fits) = c(paste(let_list[i_let],time_list[i_time],"Bgd"),paste(let_list[i_let],time_list[i_time],"FociPerGy"))
+          list_fits2 = merge(list_fits,tmp_fits,by="row.names",all=TRUE)
+          row.names(list_fits2) = list_fits2$Row.names
+          list_fits = list_fits2[,seq(2,length(list_fits2))]
+        }
+      } else { # X-ray case (i.e. i_let is 4)
+        if (i_time == 1) { # exclude 4 Gy for 4 hour time point
+          keep_ind = (foci$Radiation.Type==let_list[i_let] & foci$num_nuc>20 & foci$Radiation<=1 & foci$Radiation.Time == time_list[i_time] ) # Select data for given LET and time
+          } 
+        # for later time point, do normal linear fit
+        fits <- lmList(avg_nfoci ~ poly(Radiation, 1, raw = TRUE) | UserID, data=foci[keep_ind,seq(1,31)])
+        avg_backup <- ddply(foci[keep_ind,], "UserID", summarise, mean = mean(avg_nfoci, na.rm=TRUE))
+        tmp_fits = coef(fits)
+        
+        # identify negative slope or NA value. For those, slope is 0 and intercept is average
+        keep_ind = tmp_fits[,2]<0 | is.na(tmp_fits[,1]) | is.na(tmp_fits[,2])
+        tmp_fits[keep_ind,1] = avg_backup$mean[keep_ind]
+        tmp_fits[keep_ind,2] = 0
+        
+        coef_fits = rbind(coef_fits,cbind(tmp_fits,time_list[i_time],let_list[i_let],rownames(tmp_fits)))
+        colnames(tmp_fits) = c(paste(let_list[i_let],time_list[i_time],"Bgd"),paste(let_list[i_let],time_list[i_time],"FociPerGy"))
+        list_fits2 = merge(list_fits,tmp_fits,by="row.names",all=TRUE)
+        row.names(list_fits2) = list_fits2$Row.names
+        list_fits = list_fits2[,seq(2,length(list_fits2))]
+      }
+    
+  }
+}
+list_fits = merge(list_fits,animal_ID,by.x="row.names",by.y=c('Exp_ID'))
+
+colnames(coef_fits) = c("Bgd","FociPerGy","hour","Radiation.Type","UserID")
+coef_fits$Bgd = as.numeric(coef_fits$Bgd)
+coef_fits$FociPerGy = as.numeric(coef_fits$FociPerGy)
+coef_fits$hour = as.numeric(strsplit(as.character(coef_fits$hour),"hr"))
+
+# Compute simple background (called normal_bgd): i.e. mean of 0 Gy, not intercept
+keep_ind = foci$Radiation == 0
+avg_nfoci <- ddply(foci[keep_ind,], c("UserID", "let", "Radiation.Type", "hour","Strain"), summarise,
+                              mean = mean(avg_nfoci, na.rm=TRUE)) # average duplicates
+colnames(avg_nfoci)= c("UserID","let","Radiation.Type","hour","Strain","normal_Bgd")
+coef_fits = merge(coef_fits,avg_nfoci,by=c('UserID','hour','Radiation.Type'), all=TRUE)
+
+coef_fits = merge(coef_fits,animal_ID,by.x=c('UserID',"Strain"),by.y=c('Exp_ID',"Strain"))
+
+# add normal background and fitted coefficients (background and foci per Gy) to foci data.frame
+foci <- merge(foci, coef_fits[,c(1,3,seq(5,8))], by.x=c('UserID','hour','let'), 
+              by.y=c('UserID','hour','let'))
+
+# Computes normalized number of foci (with substracted intersept background) and number of RIF/um
+foci$nfoci_bgdsub = foci$avg_nfoci - foci$Bgd
+foci$norm_nfoci = foci$nfoci_bgdsub/foci$fluence/foci$avg_nuc_area*5 # Factor 5 to convert pixels to um^2 for the nucleus area
+```
+
+```{r}
+# Selects data of interest (points where doses lead to less nfoci than background)
+
+# For high LET: exclude outliers and compute average of RIF/um (norm_nfoci)
+keep_ind = !is.infinite(foci$norm_nfoci) & !is.na(foci$norm_nfoci)  & foci$let>100 & foci$nfoci_bgdsub>0
+mean_foci_UserID_let <- ddply(foci[keep_ind,], c("UserID", "let", "hour"), summarise,
+                              N    = sum(!is.nan(norm_nfoci)),
+                              mean = mean(norm_nfoci, na.rm=TRUE),
+                              sd   = sd(norm_nfoci, na.rm=TRUE),
+                              se   = sd / sqrt(N),
+                              N_no_out = sum(!is.nan(norm_nfoci[norm_nfoci<mean+sd & norm_nfoci>mean-sd])),
+                              mean_no_out = mean(norm_nfoci[norm_nfoci<mean+sd & norm_nfoci>mean-sd],na.rm=TRUE)
+                              )
+
+# For X-ray: cannot exclude outliers since most groups have only 2 values, and compute average of normalized RIF (nfoci_bgdsub), then meanPGy is computed from the average of nfoci_bgdsub and the radiation dose
+keep_ind = !is.na(foci$nfoci_bgdsub) & foci$Radiation>0 & foci$Radiation.Type==let_list[4] & foci$nfoci_bgdsub>0
+mean_foci_UserID_xray <- ddply(foci[keep_ind,], c("UserID", "let", "hour","Radiation"), summarise,
+                               N    = sum(!is.na(nfoci_bgdsub)),
+                               mean = mean(nfoci_bgdsub, na.rm=TRUE),
+                               mean_raw = mean(avg_nfoci, na.rm=TRUE),
+                               sd   = sd(nfoci_bgdsub, na.rm=TRUE),
+                               se   = sd / sqrt(N)
+)
+mean_foci_UserID_xray$meanPGy = mean_foci_UserID_xray$mean/mean_foci_UserID_xray$Radiation
+
+mean_foci_UserID_let=merge(mean_foci_UserID_let,animal_ID[,c('Exp_ID','Strain','Gender')],by.x='UserID',by.y='Exp_ID')
+mean_foci_UserID_xray=merge(mean_foci_UserID_xray,animal_ID[,c('Exp_ID','Strain','Gender')],by.x='UserID',by.y='Exp_ID')
+```
+
+```{r}
+# At 4h timepoint, computes saturation ratio from slopes of RIF/um (mean_no_out) vs LET: 1-slope2/slope1. For X-ray, computes saturation ratio from nfoci_bgdsub (mean) vs dose. If fully saturated,
+# slope 2 is 0 and parameter is max and equal to 1. If no saturation, slope2=slope1 and parameter is 0
+# IF parameter is negative, this model is wrong and probably data are linear. Set it to 0.
+
+# For high LETs
+keep_ind1 = mean_foci_UserID_let$hour == 4 & mean_foci_UserID_let$let==let_val[2]
+keep_ind2 = mean_foci_UserID_let$hour == 4 & mean_foci_UserID_let$let==let_val[3]
+slope1 = mean_foci_UserID_let$mean_no_out[keep_ind1]/let_val[2]
+slope2 = (mean_foci_UserID_let$mean_no_out[keep_ind2]-mean_foci_UserID_let$mean_no_out[keep_ind1])/(let_val[3]-let_val[2])
+# initialize dataframe. This will work ONLY if we have corresponding values for both LEt for each animal
+saturation_fit = mean_foci_UserID_let[keep_ind1,c(1,3)] 
+saturation_fit$let_slope=slope1
+saturation_fit$let_saturation=1-slope2/slope1
+keep_ind = saturation_fit$let_saturation <0 # search for no saturated data. Then replace by average slope and set sat to 0
+saturation_fit$let_slope[keep_ind] = 0.5*(slope1[keep_ind]+slope2[keep_ind])
+saturation_fit$let_saturation[keep_ind] = 0
+
+# For Xray. Xray data are always saturated, no exception
+keep_ind = mean_foci_UserID_xray$hour == 4 & mean_foci_UserID_xray$Radiation == 0.1 # 0.1 Gy point
+keep_ind1 = mean_foci_UserID_xray$hour == 4 & mean_foci_UserID_xray$Radiation == 1 # 1 Gy point
+keep_ind2 = mean_foci_UserID_xray$hour == 4 & mean_foci_UserID_xray$Radiation == 4 # 4 Gy point
+slope1 = (mean_foci_UserID_xray$mean[keep_ind]/0.1 + mean_foci_UserID_xray$mean[keep_ind1])/2
+slope2 = (mean_foci_UserID_xray$mean[keep_ind2]-mean_foci_UserID_xray$mean[keep_ind1])/3
+tmp_fit = mean_foci_UserID_xray[keep_ind1,c(1,3)] 
+tmp_fit$xray_slope = slope1
+tmp_fit$xray_saturation=1-slope2/slope1
+#if slope2 is negative, full saturation and slope 1 is adjusted
+keep_ind = slope2<0
+tmp_fit$xray_slope[keep_ind] = slope1[keep_ind]+0.75*slope2[keep_ind]
+tmp_fit$xray_saturation[keep_ind] = 1
+
+saturation_fit = merge(saturation_fit,tmp_fit[,c(1,3,4)],by = 'UserID',all=TRUE)
+saturation_fit=merge(saturation_fit,animal_ID[,c('Exp_ID','Strain','Gender')],by.x='UserID',by.y='Exp_ID')
+```
+
+```{r}
+# summarize by strain
+mean_foci_strain_let <- ddply(mean_foci_UserID_let, c("Strain", "let", "hour"), summarise,
+                              N    = sum(!is.nan(mean)),
+                              mean = mean(mean, na.rm=TRUE)) 
+
+mean_foci_strain_xray <- ddply(mean_foci_UserID_xray, c("Strain", "hour","Radiation"), summarise,
+                              N    = sum(!is.nan(mean)),
+                              mean = mean(mean, na.rm=TRUE))
+
+mean_saturation_fit <- ddply(saturation_fit, c("Strain"), summarise,
+                              N_let    = sum(!is.na(let_slope)),
+                             let_s_se = sd(let_slope, na.rm=TRUE)/sqrt(N_let),
+                             let_sat_se = sd(let_saturation, na.rm=TRUE)/sqrt(N_let),
+                             let_slope = mean(let_slope, na.rm=TRUE),
+                             let_saturation = mean(let_saturation, na.rm=TRUE),
+                             N_xray    = sum(!is.na(xray_slope)),
+                             xray_s_se = sd(xray_slope, na.rm=TRUE)/sqrt(N_xray),
+                             xray_sat_se = sd(xray_saturation, na.rm=TRUE)/sqrt(N_xray),
+                             xray_slope = mean(xray_slope, na.rm=TRUE),
+                             xray_saturation = mean(xray_saturation, na.rm=TRUE)
+)
+
+mean_coef_fits <- ddply(coef_fits, c("Strain","Radiation.Type", "hour"), summarise,
+                        N    = sum(!is.na(FociPerGy)),
+                        FociPerGy_se = sd(FociPerGy, na.rm=TRUE)/sqrt(N),
+                        Bgd_se = sd(Bgd, na.rm=TRUE)/sqrt(N),
+                        normal_Bgd_se =  sd(normal_Bgd, na.rm=TRUE)/sqrt(N),
+                        FociPerGy = mean(FociPerGy, na.rm=TRUE),
+                        Bgd = mean(Bgd, na.rm=TRUE),
+                        normal_Bgd =  mean(normal_Bgd, na.rm=TRUE)
+)
+```
+
+```{r}
+# create array table for correlation for coef_fits
+list_hour = c(4,8,24,48)
+for (i_let in 2:num_let) {
+  for (i_time in 1:4) {
+    keep_ind = mean_coef_fits$Radiation.Type==let_list[i_let] & mean_coef_fits$hour == list_hour[i_time] 
+    tmp_FociPerGy = unique(mean_coef_fits[keep_ind,c(1,8)])
+    colnames(tmp_FociPerGy) = c("Strain",paste(let_list_sub[i_let],'_',list_hour[i_time],'Hr'))
+    tmp_Bgd = unique(mean_coef_fits[keep_ind,c(1,9)])
+    colnames(tmp_Bgd) = c("Strain",paste(let_list_sub[i_let],'_',list_hour[i_time],'Hr'))
+    tmp_normal_Bgd = unique(mean_coef_fits[keep_ind,c(1,10)])
+    colnames(tmp_normal_Bgd) = c("Strain",paste(let_list_sub[i_let],'_',list_hour[i_time],'Hr'))
+    if (i_let == 2 & i_time == 1) {
+      list_FociBgd = tmp_Bgd
+      list_FociPerGy = tmp_FociPerGy
+      list_normal_Bgd = tmp_normal_Bgd
+    } else {
+      list_FociBgd = merge(list_FociBgd,tmp_Bgd,by='Strain',all=TRUE)
+      list_FociPerGy =  merge(list_FociPerGy, tmp_FociPerGy,by='Strain',all=TRUE)
+      list_normal_Bgd =  merge(list_normal_Bgd, tmp_normal_Bgd,by='Strain',all=TRUE)
+    }
+  }
+}
+rownames(list_FociBgd) = list_FociBgd$Strain
+list_FociBgd =subset(list_FociBgd, select=-c(1,11)) # Get rid of strain column and 8hr Xray since blank
+rownames(list_FociPerGy) = list_FociPerGy$Strain
+list_FociPerGy =subset(list_FociPerGy, select=-c(1,11))
+rownames(list_normal_Bgd) = list_normal_Bgd$Strain
+list_normal_Bgd =subset(list_normal_Bgd, select=-c(1,11))
+```
+
+```{r}
+# Plot saturation value per strain (bargraph)
+tmp_set  = mean_saturation_fit[,c(1,6,4)]
+ord_ind = order(tmp_set$let_saturation)
+tmp_set = tmp_set[ord_ind,]
+tmp_set$Strain = factor(tmp_set$Strain, level=tmp_set$Strain)
+tmp_set2 = mean_saturation_fit[,c(1,11,9)]
+tmp_set$Radiation = "HZE particles"
+tmp_set2$Radiation = "X-rays"
+colnames(tmp_set) = c('Strain',"Saturation","Se","Radiation")
+colnames(tmp_set2) = c('Strain',"Saturation","Se","Radiation")
+tmp_set = rbind(tmp_set,tmp_set2)
+p<- ggplot(tmp_set, aes(x=Strain, y=Saturation, fill=Radiation)) + 
+  geom_bar(stat="identity", width=.8, position = "dodge")  +
+  geom_errorbar(aes(ymin=Saturation-Se, ymax= Saturation+Se), width=.8, position = "dodge") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+print(p)
+# See what parameter correlates most
+colnames(mean_saturation_fit) = c( "Strain","N_let","let_s_se","let_sat_se","LET_slope1","LET_saturation",
+                                   "N_xray","xray_s_se","xray_sat_se","Xrays_slope1","Xrays_saturation")
+res = cor(as.matrix(mean_saturation_fit[,c(5,6,10,11)]))
+p.mat <- cor.mtest(as.matrix(mean_saturation_fit[,c(5,6,10,11)]))$p
+corrplot(res, type = "upper", order = "original", number.font = 5, 
+         tl.col = "black", tl.srt = 45, p.mat=p.mat, insig = "p-value", sig.level=-1)
+```
+
+```{r}
+# Plot RIF/Gy versus Strains
+keep_ind = mean_coef_fits$Radiation.Type == 'Fe 600 MeV/n' & mean_coef_fits$hour == 24
+tmp_set = mean_coef_fits[keep_ind,]
+ord_ind = order(tmp_set$FociPerGy)
+tmp_set = tmp_set[ord_ind,]
+mean_coef_fits$Strain_sorted = factor(mean_coef_fits$Strain, levels = tmp_set$Strain)
+keep_ind = mean_coef_fits$Radiation.Type != 'Si 350 MeV/n' & (mean_coef_fits$hour == 4 | mean_coef_fits$hour == 24)
+scale_factor = 8 # using this factor to make sure the minimum value is above 1 to avoid bar looking negatives for values between 0 and 1
+p<- ggplot(mean_coef_fits[keep_ind,], aes(x=Strain_sorted, y=scale_factor*FociPerGy, fill=Radiation.Type)) + 
+  geom_bar(stat="identity", width=.8, position = "dodge")  +
+  geom_errorbar(aes(ymin=scale_factor*(FociPerGy-FociPerGy_se), ymax=scale_factor*(FociPerGy+FociPerGy_se)), width=.8, position = "dodge") +
+  scale_y_continuous(trans='log2',limits=scale_factor*c(0.125,8),breaks = scale_factor*c(0.25,0.5,1,2,4,8), labels = c("0.25","0.5","1","2","4","8")) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  facet_grid(hour~.)
+print(p)
+```
+
+```{r}
+# Plot Bgd (normal_Bgd) versus Strains - Figure 5B
+mean_coef_fits_bgd <- ddply(coef_fits, c("Strain"), summarise,
+                            normal_Bgd =  mean(normal_Bgd, na.rm=TRUE)
+)
+ord_ind = order(mean_coef_fits_bgd$normal_Bgd)
+mean_coef_fits_bgd = mean_coef_fits_bgd[ord_ind,]
+mean_coef_fits$Strain_sorted = factor(mean_coef_fits$Strain, levels = mean_coef_fits_bgd$Strain)
+keep_ind = mean_coef_fits$Radiation.Type != 'Si 350 MeV/n' & (mean_coef_fits$hour == 4 | mean_coef_fits$hour == 24)
+scale_factor = 8 # using this factor to make sure the minimu value is above 1 to avoid bar looking negatives for values between 0 and 1
+p<- ggplot(mean_coef_fits[keep_ind,], aes(x=Strain_sorted, y=scale_factor*normal_Bgd, fill=Radiation.Type)) + 
+  geom_bar(stat="identity", width=.8, position = "dodge")  +
+  geom_errorbar(aes(ymin=scale_factor*(normal_Bgd-normal_Bgd_se), ymax=scale_factor*(normal_Bgd+normal_Bgd_se)), width=.8, position = "dodge") +
+  scale_y_continuous(trans='log2',limits=scale_factor*c(0.125,8),breaks = scale_factor*c(0.25,0.5,1,2,4,8), labels = c("0.25","0.5","1","2","4","8")) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  facet_grid(hour~.)
+print(p)
+```
+
+```{r}
+# Plot Bgd (intersept) versus Strains
+mean_coef_fits_bgd <- ddply(coef_fits, c("Strain"), summarise,
+                            normal_Bgd =  mean(normal_Bgd, na.rm=TRUE)
+)
+ord_ind = order(mean_coef_fits_bgd$normal_Bgd)
+mean_coef_fits_bgd = mean_coef_fits_bgd[ord_ind,]
+mean_coef_fits$Strain_sorted = factor(mean_coef_fits$Strain, levels = mean_coef_fits_bgd$Strain)
+keep_ind = mean_coef_fits$Radiation.Type != 'Si 350 MeV/n' & (mean_coef_fits$hour == 4 | mean_coef_fits$hour == 24)
+scale_factor = 8 # using this factor to make sure the minimu value is above 1 to avoid bar looking negatives for values between 0 and 1
+p<- ggplot(mean_coef_fits[keep_ind,], aes(x=Strain_sorted, y=scale_factor*Bgd, fill=Radiation.Type)) + 
+  geom_bar(stat="identity", width=.8, position = "dodge")  +
+  geom_errorbar(aes(ymin=scale_factor*(Bgd-Bgd_se), ymax=scale_factor*(Bgd+Bgd_se)), width=.8, position = "dodge") +
+  scale_y_continuous(trans='log2',limits=scale_factor*c(0.125,8),breaks = scale_factor*c(0.25,0.5,1,2,4,8), labels = c("0.25","0.5","1","2","4","8")) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  facet_grid(hour~.)
+print(p)
+```
+
+```{r}
+# Fit time dependence by Strain
+
+# For high-LET: fit RIFmax for each strain on Fe and Ar data together (should be the same for all LETs). Then we fit separately Ar and Fe to get tau and rho per strain.
+keep_ind = mean_foci_strain_let$let >100
+mean_foci_strain_let$RIFmax = 1;# initialize
+
+mean_foci_strain_let = na.omit(mean_foci_strain_let)
+fits <- nlsList(mean ~ RIFmax*let*(rho*exp(-hour/tau)+(1-rho)) | Strain, data=mean_foci_strain_let[keep_ind,], start =c(tau=10,RIFmax=0.01,rho=1))
+time_fit = coef(fits)
+for (i_strain in 1:num_strain) {
+  keep_ind = mean_foci_strain_let$Strain == strain_list[i_strain]
+  if (sum(keep_ind)>0) { # only add if the condition is met
+    mean_foci_strain_let[keep_ind,]$RIFmax = time_fit[strain_list[i_strain],2]
+  }
+}
+
+mean_foci_strain_let$tau = 0 # initialize
+mean_foci_strain_let$rho = 1
+
+# For Ar:
+keep_ind = mean_foci_strain_let$let == let_val[2] #& mean_foci_strain_let$hour < 48
+fits <- nlsList(mean ~ RIFmax*let*(r*exp(-hour/t)+(1-r)) | Strain, data=mean_foci_strain_let[keep_ind,], start =c(t=4,r=0.88))
+tmp_fit =coef(fits)
+time_fit =cbind(time_fit,tmp_fit)
+for (i_strain in 1:num_strain) {
+  keep_ind = mean_foci_strain_let$let == let_val[2] & mean_foci_strain_let$Strain == strain_list[i_strain]
+  if (sum(keep_ind)>0) { # only add if the condition is met
+    mean_foci_strain_let[keep_ind,]$tau = tmp_fit[strain_list[i_strain],1]
+    mean_foci_strain_let[keep_ind,]$rho = tmp_fit[strain_list[i_strain],2]
+  }
+}
+
+# For Fe:
+keep_ind = mean_foci_strain_let$let == let_val[3] #& mean_foci_strain_let$hour < 48
+fits <- nlsList(mean ~ RIFmax*let*(r*exp(-hour/t)+(1-r)) | Strain, data=mean_foci_strain_let[keep_ind,], start =c(t=6,r=0.9))
+tmp_fit = coef(fits)
+time_fit =cbind(time_fit,tmp_fit)
+for (i_strain in 1:num_strain) {
+  keep_ind = mean_foci_strain_let$let == let_val[3] & mean_foci_strain_let$Strain == strain_list[i_strain]
+  if (sum(keep_ind)>0) { # only add if the condition is met
+    mean_foci_strain_let[keep_ind,]$tau = tmp_fit[strain_list[i_strain],1]
+    mean_foci_strain_let[keep_ind,]$rho = tmp_fit[strain_list[i_strain],2]
+  }
+}
+
+mean_foci_strain_let$fit = mean_foci_strain_let$RIFmax*mean_foci_strain_let$let*(mean_foci_strain_let$rho*exp(-mean_foci_strain_let$hour/mean_foci_strain_let$tau)+(1-mean_foci_strain_let$rho))
+
+
+# For X-ray: First, fitting data with both rho and tau yield rho at 0.99, so, using 1 instead (reduce # of parameters) for 0.1 and 1 Gy
+# 1-rho for 4 Gy is 80% of RIF(48hrs)
+# Second, because 1 and 4 Gy have RIF clustering for all time point (predominant at 4 hours, but even later RIF/Gy decreases with dose at 24 and 48 hours)
+# we are not forcing intercept to be constant. Instead we are fitting the RIF response and intercept per strain
+
+factors_res <- read.table('/Users/epariset/Desktop/Sylvain/Factors.csv',sep=",",header=TRUE) # defines value of residual damage (percentage of value at 48h): diferent for each strain based on fit optimization
+
+mean_foci_strain_xray$tau = 0 # initialize
+mean_foci_strain_xray$c = 1 # initialize DSB/RIF
+mean_foci_strain_xray$rho = 1 # initialize rho to 1 (true for 0.1 and 1 Gy)
+mean_foci_strain_xray$mean_sub = 0 # initialize mean subtracted by 48 hour time point
+for (i_strain in 1:num_strain) {
+  for (i_dose in 1:3) {
+    keep_ind = mean_foci_strain_xray$Radiation == xray_dose[i_dose] & mean_foci_strain_xray$Strain == strain_list[i_strain]
+    keep_ind2 = mean_foci_strain_xray$Radiation == xray_dose[i_dose] & mean_foci_strain_xray$Strain == strain_list[i_strain] & mean_foci_strain_xray$hour == 48
+    if (sum(keep_ind)>0) { # only add if the condition is met
+      # subtract x% of value at 48h. The x factor is optimized for each strain to get the best fit.
+      mean_foci_strain_xray[keep_ind,]$mean_sub = mean_foci_strain_xray[keep_ind,]$mean - factors_res$Residual_factor[i_strain] * mean_foci_strain_xray[keep_ind2,]$mean
+    }
+  }
+}
+keep_ind = mean_foci_strain_xray$mean_sub<0
+mean_foci_strain_xray[keep_ind,]$mean_sub = 0
+
+# start fitting Xray data, each dose has a different strategy
+
+mean_foci_strain_xray$tau = 0 # initialize
+mean_foci_strain_xray$c = 1 # initialize DSB/RIF
+mean_foci_strain_xray$rho = 1 # initialize rho to 1 (true for 0.1 and 1 Gy)
+mean_foci_strain_xray$mean_sub = 0 # initialize mean subtracted by 48 hour time point
+for (i_strain in 1:num_strain) {
+for (i_dose in 1:3) {
+    keep_ind = mean_foci_strain_xray$Radiation == xray_dose[i_dose] & mean_foci_strain_xray$Strain == strain_list[i_strain]
+    keep_ind2 = mean_foci_strain_xray$Radiation == xray_dose[i_dose] & mean_foci_strain_xray$Strain == strain_list[i_strain] & mean_foci_strain_xray$hour == 48
+    if (sum(keep_ind)>0) { # only add if the condition is met
+      # subtract x% of value at 48h. The x factor is optimized for each strain to get the best fit.
+      mean_foci_strain_xray[keep_ind,]$mean_sub = mean_foci_strain_xray[keep_ind,]$mean - 0.7 * mean_foci_strain_xray[keep_ind2,]$mean
+    }
+}
+}
+
+keep_ind = mean_foci_strain_xray$mean_sub<0
+mean_foci_strain_xray[keep_ind,]$mean_sub = 0
+
+# start fitting Xray data, each dose has a different strategy
+
+for (i_dose in 1:3){
+  if (i_dose == 1) { # At 0.1Gy: no clustering, coefficient c is set to the highest fit = 12.8 DSB/Gy x 0.1 Gy, and no residual damage
+    keep_ind = mean_foci_strain_xray$Radiation == xray_dose[i_dose]
+    fits <- nlsList(mean ~ 1.28*exp(-hour/t) | Strain, data=mean_foci_strain_xray[keep_ind,], start =c(t=2))
+    tmp_fit = coef(fits)
+    tmp_fit$c =1.0 # DSB/RIF is 1 at 0.1 Gy
+    }
+  if (i_dose == 2) { # At 1Gy: we fit the clustering coefficient for each strain, and no residual damage
+    keep_ind = mean_foci_strain_xray$Radiation == xray_dose[i_dose] # & mean_foci_strain_xray$hour <48
+    fits <- nlsList(mean ~ c*exp(-hour/t) | Strain, data=mean_foci_strain_xray[keep_ind,], start =c(t=6,c=2.3))
+    tmp_fit = coef(fits)
+    tmp_fit$c = xray_dose[i_dose]*12.8/tmp_fit$c # Turn c into DSB/RIF instead of intercept
+  }
+  if (i_dose == 3) { # At 4Gy: we assume that the residual damage at all time points is 80% of the damage at 48h
+    keep_ind = mean_foci_strain_xray$Radiation == xray_dose[i_dose] # & mean_foci_strain_xray$hour <48
+    fits <- nlsList(mean_sub ~ c*exp(-hour/t) | Strain, data=mean_foci_strain_xray[keep_ind,], start =c(t=6,c=4))
+    tmp_fit = coef(fits)
+    tmp_Bgd = subset(mean_foci_strain_xray, hour==48 & Radiation==4,select=c(Strain,mean))
+    tmp_fit = cbind(tmp_fit, tmp_Bgd[match(rownames(tmp_fit), tmp_Bgd$Strain),2]) 
+    tmp_c = tmp_fit$c+0.7*tmp_fit[,3] # Add 80% of RIF value at 48hours as 1-rho
+    tmp_fit[,3] = tmp_fit$c/tmp_c 
+    tmp_fit$c = xray_dose[i_dose]*12.8/tmp_c # Turn c into DSB/RIF instead of intercept
+  }
+  time_fit =cbind(time_fit,tmp_fit)
+  for (i_strain in 1:num_strain) {
+    keep_ind = mean_foci_strain_xray$Radiation == xray_dose[i_dose] & mean_foci_strain_xray$Strain == strain_list[i_strain]
+    if (sum(keep_ind)>0) { # only add if the condition is met
+      mean_foci_strain_xray[keep_ind,]$tau = tmp_fit[strain_list[i_strain],1]
+      mean_foci_strain_xray[keep_ind,]$c = tmp_fit[strain_list[i_strain],2] # Estimate DSB/RIF
+      if (i_dose == 3) {
+        keep_ind2 = mean_foci_strain_xray$Radiation == xray_dose[i_dose] & mean_foci_strain_xray$Strain == strain_list[i_strain] & mean_foci_strain_xray$hour == 48
+        mean_foci_strain_xray[keep_ind,]$rho = tmp_fit[strain_list[i_strain],3]
+      }
+    }
+  }
+}
+
+mean_foci_strain_xray$fit = mean_foci_strain_xray$Radiation*12.8/mean_foci_strain_xray$c*(mean_foci_strain_xray$rho*exp(-mean_foci_strain_xray$hour/mean_foci_strain_xray$tau)+(1-mean_foci_strain_xray$rho))
+
+colnames(time_fit) = c("All_LET_tau","All_LET_RIFmax","All_LET_rho","Ar_tau","Ar_Rho","Fe_tau","Fe_Rho","X0.1Gy_tau","X0.1Gy_DSBpRIF","X1Gy_tau","X1Gy_DSBpRIF","X4Gy_tau","X4Gy_DSBpRIF","X4Gy_Rho")
+write.csv(time_fit,"time_fit_Strain_All_Radiation_males.csv")
+```
+
+
+
+# Analysis for females only------------------------------------------------------------------------------------------------------------------
+
+```{r}
+foci = foci_all[foci_all$Gender == "FEMALE",]
+
+# Fits data avg_nfoci = f(radiation dose) as linear trend to find slope (RIF per Gy) and intersect (background)
+for (i_let in 1:num_let) {
+  keep_ind = (foci$Radiation.Type==let_list[i_let] & foci$num_nuc>20) # Select data for given LET
+  time_list = sort(unique(foci[keep_ind,]$Radiation.Time)) # Make sure time are sorted by shortest to longest
+  num_time = length(time_list)
+  for (i_time in 1:num_time) {
+      keep_ind = (foci$Radiation.Type==let_list[i_let] & foci$num_nuc>20 & foci$Radiation.Time == time_list[i_time] ) # Select data for given LET and time
+      if (i_let < num_let) { # First 3 data sets are high-LET, dose dependence is linear as foci reflects # of tracks
+        fits <- lmList(avg_nfoci ~ poly(Radiation, 1, raw = TRUE) | UserID, data=foci[keep_ind,])
+        avg_backup <- ddply(foci[keep_ind,], "UserID", summarise, mean = mean(avg_nfoci, na.rm=TRUE))
+        tmp_fits = coef(fits)
+        
+        # identify negative slope or NA value. For those, slope is 0 and intercept is average
+        keep_ind = tmp_fits[,2]<0 | is.na(tmp_fits[,1]) | is.na(tmp_fits[,2])
+        tmp_fits[keep_ind,1] = avg_backup$mean[keep_ind]
+        tmp_fits[keep_ind,2] = 0
+        if (i_let == 1 & i_time == 1) {
+          list_fits = tmp_fits
+          coef_fits = cbind(tmp_fits,time_list[i_time],let_list[i_let],rownames(tmp_fits))
+          colnames(list_fits) = c(paste(let_list[i_let],time_list[i_time],"Bgd"),paste(let_list[i_let],time_list[i_time],"FociPerGy"))
+        } else{
+          coef_fits = rbind(coef_fits,cbind(tmp_fits,time_list[i_time],let_list[i_let],rownames(tmp_fits)))
+          colnames(tmp_fits) = c(paste(let_list[i_let],time_list[i_time],"Bgd"),paste(let_list[i_let],time_list[i_time],"FociPerGy"))
+          list_fits2 = merge(list_fits,tmp_fits,by="row.names",all=TRUE)
+          row.names(list_fits2) = list_fits2$Row.names
+          list_fits = list_fits2[,seq(2,length(list_fits2))]
+        }
+      } else { # X-ray case (i.e. i_let is 4)
+        if (i_time == 1) { # exclude 4 Gy for 4 hour time point
+          keep_ind = (foci$Radiation.Type==let_list[i_let] & foci$num_nuc>20 & foci$Radiation<=1 & foci$Radiation.Time == time_list[i_time] ) # Select data for given LET and time
+          } 
+        # for later time point, do normal linear fit
+        fits <- lmList(avg_nfoci ~ poly(Radiation, 1, raw = TRUE) | UserID, data=foci[keep_ind,seq(1,31)])
+        avg_backup <- ddply(foci[keep_ind,], "UserID", summarise, mean = mean(avg_nfoci, na.rm=TRUE))
+        tmp_fits = coef(fits)
+        
+        # identify negative slope or NA value. For those, slope is 0 and intercept is average
+        keep_ind = tmp_fits[,2]<0 | is.na(tmp_fits[,1]) | is.na(tmp_fits[,2])
+        tmp_fits[keep_ind,1] = avg_backup$mean[keep_ind]
+        tmp_fits[keep_ind,2] = 0
+        
+        coef_fits = rbind(coef_fits,cbind(tmp_fits,time_list[i_time],let_list[i_let],rownames(tmp_fits)))
+        colnames(tmp_fits) = c(paste(let_list[i_let],time_list[i_time],"Bgd"),paste(let_list[i_let],time_list[i_time],"FociPerGy"))
+        list_fits2 = merge(list_fits,tmp_fits,by="row.names",all=TRUE)
+        row.names(list_fits2) = list_fits2$Row.names
+        list_fits = list_fits2[,seq(2,length(list_fits2))]
+      }
+    
+  }
+}
+list_fits = merge(list_fits,animal_ID,by.x="row.names",by.y=c('Exp_ID'))
+
+colnames(coef_fits) = c("Bgd","FociPerGy","hour","Radiation.Type","UserID")
+coef_fits$Bgd = as.numeric(coef_fits$Bgd)
+coef_fits$FociPerGy = as.numeric(coef_fits$FociPerGy)
+coef_fits$hour = as.numeric(strsplit(as.character(coef_fits$hour),"hr"))
+
+# Compute simple background (called normal_bgd): i.e. mean of 0 Gy, not intercept
+keep_ind = foci$Radiation == 0
+avg_nfoci <- ddply(foci[keep_ind,], c("UserID", "let", "Radiation.Type", "hour","Strain"), summarise,
+                              mean = mean(avg_nfoci, na.rm=TRUE)) # average duplicates
+colnames(avg_nfoci)= c("UserID","let","Radiation.Type","hour","Strain","normal_Bgd")
+coef_fits = merge(coef_fits,avg_nfoci,by=c('UserID','hour','Radiation.Type'), all=TRUE)
+
+coef_fits = merge(coef_fits,animal_ID,by.x=c('UserID',"Strain"),by.y=c('Exp_ID',"Strain"))
+
+# add normal background and fitted coefficients (background and foci per Gy) to foci data.frame
+foci <- merge(foci, coef_fits[,c(1,3,seq(5,8))], by.x=c('UserID','hour','let'), 
+              by.y=c('UserID','hour','let'))
+
+# Computes normalized number of foci (with substracted intersept background) and number of RIF/um
+foci$nfoci_bgdsub = foci$avg_nfoci - foci$Bgd
+foci$norm_nfoci = foci$nfoci_bgdsub/foci$fluence/foci$avg_nuc_area*5 # Factor 5 to convert pixels to um^2 for the nucleus area
+```
+
+```{r}
+# Selects data of interest (points where doses lead to less nfoci than background)
+
+# For high LET: exclude outliers and compute average of RIF/um (norm_nfoci)
+keep_ind = !is.infinite(foci$norm_nfoci) & !is.na(foci$norm_nfoci)  & foci$let>100 & foci$nfoci_bgdsub>0
+mean_foci_UserID_let <- ddply(foci[keep_ind,], c("UserID", "let", "hour"), summarise,
+                              N    = sum(!is.nan(norm_nfoci)),
+                              mean = mean(norm_nfoci, na.rm=TRUE),
+                              sd   = sd(norm_nfoci, na.rm=TRUE),
+                              se   = sd / sqrt(N),
+                              N_no_out = sum(!is.nan(norm_nfoci[norm_nfoci<mean+sd & norm_nfoci>mean-sd])),
+                              mean_no_out = mean(norm_nfoci[norm_nfoci<mean+sd & norm_nfoci>mean-sd],na.rm=TRUE)
+                              )
+
+# For X-ray: cannot exclude outliers since most groups have only 2 values, and compute average of normalized RIF (nfoci_bgdsub), then meanPGy is computed from the average of nfoci_bgdsub and the radiation dose
+keep_ind = !is.na(foci$nfoci_bgdsub) & foci$Radiation>0 & foci$Radiation.Type==let_list[4] & foci$nfoci_bgdsub>0
+mean_foci_UserID_xray <- ddply(foci[keep_ind,], c("UserID", "let", "hour","Radiation"), summarise,
+                               N    = sum(!is.na(nfoci_bgdsub)),
+                               mean = mean(nfoci_bgdsub, na.rm=TRUE),
+                               mean_raw = mean(avg_nfoci, na.rm=TRUE),
+                               sd   = sd(nfoci_bgdsub, na.rm=TRUE),
+                               se   = sd / sqrt(N)
+)
+mean_foci_UserID_xray$meanPGy = mean_foci_UserID_xray$mean/mean_foci_UserID_xray$Radiation
+
+mean_foci_UserID_let=merge(mean_foci_UserID_let,animal_ID[,c('Exp_ID','Strain','Gender')],by.x='UserID',by.y='Exp_ID')
+mean_foci_UserID_xray=merge(mean_foci_UserID_xray,animal_ID[,c('Exp_ID','Strain','Gender')],by.x='UserID',by.y='Exp_ID')
+```
+
+```{r}
+# At 4h timepoint, computes saturation ratio from slopes of RIF/um (mean_no_out) vs LET: 1-slope2/slope1. For X-ray, computes saturation ratio from nfoci_bgdsub (mean) vs dose. If fully saturated,
+# slope 2 is 0 and parameter is max and equal to 1. If no saturation, slope2=slope1 and parameter is 0
+# IF parameter is negative, this model is wrong and probably data are linear. Set it to 0.
+
+# For high LETs
+keep_ind1 = mean_foci_UserID_let$hour == 4 & mean_foci_UserID_let$let==let_val[2]
+keep_ind2 = mean_foci_UserID_let$hour == 4 & mean_foci_UserID_let$let==let_val[3]
+slope1 = mean_foci_UserID_let$mean_no_out[keep_ind1]/let_val[2]
+slope2 = (mean_foci_UserID_let$mean_no_out[keep_ind2]-mean_foci_UserID_let$mean_no_out[keep_ind1])/(let_val[3]-let_val[2])
+# initialize dataframe. This will work ONLY if we have corresponding values for both LEt for each animal
+saturation_fit = mean_foci_UserID_let[keep_ind1,c(1,3)] 
+saturation_fit$let_slope=slope1
+saturation_fit$let_saturation=1-slope2/slope1
+keep_ind = saturation_fit$let_saturation <0 # search for no saturated data. Then replace by average slope and set sat to 0
+saturation_fit$let_slope[keep_ind] = 0.5*(slope1[keep_ind]+slope2[keep_ind])
+saturation_fit$let_saturation[keep_ind] = 0
+
+# For Xray. Xray data are always saturated, no exception
+keep_ind = mean_foci_UserID_xray$hour == 4 & mean_foci_UserID_xray$Radiation == 0.1 # 0.1 Gy point
+keep_ind1 = mean_foci_UserID_xray$hour == 4 & mean_foci_UserID_xray$Radiation == 1 # 1 Gy point
+keep_ind2 = mean_foci_UserID_xray$hour == 4 & mean_foci_UserID_xray$Radiation == 4 # 4 Gy point
+slope1 = (mean_foci_UserID_xray$mean[keep_ind]/0.1 + mean_foci_UserID_xray$mean[keep_ind1])/2
+slope2 = (mean_foci_UserID_xray$mean[keep_ind2]-mean_foci_UserID_xray$mean[keep_ind1])/3
+tmp_fit = mean_foci_UserID_xray[keep_ind1,c(1,3)] 
+tmp_fit$xray_slope = slope1
+tmp_fit$xray_saturation=1-slope2/slope1
+#if slope2 is negative, full saturation and slope 1 is adjusted
+keep_ind = slope2<0
+tmp_fit$xray_slope[keep_ind] = slope1[keep_ind]+0.75*slope2[keep_ind]
+tmp_fit$xray_saturation[keep_ind] = 1
+
+saturation_fit = merge(saturation_fit,tmp_fit[,c(1,3,4)],by = 'UserID',all=TRUE)
+saturation_fit=merge(saturation_fit,animal_ID[,c('Exp_ID','Strain','Gender')],by.x='UserID',by.y='Exp_ID')
+```
+
+```{r}
+# summarize by strain
+mean_foci_strain_let <- ddply(mean_foci_UserID_let, c("Strain", "let", "hour"), summarise,
+                              N    = sum(!is.nan(mean)),
+                              mean = mean(mean, na.rm=TRUE))
+
+mean_foci_strain_xray <- ddply(mean_foci_UserID_xray, c("Strain", "hour","Radiation"), summarise,
+                              N    = sum(!is.nan(mean)),
+                              mean = mean(mean, na.rm=TRUE))
+
+mean_saturation_fit <- ddply(saturation_fit, c("Strain"), summarise,
+                              N_let    = sum(!is.na(let_slope)),
+                             let_s_se = sd(let_slope, na.rm=TRUE)/sqrt(N_let),
+                             let_sat_se = sd(let_saturation, na.rm=TRUE)/sqrt(N_let),
+                             let_slope = mean(let_slope, na.rm=TRUE),
+                             let_saturation = mean(let_saturation, na.rm=TRUE),
+                             N_xray    = sum(!is.na(xray_slope)),
+                             xray_s_se = sd(xray_slope, na.rm=TRUE)/sqrt(N_xray),
+                             xray_sat_se = sd(xray_saturation, na.rm=TRUE)/sqrt(N_xray),
+                             xray_slope = mean(xray_slope, na.rm=TRUE),
+                             xray_saturation = mean(xray_saturation, na.rm=TRUE)
+)
+
+mean_coef_fits <- ddply(coef_fits, c("Strain","Radiation.Type", "hour"), summarise,
+                        N    = sum(!is.na(FociPerGy)),
+                        FociPerGy_se = sd(FociPerGy, na.rm=TRUE)/sqrt(N),
+                        Bgd_se = sd(Bgd, na.rm=TRUE)/sqrt(N),
+                        normal_Bgd_se =  sd(normal_Bgd, na.rm=TRUE)/sqrt(N),
+                        FociPerGy = mean(FociPerGy, na.rm=TRUE),
+                        Bgd = mean(Bgd, na.rm=TRUE),
+                        normal_Bgd =  mean(normal_Bgd, na.rm=TRUE)
+)
+```
+
+```{r}
+# create array table for correlation for coef_fits
+list_hour = c(4,8,24,48)
+for (i_let in 2:num_let) {
+  for (i_time in 1:4) {
+    keep_ind = mean_coef_fits$Radiation.Type==let_list[i_let] & mean_coef_fits$hour == list_hour[i_time] 
+    tmp_FociPerGy = unique(mean_coef_fits[keep_ind,c(1,8)])
+    colnames(tmp_FociPerGy) = c("Strain",paste(let_list_sub[i_let],'_',list_hour[i_time],'Hr'))
+    tmp_Bgd = unique(mean_coef_fits[keep_ind,c(1,9)])
+    colnames(tmp_Bgd) = c("Strain",paste(let_list_sub[i_let],'_',list_hour[i_time],'Hr'))
+    tmp_normal_Bgd = unique(mean_coef_fits[keep_ind,c(1,10)])
+    colnames(tmp_normal_Bgd) = c("Strain",paste(let_list_sub[i_let],'_',list_hour[i_time],'Hr'))
+    if (i_let == 2 & i_time == 1) {
+      list_FociBgd = tmp_Bgd
+      list_FociPerGy = tmp_FociPerGy
+      list_normal_Bgd = tmp_normal_Bgd
+    } else {
+      list_FociBgd = merge(list_FociBgd,tmp_Bgd,by='Strain',all=TRUE)
+      list_FociPerGy =  merge(list_FociPerGy, tmp_FociPerGy,by='Strain',all=TRUE)
+      list_normal_Bgd =  merge(list_normal_Bgd, tmp_normal_Bgd,by='Strain',all=TRUE)
+    }
+  }
+}
+rownames(list_FociBgd) = list_FociBgd$Strain
+list_FociBgd =subset(list_FociBgd, select=-c(1,11)) # Get rid of strain column and 8hr Xray since blank
+rownames(list_FociPerGy) = list_FociPerGy$Strain
+list_FociPerGy =subset(list_FociPerGy, select=-c(1,11))
+rownames(list_normal_Bgd) = list_normal_Bgd$Strain
+list_normal_Bgd =subset(list_normal_Bgd, select=-c(1,11))
+```
+
+```{r}
+# Plot saturation value per strain (bargraph)
+tmp_set  = mean_saturation_fit[,c(1,6,4)]
+ord_ind = order(tmp_set$let_saturation)
+tmp_set = tmp_set[ord_ind,]
+tmp_set$Strain = factor(tmp_set$Strain, level=tmp_set$Strain)
+tmp_set2 = mean_saturation_fit[,c(1,11,9)]
+tmp_set$Radiation = "HZE particles"
+tmp_set2$Radiation = "X-rays"
+colnames(tmp_set) = c('Strain',"Saturation","Se","Radiation")
+colnames(tmp_set2) = c('Strain',"Saturation","Se","Radiation")
+tmp_set = rbind(tmp_set,tmp_set2)
+p<- ggplot(tmp_set, aes(x=Strain, y=Saturation, fill=Radiation)) + 
+  geom_bar(stat="identity", width=.8, position = "dodge")  +
+  geom_errorbar(aes(ymin=Saturation-Se, ymax= Saturation+Se), width=.8, position = "dodge") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+print(p)
+# See what parameter correlates most
+colnames(mean_saturation_fit) = c( "Strain","N_let","let_s_se","let_sat_se","LET_slope1","LET_saturation",
+                                   "N_xray","xray_s_se","xray_sat_se","Xrays_slope1","Xrays_saturation")
+res = cor(as.matrix(mean_saturation_fit[,c(5,6,10,11)]))
+p.mat <- cor.mtest(as.matrix(mean_saturation_fit[,c(5,6,10,11)]))$p
+corrplot(res, type = "upper", order = "original", number.font = 5, 
+         tl.col = "black", tl.srt = 45, p.mat=p.mat, insig = "p-value", sig.level=-1)
+```
+
+```{r}
+# Plot RIF/Gy versus Strains
+keep_ind = mean_coef_fits$Radiation.Type == 'Fe 600 MeV/n' & mean_coef_fits$hour == 24
+tmp_set = mean_coef_fits[keep_ind,]
+ord_ind = order(tmp_set$FociPerGy)
+tmp_set = tmp_set[ord_ind,]
+mean_coef_fits$Strain_sorted = factor(mean_coef_fits$Strain, levels = tmp_set$Strain)
+keep_ind = mean_coef_fits$Radiation.Type != 'Si 350 MeV/n' & (mean_coef_fits$hour == 4 | mean_coef_fits$hour == 24)
+scale_factor = 8 # using this factor to make sure the minimum value is above 1 to avoid bar looking negatives for values between 0 and 1
+p<- ggplot(mean_coef_fits[keep_ind,], aes(x=Strain_sorted, y=scale_factor*FociPerGy, fill=Radiation.Type)) + 
+  geom_bar(stat="identity", width=.8, position = "dodge")  +
+  geom_errorbar(aes(ymin=scale_factor*(FociPerGy-FociPerGy_se), ymax=scale_factor*(FociPerGy+FociPerGy_se)), width=.8, position = "dodge") +
+  scale_y_continuous(trans='log2',limits=scale_factor*c(0.125,8),breaks = scale_factor*c(0.25,0.5,1,2,4,8), labels = c("0.25","0.5","1","2","4","8")) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  facet_grid(hour~.)
+print(p)
+```
+
+```{r}
+# Plot Bgd (normal_Bgd) versus Strains - Figure 5B
+mean_coef_fits_bgd <- ddply(coef_fits, c("Strain"), summarise,
+                            normal_Bgd =  mean(normal_Bgd, na.rm=TRUE)
+)
+ord_ind = order(mean_coef_fits_bgd$normal_Bgd)
+mean_coef_fits_bgd = mean_coef_fits_bgd[ord_ind,]
+mean_coef_fits$Strain_sorted = factor(mean_coef_fits$Strain, levels = mean_coef_fits_bgd$Strain)
+keep_ind = mean_coef_fits$Radiation.Type != 'Si 350 MeV/n' & (mean_coef_fits$hour == 4 | mean_coef_fits$hour == 24)
+scale_factor = 8 # using this factor to make sure the minimu value is above 1 to avoid bar looking negatives for values between 0 and 1
+p<- ggplot(mean_coef_fits[keep_ind,], aes(x=Strain_sorted, y=scale_factor*normal_Bgd, fill=Radiation.Type)) + 
+  geom_bar(stat="identity", width=.8, position = "dodge")  +
+  geom_errorbar(aes(ymin=scale_factor*(normal_Bgd-normal_Bgd_se), ymax=scale_factor*(normal_Bgd+normal_Bgd_se)), width=.8, position = "dodge") +
+  scale_y_continuous(trans='log2',limits=scale_factor*c(0.125,8),breaks = scale_factor*c(0.25,0.5,1,2,4,8), labels = c("0.25","0.5","1","2","4","8")) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  facet_grid(hour~.)
+print(p)
+```
+
+```{r}
+# Plot Bgd (intersept) versus Strains
+mean_coef_fits_bgd <- ddply(coef_fits, c("Strain"), summarise,
+                            normal_Bgd =  mean(normal_Bgd, na.rm=TRUE)
+)
+ord_ind = order(mean_coef_fits_bgd$normal_Bgd)
+mean_coef_fits_bgd = mean_coef_fits_bgd[ord_ind,]
+mean_coef_fits$Strain_sorted = factor(mean_coef_fits$Strain, levels = mean_coef_fits_bgd$Strain)
+keep_ind = mean_coef_fits$Radiation.Type != 'Si 350 MeV/n' & (mean_coef_fits$hour == 4 | mean_coef_fits$hour == 24)
+scale_factor = 8 # using this factor to make sure the minimu value is above 1 to avoid bar looking negatives for values between 0 and 1
+p<- ggplot(mean_coef_fits[keep_ind,], aes(x=Strain_sorted, y=scale_factor*Bgd, fill=Radiation.Type)) + 
+  geom_bar(stat="identity", width=.8, position = "dodge")  +
+  geom_errorbar(aes(ymin=scale_factor*(Bgd-Bgd_se), ymax=scale_factor*(Bgd+Bgd_se)), width=.8, position = "dodge") +
+  scale_y_continuous(trans='log2',limits=scale_factor*c(0.125,8),breaks = scale_factor*c(0.25,0.5,1,2,4,8), labels = c("0.25","0.5","1","2","4","8")) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  facet_grid(hour~.)
+print(p)
+```
+
+```{r}
+# Fit time dependence by Strain
+
+# For high-LET: fit RIFmax for each strain on Fe and Ar data together (should be the same for all LETs). Then we fit separately Ar and Fe to get tau and rho per strain.
+keep_ind = mean_foci_strain_let$let >100
+mean_foci_strain_let$RIFmax = 1;# initialize
+
+mean_foci_strain_let = na.omit(mean_foci_strain_let)
+fits <- nlsList(mean ~ RIFmax*let*(rho*exp(-hour/tau)+(1-rho)) | Strain, data=mean_foci_strain_let[keep_ind,], start =c(tau=10,RIFmax=0.01,rho=1))
+time_fit = coef(fits)
+for (i_strain in 1:num_strain) {
+  keep_ind = mean_foci_strain_let$Strain == strain_list[i_strain]
+  if (sum(keep_ind)>0) { # only add if the condition is met
+    mean_foci_strain_let[keep_ind,]$RIFmax = time_fit[strain_list[i_strain],2]
+  }
+}
+
+mean_foci_strain_let$tau = 0 # initialize
+mean_foci_strain_let$rho = 1
+
+# For Ar:
+keep_ind = mean_foci_strain_let$let == let_val[2] #& mean_foci_strain_let$hour < 48
+fits <- nlsList(mean ~ RIFmax*let*(r*exp(-hour/t)+(1-r)) | Strain, data=mean_foci_strain_let[keep_ind,], start =c(t=4,r=0.88))
+tmp_fit =coef(fits)
+time_fit =cbind(time_fit,tmp_fit)
+for (i_strain in 1:num_strain) {
+  keep_ind = mean_foci_strain_let$let == let_val[2] & mean_foci_strain_let$Strain == strain_list[i_strain]
+  if (sum(keep_ind)>0) { # only add if the condition is met
+    mean_foci_strain_let[keep_ind,]$tau = tmp_fit[strain_list[i_strain],1]
+    mean_foci_strain_let[keep_ind,]$rho = tmp_fit[strain_list[i_strain],2]
+  }
+}
+
+# For Fe:
+keep_ind = mean_foci_strain_let$let == let_val[3] #& mean_foci_strain_let$hour < 48
+fits <- nlsList(mean ~ RIFmax*let*(r*exp(-hour/t)+(1-r)) | Strain, data=mean_foci_strain_let[keep_ind,], start =c(t=6,r=0.9))
+tmp_fit = coef(fits)
+time_fit =cbind(time_fit,tmp_fit)
+for (i_strain in 1:num_strain) {
+  keep_ind = mean_foci_strain_let$let == let_val[3] & mean_foci_strain_let$Strain == strain_list[i_strain]
+  if (sum(keep_ind)>0) { # only add if the condition is met
+    mean_foci_strain_let[keep_ind,]$tau = tmp_fit[strain_list[i_strain],1]
+    mean_foci_strain_let[keep_ind,]$rho = tmp_fit[strain_list[i_strain],2]
+  }
+}
+
+mean_foci_strain_let$fit = mean_foci_strain_let$RIFmax*mean_foci_strain_let$let*(mean_foci_strain_let$rho*exp(-mean_foci_strain_let$hour/mean_foci_strain_let$tau)+(1-mean_foci_strain_let$rho))
+
+
+# For X-ray: First, fitting data with both rho and tau yield rho at 0.99, so, using 1 instead (reduce # of parameters) for 0.1 and 1 Gy
+# 1-rho for 4 Gy is 80% of RIF(48hrs)
+# Second, because 1 and 4 Gy have RIF clustering for all time point (predominant at 4 hours, but even later RIF/Gy decreases with dose at 24 and 48 hours)
+# we are not forcing intercept to be constant. Instead we are fitting the RIF response and intercept per strain
+
+mean_foci_strain_xray$tau = 0 # initialize
+mean_foci_strain_xray$c = 1 # initialize DSB/RIF
+mean_foci_strain_xray$rho = 1 # initialize rho to 1 (true for 0.1 and 1 Gy)
+mean_foci_strain_xray$mean_sub = 0 # initialize mean subtracted by 48 hour time point
+for (i_strain in 1:num_strain) {
+for (i_dose in 1:3) {
+    keep_ind = mean_foci_strain_xray$Radiation == xray_dose[i_dose] & mean_foci_strain_xray$Strain == strain_list[i_strain]
+    keep_ind2 = mean_foci_strain_xray$Radiation == xray_dose[i_dose] & mean_foci_strain_xray$Strain == strain_list[i_strain] & mean_foci_strain_xray$hour == 48
+    if (sum(keep_ind2)>0) { # only add if the condition is met
+      # subtract x% of value at 48h. The x factor is optimized for each strain to get the best fit.
+      mean_foci_strain_xray[keep_ind,]$mean_sub = mean_foci_strain_xray[keep_ind,]$mean - 0.7 * mean_foci_strain_xray[keep_ind2,]$mean
+    }
+}
+}
+
+keep_ind = mean_foci_strain_xray$mean_sub<0
+mean_foci_strain_xray[keep_ind,]$mean_sub = 0
+
+# start fitting Xray data, each dose has a different strategy
+
+# sd and se are NA for CC032: change to 0 to avoid issues with the fit
+
+for (i_dose in 1:3){
+  if (i_dose == 1) { # At 0.1Gy: no clustering, coefficient c is set to the highest fit = 12.8 DSB/Gy x 0.1 Gy, and no residual damage
+    keep_ind = mean_foci_strain_xray$Radiation == xray_dose[i_dose]
+    fits <- nlsList(mean ~ 1.28*exp(-hour/t) | Strain, data=mean_foci_strain_xray[keep_ind,], start =c(t=2))
+    tmp_fit = coef(fits)
+    tmp_fit$c =1.0 # DSB/RIF is 1 at 0.1 Gy
+    }
+  if (i_dose == 2) { # At 1Gy: we fit the clustering coefficient for each strain, and no residual damage
+    keep_ind = mean_foci_strain_xray$Radiation == xray_dose[i_dose] # & mean_foci_strain_xray$hour <48
+    fits <- nlsList(mean ~ c*exp(-hour/t) | Strain, data=mean_foci_strain_xray[keep_ind,], start =c(t=5,c=2.3))
+    tmp_fit = coef(fits)
+    tmp_fit$c = xray_dose[i_dose]*12.8/tmp_fit$c # Turn c into DSB/RIF instead of intercept
+  }
+  if (i_dose == 3) { # At 4Gy: we assume that the residual damage at all time points is 80% of the damage at 48h
+    keep_ind = mean_foci_strain_xray$Radiation == xray_dose[i_dose] # & mean_foci_strain_xray$hour <48
+    fits <- nlsList(mean_sub ~ c*exp(-hour/t) | Strain, data=mean_foci_strain_xray[keep_ind,], start =c(t=6,c=4))
+    tmp_fit = coef(fits)
+    tmp_Bgd = subset(mean_foci_strain_xray, hour==48 & Radiation==4,select=c(Strain,mean))
+    tmp_fit = cbind(tmp_fit, tmp_Bgd[match(rownames(tmp_fit), tmp_Bgd$Strain),2]) 
+    tmp_c = tmp_fit$c+0.7*tmp_fit[,3] # Add 80% of RIF value at 48hours as 1-rho
+    tmp_fit[,3] = tmp_fit$c/tmp_c 
+    tmp_fit$c = xray_dose[i_dose]*12.8/tmp_c # Turn c into DSB/RIF instead of intercept
+  }
+  time_fit =cbind(time_fit,tmp_fit)
+  for (i_strain in 1:num_strain) {
+    keep_ind = mean_foci_strain_xray$Radiation == xray_dose[i_dose] & mean_foci_strain_xray$Strain == strain_list[i_strain]
+    if (sum(keep_ind)>0) { # only add if the condition is met
+      mean_foci_strain_xray[keep_ind,]$tau = tmp_fit[strain_list[i_strain],1]
+      mean_foci_strain_xray[keep_ind,]$c = tmp_fit[strain_list[i_strain],2] # Estimate DSB/RIF
+      if (i_dose == 3) {
+        keep_ind2 = mean_foci_strain_xray$Radiation == xray_dose[i_dose] & mean_foci_strain_xray$Strain == strain_list[i_strain] & mean_foci_strain_xray$hour == 48
+        mean_foci_strain_xray[keep_ind,]$rho = tmp_fit[strain_list[i_strain],3]
+      }
+    }
+  }
+}
+
+mean_foci_strain_xray$fit = mean_foci_strain_xray$Radiation*12.8/mean_foci_strain_xray$c*(mean_foci_strain_xray$rho*exp(-mean_foci_strain_xray$hour/mean_foci_strain_xray$tau)+(1-mean_foci_strain_xray$rho))
+
+colnames(time_fit) = c("All_LET_tau","All_LET_RIFmax","All_LET_rho","Ar_tau","Ar_Rho","Fe_tau","Fe_Rho","X0.1Gy_tau","X0.1Gy_DSBpRIF","X1Gy_tau","X1Gy_DSBpRIF","X4Gy_tau","X4Gy_DSBpRIF","X4Gy_Rho")
+write.csv(time_fit,"time_fit_Strain_All_Radiation_female.csv")
+```
+
+
+# Analysis for males and females combined---------------------------------------------------------------------------------------------------
+
+```{r}
+foci = foci_all
+
+# Fits data avg_nfoci = f(radiation dose) as linear trend to find slope (RIF per Gy) and intersect (background)
+for (i_let in 1:num_let) {
+  keep_ind = (foci$Radiation.Type==let_list[i_let] & foci$num_nuc>20) # Select data for given LET
+  time_list = sort(unique(foci[keep_ind,]$Radiation.Time)) # Make sure time are sorted by shortest to longest
+  num_time = length(time_list)
+  for (i_time in 1:num_time) {
+      keep_ind = (foci$Radiation.Type==let_list[i_let] & foci$num_nuc>20 & foci$Radiation.Time == time_list[i_time] ) # Select data for given LET and time
+      if (i_let < num_let) { # First 3 data sets are high-LET, dose dependence is linear as foci reflects # of tracks
+        fits <- lmList(avg_nfoci ~ poly(Radiation, 1, raw = TRUE) | UserID, data=foci[keep_ind,])
+        avg_backup <- ddply(foci[keep_ind,], "UserID", summarise, mean = mean(avg_nfoci, na.rm=TRUE))
+        tmp_fits = coef(fits)
+        
+        # identify negative slope or NA value. For those, slope is 0 and intercept is average
+        keep_ind = tmp_fits[,2]<0 | is.na(tmp_fits[,1]) | is.na(tmp_fits[,2])
+        tmp_fits[keep_ind,1] = avg_backup$mean[keep_ind]
+        tmp_fits[keep_ind,2] = 0
+        if (i_let == 1 & i_time == 1) {
+          list_fits = tmp_fits
+          coef_fits = cbind(tmp_fits,time_list[i_time],let_list[i_let],rownames(tmp_fits))
+          colnames(list_fits) = c(paste(let_list[i_let],time_list[i_time],"Bgd"),paste(let_list[i_let],time_list[i_time],"FociPerGy"))
+        } else{
+          coef_fits = rbind(coef_fits,cbind(tmp_fits,time_list[i_time],let_list[i_let],rownames(tmp_fits)))
+          colnames(tmp_fits) = c(paste(let_list[i_let],time_list[i_time],"Bgd"),paste(let_list[i_let],time_list[i_time],"FociPerGy"))
+          list_fits2 = merge(list_fits,tmp_fits,by="row.names",all=TRUE)
+          row.names(list_fits2) = list_fits2$Row.names
+          list_fits = list_fits2[,seq(2,length(list_fits2))]
+        }
+      } else { # X-ray case (i.e. i_let is 4)
+        if (i_time == 1) { # exclude 4 Gy for 4 hour time point
+          keep_ind = (foci$Radiation.Type==let_list[i_let] & foci$num_nuc>20 & foci$Radiation<=1 & foci$Radiation.Time == time_list[i_time] ) # Select data for given LET and time
+          } 
+        # for later time point, do normal linear fit
+        fits <- lmList(avg_nfoci ~ poly(Radiation, 1, raw = TRUE) | UserID, data=foci[keep_ind,seq(1,31)])
+        avg_backup <- ddply(foci[keep_ind,], "UserID", summarise, mean = mean(avg_nfoci, na.rm=TRUE))
+        tmp_fits = coef(fits)
+        
+        # identify negative slope or NA value. For those, slope is 0 and intercept is average
+        keep_ind = tmp_fits[,2]<0 | is.na(tmp_fits[,1]) | is.na(tmp_fits[,2])
+        tmp_fits[keep_ind,1] = avg_backup$mean[keep_ind]
+        tmp_fits[keep_ind,2] = 0
+        
+        coef_fits = rbind(coef_fits,cbind(tmp_fits,time_list[i_time],let_list[i_let],rownames(tmp_fits)))
+        colnames(tmp_fits) = c(paste(let_list[i_let],time_list[i_time],"Bgd"),paste(let_list[i_let],time_list[i_time],"FociPerGy"))
+        list_fits2 = merge(list_fits,tmp_fits,by="row.names",all=TRUE)
+        row.names(list_fits2) = list_fits2$Row.names
+        list_fits = list_fits2[,seq(2,length(list_fits2))]
+      }
+    
+  }
+}
+list_fits = merge(list_fits,animal_ID,by.x="row.names",by.y=c('Exp_ID'))
+
+colnames(coef_fits) = c("Bgd","FociPerGy","hour","Radiation.Type","UserID")
+coef_fits$Bgd = as.numeric(coef_fits$Bgd)
+coef_fits$FociPerGy = as.numeric(coef_fits$FociPerGy)
+coef_fits$hour = as.numeric(strsplit(as.character(coef_fits$hour),"hr"))
+
+# Compute simple background (called normal_bgd): i.e. mean of 0 Gy, not intercept
+keep_ind = foci$Radiation == 0
+avg_nfoci <- ddply(foci[keep_ind,], c("UserID", "let", "Radiation.Type", "hour","Strain"), summarise,
+                              mean = mean(avg_nfoci, na.rm=TRUE)) # average duplicates
+colnames(avg_nfoci)= c("UserID","let","Radiation.Type","hour","Strain","normal_Bgd")
+coef_fits = merge(coef_fits,avg_nfoci,by=c('UserID','hour','Radiation.Type'), all=TRUE)
+
+coef_fits = merge(coef_fits,animal_ID,by.x=c('UserID',"Strain"),by.y=c('Exp_ID',"Strain"))
+
+# add normal background and fitted coefficients (background and foci per Gy) to foci data.frame
+foci <- merge(foci, coef_fits[,c(1,3,seq(5,8))], by.x=c('UserID','hour','let'), 
+              by.y=c('UserID','hour','let'))
+
+# Computes normalized number of foci (with substracted intersept background) and number of RIF/um
+foci$nfoci_bgdsub = foci$avg_nfoci - foci$Bgd
+foci$norm_nfoci = foci$nfoci_bgdsub/foci$fluence/foci$avg_nuc_area*5 # Factor 5 to convert pixels to um^2 for the nucleus area
+```
+
+```{r}
+# Selects data of interest (points where doses lead to less nfoci than background)
+
+# For high LET: exclude outliers and compute average of RIF/um (norm_nfoci)
+keep_ind = !is.infinite(foci$norm_nfoci) & !is.na(foci$norm_nfoci)  & foci$let>100 & foci$nfoci_bgdsub>0
+mean_foci_UserID_let <- ddply(foci[keep_ind,], c("UserID", "let", "hour"), summarise,
+                              N    = sum(!is.nan(norm_nfoci)),
+                              mean = mean(norm_nfoci, na.rm=TRUE),
+                              sd   = sd(norm_nfoci, na.rm=TRUE),
+                              se   = sd / sqrt(N),
+                              N_no_out = sum(!is.nan(norm_nfoci[norm_nfoci<mean+sd & norm_nfoci>mean-sd])),
+                              mean_no_out = mean(norm_nfoci[norm_nfoci<mean+sd & norm_nfoci>mean-sd],na.rm=TRUE)
+                              )
+
+# For X-ray: cannot exclude outliers since most groups have only 2 values, and compute average of normalized RIF (nfoci_bgdsub), then meanPGy is computed from the average of nfoci_bgdsub and the radiation dose
+keep_ind = !is.na(foci$nfoci_bgdsub) & foci$Radiation>0 & foci$Radiation.Type==let_list[4] & foci$nfoci_bgdsub>0
+mean_foci_UserID_xray <- ddply(foci[keep_ind,], c("UserID", "let", "hour","Radiation"), summarise,
+                               N    = sum(!is.na(nfoci_bgdsub)),
+                               mean = mean(nfoci_bgdsub, na.rm=TRUE),
+                               mean_raw = mean(avg_nfoci, na.rm=TRUE),
+                               sd   = sd(nfoci_bgdsub, na.rm=TRUE),
+                               se   = sd / sqrt(N)
+)
+mean_foci_UserID_xray$meanPGy = mean_foci_UserID_xray$mean/mean_foci_UserID_xray$Radiation
+
+mean_foci_UserID_let=merge(mean_foci_UserID_let,animal_ID[,c('Exp_ID','Strain','Gender')],by.x='UserID',by.y='Exp_ID')
+mean_foci_UserID_xray=merge(mean_foci_UserID_xray,animal_ID[,c('Exp_ID','Strain','Gender')],by.x='UserID',by.y='Exp_ID')
+```
+
+```{r}
+# At 4h timepoint, computes saturation ratio from slopes of RIF/um (mean_no_out) vs LET: 1-slope2/slope1. For X-ray, computes saturation ratio from nfoci_bgdsub (mean) vs dose. If fully saturated,
+# slope 2 is 0 and parameter is max and equal to 1. If no saturation, slope2=slope1 and parameter is 0
+# IF parameter is negative, this model is wrong and probably data are linear. Set it to 0.
+
+# For high LETs
+keep_ind1 = mean_foci_UserID_let$hour == 4 & mean_foci_UserID_let$let==let_val[2]
+keep_ind2 = mean_foci_UserID_let$hour == 4 & mean_foci_UserID_let$let==let_val[3]
+slope1 = mean_foci_UserID_let$mean_no_out[keep_ind1]/let_val[2]
+slope2 = (mean_foci_UserID_let$mean_no_out[keep_ind2]-mean_foci_UserID_let$mean_no_out[keep_ind1])/(let_val[3]-let_val[2])
+# initialize dataframe. This will work ONLY if we have corresponding values for both LEt for each animal
+saturation_fit = mean_foci_UserID_let[keep_ind1,c(1,3)] 
+saturation_fit$let_slope=slope1
+saturation_fit$let_saturation=1-slope2/slope1
+keep_ind = saturation_fit$let_saturation <0 # search for no saturated data. Then replace by average slope and set sat to 0
+saturation_fit$let_slope[keep_ind] = 0.5*(slope1[keep_ind]+slope2[keep_ind])
+saturation_fit$let_saturation[keep_ind] = 0
+
+# For Xray. Xray data are always saturated, no exception
+keep_ind = mean_foci_UserID_xray$hour == 4 & mean_foci_UserID_xray$Radiation == 0.1 # 0.1 Gy point
+keep_ind1 = mean_foci_UserID_xray$hour == 4 & mean_foci_UserID_xray$Radiation == 1 # 1 Gy point
+keep_ind2 = mean_foci_UserID_xray$hour == 4 & mean_foci_UserID_xray$Radiation == 4 # 4 Gy point
+slope1 = (mean_foci_UserID_xray$mean[keep_ind]/0.1 + mean_foci_UserID_xray$mean[keep_ind1])/2
+slope2 = (mean_foci_UserID_xray$mean[keep_ind2]-mean_foci_UserID_xray$mean[keep_ind1])/3
+tmp_fit = mean_foci_UserID_xray[keep_ind1,c(1,3)] 
+tmp_fit$xray_slope = slope1
+tmp_fit$xray_saturation=1-slope2/slope1
+#if slope2 is negative, full saturation and slope 1 is adjusted
+keep_ind = slope2<0
+tmp_fit$xray_slope[keep_ind] = slope1[keep_ind]+0.75*slope2[keep_ind]
+tmp_fit$xray_saturation[keep_ind] = 1
+
+saturation_fit = merge(saturation_fit,tmp_fit[,c(1,3,4)],by = 'UserID',all=TRUE)
+saturation_fit=merge(saturation_fit,animal_ID[,c('Exp_ID','Strain','Gender')],by.x='UserID',by.y='Exp_ID')
+```
+
+```{r}
+# summarize by strain
+colnames(mean_foci_UserID_let)[colnames(mean_foci_UserID_let)=="mean"] <- "mean_temp"
+mean_foci_strain_let <- ddply(mean_foci_UserID_let, c("Strain", "let", "hour"), summarise,
+                              N    = sum(!is.nan(mean_temp)),
+                              mean = mean(mean_temp, na.rm=TRUE),
+                              sd   = sd(mean_temp, na.rm=TRUE),
+                              se   = sd / sqrt(N))
+
+colnames(mean_foci_UserID_xray)[colnames(mean_foci_UserID_xray)=="mean"] <- "mean_temp"
+mean_foci_strain_xray <- ddply(mean_foci_UserID_xray, c("Strain", "Radiation","hour"), summarise,
+                              N    = sum(!is.nan(mean_temp)),
+                              mean = mean(mean_temp, na.rm=TRUE),
+                              sd   = sd(mean_temp, na.rm=TRUE),
+                              se   = sd / sqrt(N)
+)
+
+mean_saturation_fit <- ddply(saturation_fit, c("Strain"), summarise,
+                              N_let    = sum(!is.na(let_slope)),
+                             let_s_se = sd(let_slope, na.rm=TRUE)/sqrt(N_let),
+                             let_sat_se = sd(let_saturation, na.rm=TRUE)/sqrt(N_let),
+                             let_slope = mean(let_slope, na.rm=TRUE),
+                             let_saturation = mean(let_saturation, na.rm=TRUE),
+                             N_xray    = sum(!is.na(xray_slope)),
+                             xray_s_se = sd(xray_slope, na.rm=TRUE)/sqrt(N_xray),
+                             xray_sat_se = sd(xray_saturation, na.rm=TRUE)/sqrt(N_xray),
+                             xray_slope = mean(xray_slope, na.rm=TRUE),
+                             xray_saturation = mean(xray_saturation, na.rm=TRUE)
+)
+
+mean_coef_fits <- ddply(coef_fits, c("Strain","Radiation.Type", "hour"), summarise,
+                        N    = sum(!is.na(FociPerGy)),
+                        FociPerGy_se = sd(FociPerGy, na.rm=TRUE)/sqrt(N),
+                        Bgd_se = sd(Bgd, na.rm=TRUE)/sqrt(N),
+                        normal_Bgd_se =  sd(normal_Bgd, na.rm=TRUE)/sqrt(N),
+                        FociPerGy = mean(FociPerGy, na.rm=TRUE),
+                        Bgd = mean(Bgd, na.rm=TRUE),
+                        normal_Bgd =  mean(normal_Bgd, na.rm=TRUE)
+)
+```
+
+```{r}
+# create array table for correlation for coef_fits
+list_hour = c(4,8,24,48)
+for (i_let in 2:num_let) {
+  for (i_time in 1:4) {
+    keep_ind = mean_coef_fits$Radiation.Type==let_list[i_let] & mean_coef_fits$hour == list_hour[i_time] 
+    tmp_FociPerGy = unique(mean_coef_fits[keep_ind,c(1,8)])
+    colnames(tmp_FociPerGy) = c("Strain",paste(let_list_sub[i_let],'_',list_hour[i_time],'Hr'))
+    tmp_Bgd = unique(mean_coef_fits[keep_ind,c(1,9)])
+    colnames(tmp_Bgd) = c("Strain",paste(let_list_sub[i_let],'_',list_hour[i_time],'Hr'))
+    tmp_normal_Bgd = unique(mean_coef_fits[keep_ind,c(1,10)])
+    colnames(tmp_normal_Bgd) = c("Strain",paste(let_list_sub[i_let],'_',list_hour[i_time],'Hr'))
+    if (i_let == 2 & i_time == 1) {
+      list_FociBgd = tmp_Bgd
+      list_FociPerGy = tmp_FociPerGy
+      list_normal_Bgd = tmp_normal_Bgd
+    } else {
+      list_FociBgd = merge(list_FociBgd,tmp_Bgd,by='Strain',all=TRUE)
+      list_FociPerGy =  merge(list_FociPerGy, tmp_FociPerGy,by='Strain',all=TRUE)
+      list_normal_Bgd =  merge(list_normal_Bgd, tmp_normal_Bgd,by='Strain',all=TRUE)
+    }
+  }
+}
+rownames(list_FociBgd) = list_FociBgd$Strain
+list_FociBgd =subset(list_FociBgd, select=-c(1,11)) # Get rid of strain column and 8hr Xray since blank
+rownames(list_FociPerGy) = list_FociPerGy$Strain
+list_FociPerGy =subset(list_FociPerGy, select=-c(1,11))
+rownames(list_normal_Bgd) = list_normal_Bgd$Strain
+list_normal_Bgd =subset(list_normal_Bgd, select=-c(1,11))
+```
+
+```{r}
+# Plot saturation value per strain (bargraph)
+tmp_set  = mean_saturation_fit[,c(1,6,4)]
+ord_ind = order(tmp_set$let_saturation)
+tmp_set = tmp_set[ord_ind,]
+tmp_set$Strain = factor(tmp_set$Strain, level=tmp_set$Strain)
+tmp_set2 = mean_saturation_fit[,c(1,11,9)]
+tmp_set$Radiation = "HZE particles"
+tmp_set2$Radiation = "X-rays"
+colnames(tmp_set) = c('Strain',"Saturation","Se","Radiation")
+colnames(tmp_set2) = c('Strain',"Saturation","Se","Radiation")
+tmp_set = rbind(tmp_set,tmp_set2)
+p<- ggplot(tmp_set, aes(x=Strain, y=Saturation, fill=Radiation)) + 
+  geom_bar(stat="identity", width=.8, position = "dodge")  +
+  geom_errorbar(aes(ymin=Saturation-Se, ymax= Saturation+Se), width=.8, position = "dodge") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+print(p)
+# See what parameter correlates most
+colnames(mean_saturation_fit) = c( "Strain","N_let","let_s_se","let_sat_se","LET_slope1","LET_saturation",
+                                   "N_xray","xray_s_se","xray_sat_se","Xrays_slope1","Xrays_saturation")
+res = cor(as.matrix(mean_saturation_fit[,c(5,6,10,11)]))
+p.mat <- cor.mtest(as.matrix(mean_saturation_fit[,c(5,6,10,11)]))$p
+corrplot(res, type = "upper", order = "original", number.font = 5, 
+         tl.col = "black", tl.srt = 45, p.mat=p.mat, insig = "p-value", sig.level=-1)
+```
+
+```{r}
+# Plot RIF/Gy versus Strains
+keep_ind = mean_coef_fits$Radiation.Type == 'Fe 600 MeV/n' & mean_coef_fits$hour == 24
+tmp_set = mean_coef_fits[keep_ind,]
+ord_ind = order(tmp_set$FociPerGy)
+tmp_set = tmp_set[ord_ind,]
+mean_coef_fits$Strain_sorted = factor(mean_coef_fits$Strain, levels = tmp_set$Strain)
+keep_ind = mean_coef_fits$Radiation.Type != 'Si 350 MeV/n' & (mean_coef_fits$hour == 4 | mean_coef_fits$hour == 24)
+scale_factor = 8 # using this factor to make sure the minimum value is above 1 to avoid bar looking negatives for values between 0 and 1
+p<- ggplot(mean_coef_fits[keep_ind,], aes(x=Strain_sorted, y=scale_factor*FociPerGy, fill=Radiation.Type)) + 
+  geom_bar(stat="identity", width=.8, position = "dodge")  +
+  geom_errorbar(aes(ymin=scale_factor*(FociPerGy-FociPerGy_se), ymax=scale_factor*(FociPerGy+FociPerGy_se)), width=.8, position = "dodge") +
+  scale_y_continuous(trans='log2',limits=scale_factor*c(0.125,8),breaks = scale_factor*c(0.25,0.5,1,2,4,8), labels = c("0.25","0.5","1","2","4","8")) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  facet_grid(hour~.)
+print(p)
+```
+
+```{r}
+# Plot Bgd (normal_Bgd) versus Strains - Figure 5B
+mean_coef_fits_bgd <- ddply(coef_fits, c("Strain"), summarise,
+                            normal_Bgd =  mean(normal_Bgd, na.rm=TRUE)
+)
+ord_ind = order(mean_coef_fits_bgd$normal_Bgd)
+mean_coef_fits_bgd = mean_coef_fits_bgd[ord_ind,]
+mean_coef_fits$Strain_sorted = factor(mean_coef_fits$Strain, levels = mean_coef_fits_bgd$Strain)
+keep_ind = mean_coef_fits$Radiation.Type != 'Si 350 MeV/n' & (mean_coef_fits$hour == 4 | mean_coef_fits$hour == 24)
+scale_factor = 8 # using this factor to make sure the minimu value is above 1 to avoid bar looking negatives for values between 0 and 1
+p<- ggplot(mean_coef_fits[keep_ind,], aes(x=Strain_sorted, y=scale_factor*normal_Bgd, fill=Radiation.Type)) + 
+  geom_bar(stat="identity", width=.8, position = "dodge")  +
+  geom_errorbar(aes(ymin=scale_factor*(normal_Bgd-normal_Bgd_se), ymax=scale_factor*(normal_Bgd+normal_Bgd_se)), width=.8, position = "dodge") +
+  scale_y_continuous(trans='log2',limits=scale_factor*c(0.125,8),breaks = scale_factor*c(0.25,0.5,1,2,4,8), labels = c("0.25","0.5","1","2","4","8")) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  facet_grid(hour~.)
+print(p)
+```
+
+```{r}
+# Plot Bgd (intersept) versus Strains
+mean_coef_fits_bgd <- ddply(coef_fits, c("Strain"), summarise,
+                            normal_Bgd =  mean(normal_Bgd, na.rm=TRUE)
+)
+ord_ind = order(mean_coef_fits_bgd$normal_Bgd)
+mean_coef_fits_bgd = mean_coef_fits_bgd[ord_ind,]
+mean_coef_fits$Strain_sorted = factor(mean_coef_fits$Strain, levels = mean_coef_fits_bgd$Strain)
+keep_ind = mean_coef_fits$Radiation.Type != 'Si 350 MeV/n' & (mean_coef_fits$hour == 4 | mean_coef_fits$hour == 24)
+scale_factor = 8 # using this factor to make sure the minimu value is above 1 to avoid bar looking negatives for values between 0 and 1
+p<- ggplot(mean_coef_fits[keep_ind,], aes(x=Strain_sorted, y=scale_factor*Bgd, fill=Radiation.Type)) + 
+  geom_bar(stat="identity", width=.8, position = "dodge")  +
+  geom_errorbar(aes(ymin=scale_factor*(Bgd-Bgd_se), ymax=scale_factor*(Bgd+Bgd_se)), width=.8, position = "dodge") +
+  scale_y_continuous(trans='log2',limits=scale_factor*c(0.125,8),breaks = scale_factor*c(0.25,0.5,1,2,4,8), labels = c("0.25","0.5","1","2","4","8")) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  facet_grid(hour~.)
+print(p)
+```
+
+```{r}
+# Fit time dependence by Strain
+
+# For high-LET: fit RIFmax for each strain on Fe and Ar data together (should be the same for all LETs). Then we fit separately Ar and Fe to get tau and rho per strain.
+keep_ind = mean_foci_strain_let$let >100
+mean_foci_strain_let$RIFmax = 1;# initialize
+
+mean_foci_strain_let = na.omit(mean_foci_strain_let)
+fits <- nlsList(mean ~ RIFmax*let*(rho*exp(-hour/tau)+(1-rho)) | Strain, data=mean_foci_strain_let[keep_ind,], start =c(tau=10,RIFmax=0.01,rho=1))
+time_fit = coef(fits)
+for (i_strain in 1:num_strain) {
+  keep_ind = mean_foci_strain_let$Strain == strain_list[i_strain]
+  if (sum(keep_ind)>0) { # only add if the condition is met
+    mean_foci_strain_let[keep_ind,]$RIFmax = time_fit[strain_list[i_strain],2]
+  }
+}
+
+mean_foci_strain_let$tau = 0 # initialize
+mean_foci_strain_let$rho = 1
+
+# For Ar:
+keep_ind = mean_foci_strain_let$let == let_val[2] #& mean_foci_strain_let$hour < 48
+fits <- nlsList(mean ~ RIFmax*let*(r*exp(-hour/t)+(1-r)) | Strain, data=mean_foci_strain_let[keep_ind,], start =c(t=4,r=0.88))
+tmp_fit =coef(fits)
+time_fit =cbind(time_fit,tmp_fit)
+for (i_strain in 1:num_strain) {
+  keep_ind = mean_foci_strain_let$let == let_val[2] & mean_foci_strain_let$Strain == strain_list[i_strain]
+  if (sum(keep_ind)>0) { # only add if the condition is met
+    mean_foci_strain_let[keep_ind,]$tau = tmp_fit[strain_list[i_strain],1]
+    mean_foci_strain_let[keep_ind,]$rho = tmp_fit[strain_list[i_strain],2]
+  }
+}
+
+# For Fe:
+keep_ind = mean_foci_strain_let$let == let_val[3] #& mean_foci_strain_let$hour < 48
+fits <- nlsList(mean ~ RIFmax*let*(r*exp(-hour/t)+(1-r)) | Strain, data=mean_foci_strain_let[keep_ind,], start =c(t=6,r=0.9))
+tmp_fit = coef(fits)
+time_fit =cbind(time_fit,tmp_fit)
+for (i_strain in 1:num_strain) {
+  keep_ind = mean_foci_strain_let$let == let_val[3] & mean_foci_strain_let$Strain == strain_list[i_strain]
+  if (sum(keep_ind)>0) { # only add if the condition is met
+    mean_foci_strain_let[keep_ind,]$tau = tmp_fit[strain_list[i_strain],1]
+    mean_foci_strain_let[keep_ind,]$rho = tmp_fit[strain_list[i_strain],2]
+  }
+}
+
+mean_foci_strain_let$fit = mean_foci_strain_let$RIFmax*mean_foci_strain_let$let*(mean_foci_strain_let$rho*exp(-mean_foci_strain_let$hour/mean_foci_strain_let$tau)+(1-mean_foci_strain_let$rho))
+
+
+# For X-ray: First, fitting data with both rho and tau yield rho at 0.99, so, using 1 instead (reduce # of parameters) for 0.1 and 1 Gy
+# 1-rho for 4 Gy is 80% of RIF(48hrs)
+# Second, because 1 and 4 Gy have RIF clustering for all time point (predominant at 4 hours, but even later RIF/Gy decreases with dose at 24 and 48 hours)
+# we are not forcing intercept to be constant. Instead we are fitting the RIF response and intercept per strain
+
+mean_foci_strain_xray$tau = 0 # initialize
+mean_foci_strain_xray$c = 1 # initialize DSB/RIF
+mean_foci_strain_xray$rho = 1 # initialize rho to 1 (true for 0.1 and 1 Gy)
+mean_foci_strain_xray$mean_sub = 0 # initialize mean subtracted by 48 hour time point
+for (i_strain in 1:num_strain) {
+for (i_dose in 1:3) {
+    keep_ind = mean_foci_strain_xray$Radiation == xray_dose[i_dose] & mean_foci_strain_xray$Strain == strain_list[i_strain]
+    keep_ind2 = mean_foci_strain_xray$Radiation == xray_dose[i_dose] & mean_foci_strain_xray$Strain == strain_list[i_strain] & mean_foci_strain_xray$hour == 48
+    if (sum(keep_ind)>0) { # only add if the condition is met
+      # subtract x% of value at 48h. The x factor is optimized for each strain to get the best fit.
+      mean_foci_strain_xray[keep_ind,]$mean_sub = mean_foci_strain_xray[keep_ind,]$mean - 0.7 * mean_foci_strain_xray[keep_ind2,]$mean
+    }
+}
+}
+
+keep_ind = mean_foci_strain_xray$mean_sub<0
+mean_foci_strain_xray[keep_ind,]$mean_sub = 0
+
+# start fitting Xray data, each dose has a different strategy
+
+# sd and se are NA for CC032: change to 0 to avoid issues with the fit
+mean_foci_strain_xray$sd[is.na(mean_foci_strain_xray$sd)]=0
+mean_foci_strain_xray$se[is.na(mean_foci_strain_xray$se)]=0
+
+for (i_dose in 1:3){
+  if (i_dose == 1) { # At 0.1Gy: no clustering, coefficient c is set to the highest fit = 12.8 DSB/Gy x 0.1 Gy, and no residual damage
+    keep_ind = mean_foci_strain_xray$Radiation == xray_dose[i_dose]
+    fits <- nlsList(mean ~ 1.28*exp(-hour/t) | Strain, data=mean_foci_strain_xray[keep_ind,], start =c(t=2))
+    tmp_fit = coef(fits)
+    tmp_fit$c =1.0 # DSB/RIF is 1 at 0.1 Gy
+    }
+  if (i_dose == 2) { # At 1Gy: we fit the clustering coefficient for each strain, and no residual damage
+    keep_ind = mean_foci_strain_xray$Radiation == xray_dose[i_dose] # & mean_foci_strain_xray$hour <48
+    fits <- nlsList(mean ~ c*exp(-hour/t) | Strain, data=mean_foci_strain_xray[keep_ind,], start =c(t=6,c=2.3))
+    tmp_fit = coef(fits)
+    tmp_fit$c = xray_dose[i_dose]*12.8/tmp_fit$c # Turn c into DSB/RIF instead of intercept
+  }
+  if (i_dose == 3) { # At 4Gy: we assume that the residual damage at all time points is 80% of the damage at 48h
+    keep_ind = mean_foci_strain_xray$Radiation == xray_dose[i_dose] # & mean_foci_strain_xray$hour <48
+    fits <- nlsList(mean_sub ~ c*exp(-hour/t) | Strain, data=mean_foci_strain_xray[keep_ind,], start =c(t=6,c=4))
+    tmp_fit = coef(fits)
+    tmp_Bgd = subset(mean_foci_strain_xray, hour==48 & Radiation==4,select=c(Strain,mean))
+    tmp_fit = cbind(tmp_fit, tmp_Bgd[match(rownames(tmp_fit), tmp_Bgd$Strain),2]) 
+    tmp_c = tmp_fit$c+0.7*tmp_fit[,3] # Add 80% of RIF value at 48hours as 1-rho
+    tmp_fit[,3] = tmp_fit$c/tmp_c 
+    tmp_fit$c = xray_dose[i_dose]*12.8/tmp_c # Turn c into DSB/RIF instead of intercept
+  }
+  time_fit =cbind(time_fit,tmp_fit)
+  for (i_strain in 1:num_strain) {
+    keep_ind = mean_foci_strain_xray$Radiation == xray_dose[i_dose] & mean_foci_strain_xray$Strain == strain_list[i_strain]
+    if (sum(keep_ind)>0) { # only add if the condition is met
+      mean_foci_strain_xray[keep_ind,]$tau = tmp_fit[strain_list[i_strain],1]
+      mean_foci_strain_xray[keep_ind,]$c = tmp_fit[strain_list[i_strain],2] # Estimate DSB/RIF
+      if (i_dose == 3) {
+        keep_ind2 = mean_foci_strain_xray$Radiation == xray_dose[i_dose] & mean_foci_strain_xray$Strain == strain_list[i_strain] & mean_foci_strain_xray$hour == 48
+        mean_foci_strain_xray[keep_ind,]$rho = tmp_fit[strain_list[i_strain],3]
+      }
+    }
+  }
+}
+
+mean_foci_strain_xray$fit = mean_foci_strain_xray$Radiation*12.8/mean_foci_strain_xray$c*(mean_foci_strain_xray$rho*exp(-mean_foci_strain_xray$hour/mean_foci_strain_xray$tau)+(1-mean_foci_strain_xray$rho))
+
+colnames(time_fit) = c("All_LET_tau","All_LET_RIFmax","All_LET_rho","Ar_tau","Ar_Rho","Fe_tau","Fe_Rho","X0.1Gy_tau","X0.1Gy_DSBpRIF","X1Gy_tau","X1Gy_DSBpRIF","X4Gy_tau","X4Gy_DSBpRIF","X4Gy_Rho")
+write.csv(time_fit,"time_fit_Strain_All_Radiation_mix.csv")
+```
+
+# Plotting------------------------------------------------------------------------------------------------------------------------------
+
+
+```{r}
+# summarize avg_nfoci by strain for Fig1
+foci_plot <- ddply(foci, c("Strain", "let", "hour","fluence","Radiation.Type"), summarise,
+                              N    = sum(!is.nan(avg_nfoci)),
+                              mean = mean(avg_nfoci, na.rm=TRUE),
+                              sd   = sd(avg_nfoci, na.rm=TRUE),
+                              se   = sd / sqrt(N))
+```
+
+```{r}
+#Fig1: Kinetics for Ar/Fe/X-ray, all strains, all doses
+
+keep_ind = foci_plot$let != "63"
+p<- ggplot(foci_plot[keep_ind,], aes(x=hour, y=mean, color=factor(fluence))) + 
+  geom_smooth(se=FALSE) + geom_ribbon(aes(ymin=mean-sd, ymax=mean+sd, fill = factor(fluence)),linetype=0, alpha=0.4) +
+  scale_x_continuous(name ="Time post-irradiation (hour)", breaks=c(4,24,48)) + ylab("Average number of foci per cell") + coord_cartesian(ylim=c(0,6.5))
+facet(p, facet.by = c("Radiation.Type","Strain")) #+ theme_bw()
+
+```
+
+```{r}
+#Fig2a: Kinetics of RIF/um for C3H high-LET (individual points)
+
+i_strain = 13
+keep_ind = foci$Strain == strain_list[i_strain] & foci$dose_level != "Control" & foci$let > 100
+
+pdf("test.pdf",7,5)
+p<- ggplot(foci[keep_ind,], aes(x=hour, y=norm_nfoci, color=factor(fluence))) + 
+  stat_smooth(method = 'lm', formula = 'y~log(x)', size=1,se=FALSE) +
+  geom_point(aes(x=hour, y=norm_nfoci, shape=factor(Gender))) +
+  xlab("Time post-irradiation (hour)") + ylab("RIF/cell/fluence/volume")
+par(cex.lab=10, cex.axis=10)
+facet(p, facet.by = "Radiation.Type") + theme_bw() 
+dev.off() 
+
+```
+
+```{r}
+# Fig2b: Kinetics of RIF/cell for C3H X-ray (individual points)
+
+i_strain = 13
+keep_ind = foci$Strain == strain_list[i_strain] & foci$dose_level != "Control" & foci$let == 1 & foci$nfoci_bgdsub > 0
+foci_temp <- foci[keep_ind,]
+#keep_ind = !(foci_temp$hour == 4 & foci_temp$Radiation == 0.1 & foci_temp$duplicate == 2)
+#foci_plot <- foci_temp[keep_ind,]
+foci_plot = foci_temp
+foci_plot$Radiation[foci_plot$Radiation=="0.1"] <- "X-ray 0.1 Gy"
+foci_plot$Radiation[foci_plot$Radiation=="1"] <- "X-ray 1 Gy"
+foci_plot$Radiation[foci_plot$Radiation=="4"] <- "X-ray 4 Gy"
+
+pdf("test.pdf",7,5)
+p<- ggplot(foci_plot, aes(x=hour, y=nfoci_bgdsub)) + 
+  stat_smooth(method = 'lm', formula = 'y~log(x)', size=1,se=FALSE) +
+  geom_point(aes(x=hour, y=nfoci_bgdsub, shape=factor(Gender))) +
+  xlab("Time post-irradiation (hour)") + ylab("RIF/cell-Bgd")
+facet(p, facet.by = "Radiation") + theme_bw()
+dev.off() 
+
+```
+
+```{r}
+# Fig3a: LET kinetic and its fit for all strains
+p<- ggplot(mean_foci_strain_let, aes(x=hour, y=(mean), color=factor(let))) + 
+  geom_point() +
+  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.2) +
+  geom_line(aes(x=hour, y=(fit), color=factor(let))) + xlab("Time post-irradiation (hour)") + ylab("RIF/cell/fluence/volume") + labs(col = "LET (keV/um)")
+facet(p, facet.by = c("Strain"))
+```
+
+```{r}
+# Fig3b: X-ray kinetic and its fit for all strains
+p<- ggplot(mean_foci_strain_xray, aes(x=hour, y=(mean), color=factor(Radiation))) + 
+  geom_point() +
+  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.2) +
+  geom_line(aes(x=hour, y=(fit), color=factor(Radiation))) + xlab("Time post-irradiation (hour)") + ylab("RIF/cell-Bgd") + labs(col = "Dose (Gy)") + ylim(0,6)
+facet(p, facet.by = c("Strain"))
+```
+
+```{r}
+# Table1a: kinetics coefficients for HZE irradiation
+col_to_keep = c("All_LET_RIFmax","Ar_tau","Fe_tau","Ar_Rho","Fe_Rho")
+matrix <- time_fit[,(colnames(time_fit) %in% col_to_keep)]
+matrix <- matrix[, col_to_keep]
+res = cor(as.matrix(matrix))
+p.mat <- cor.mtest(as.matrix(matrix))$p
+corrplot(res, type = "upper", order = "original", 
+         tl.col = "black", tl.srt = 45, p.mat=p.mat, insig = "p-value", sig.level=-1, tl.cex = 1.5)
+```
+
+```{r}
+# Table1b: kinetics coefficients for X-ray
+col_to_keep = c("X0.1Gy_tau","X1Gy_tau","X4Gy_tau","X4Gy_Rho")
+matrix <- time_fit[,(colnames(time_fit) %in% col_to_keep)]
+matrix <- matrix[, col_to_keep]
+res = cor(as.matrix(matrix))
+p.mat <- cor.mtest(as.matrix(matrix))$p
+corrplot(res, type = "upper", order = "original", 
+         tl.col = "black", tl.srt = 45, p.mat=p.mat, insig = "p-value", sig.level=-1, tl.cex = 1.5)
+```
+
+```{r}
+# Table1b: kinetics coefficients for X-ray with DSB/RIF
+col_to_keep = c("X0.1Gy_tau","X1Gy_tau","X4Gy_tau","X4Gy_Rho","X4Gy_DSBpRIF")
+matrix <- time_fit[,(colnames(time_fit) %in% col_to_keep)]
+matrix <- matrix[, col_to_keep]
+res = cor(as.matrix(matrix))
+p.mat <- cor.mtest(as.matrix(matrix))$p
+corrplot(res, type = "upper", order = "original", 
+         tl.col = "black", tl.srt = 45, p.mat=p.mat, insig = "p-value", sig.level=-1, tl.cex = 1.5)
+```
+
+```{r}
+# Fig4b: kinetics coefficients for X rays
+col_to_keep = c("X0.1Gy_tau","X1Gy_tau","X4Gy_tau","X4Gy_Rho")
+matrix <- time_fit[,(colnames(time_fit) %in% col_to_keep)]
+res = cor(as.matrix(matrix))
+p.mat <- cor.mtest(as.matrix(matrix))$p
+corrplot(res, type = "upper", order = "original", number.font = 5, 
+         tl.col = "black", tl.srt = 45, p.mat=p.mat, insig = "p-value", sig.level=-1)
+```
+
+```{r}
+# Plot LET kinetic (without fit)
+p<- ggplot(mean_foci_strain_let, aes(x=hour, y=mean, color=let, shape=factor(let))) + 
+  geom_point()+
+  xlim(0,48) +
+  ylim(0,1.5) +
+ # geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.2) +
+  geom_smooth(method = "nls", se = FALSE, # Asymptotic model for early time points
+              formula = y~RIFmax*(exp(-x/tau))+Unrep,
+             method.args = list(start=c(tau=2.5,RIFmax=1.5,Unrep=0.2)))
+facet(p, facet.by = c("Strain"))
+```
+
+```{r}
+# Print 0.1Gy X-ray kinetic and its fit
+keep_ind = mean_foci_strain_xray$Radiation==0.1
+p<- ggplot(mean_foci_strain_xray[keep_ind,], aes(x=hour, y=(mean), color=factor(Radiation))) + 
+  geom_point() +
+  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.2) +
+  geom_line(aes(x=hour, y=(fit), color=factor(Radiation)))
+facet(p, facet.by = c("Strain"))
+```
+
+```{r}
+# Print 1Gy X-ray kinetic and its fit
+keep_ind = mean_foci_strain_xray$Radiation == 1
+p<- ggplot(mean_foci_strain_xray[keep_ind,], aes(x=hour, y=(mean), color=factor(Radiation))) + 
+  geom_point() +
+  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.2) +
+  geom_line(aes(x=hour, y=(fit)))
+facet(p, facet.by = c("Strain"))
+```
+
+```{r}
+# Print 4Gy X-ray kinetic and its fit
+keep_ind = mean_foci_strain_xray$Radiation == 4
+p<- ggplot(mean_foci_strain_xray[keep_ind,], aes(x=hour, y=(mean), color=factor(Radiation))) + 
+  geom_point() +
+  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.2) +
+  geom_line(aes(x=hour, y=(fit)))
+facet(p, facet.by = c("Strain"))
+```
+
+```{r}
+# Print X-ray kinetic (without fit)
+p<- ggplot(mean_foci_strain_xray, aes(x=hour, y=mean, color=factor(Radiation), shape=factor(Radiation))) + 
+  geom_point()+
+  xlim(0,48) +
+  ylim(0,7) +
+  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.2) +
+  geom_smooth(method = "nls", se = FALSE, # Asymptotic model for early time points
+              formula = y~RIFmax*(exp(-x/tau))+Unrep,
+              method.args = list(start=c(tau=10,RIFmax=5,Unrep=0.1)))
+facet(p, facet.by = c("Strain"))
+```
+
+```{r}
+# See what kinetic parameters correlate most
+col_to_remove = c("X0.1Gy_DSBpRIF","Residual_factor")
+matrix <- time_fit[,!(colnames(time_fit) %in% col_to_remove)]
+res = cor(as.matrix(matrix))
+p.mat <- cor.mtest(as.matrix(matrix))$p
+corrplot(res, type = "upper", order = "original", number.font = 5, 
+         tl.col = "black", tl.srt = 45, p.mat=p.mat, insig = "p-value", sig.level=-1)
+```
+
+```{r}
+# Plot kinetics with individual values for each strain, all irradiation types
+for (i_strain in 1:num_strain) {
+  keep_ind = foci$Strain == strain_list[i_strain]
+  imgname = paste('FociVsTime_', strain_list[i_strain],'.tif',sep="")
+  #tiff(imgname,bg="transparent",width = 1500, height = 1000, units = "px", pointsize = 14, res= 300)
+  print(qplot(hour, avg_nfoci, data = foci[keep_ind,], ylim=c(0,7), 
+              geom=c("jitter"), color=dose_level,linetype=factor(duplicate), shape = factor(duplicate), facets=.~Radiation.Type, size=I(2.5),
+              xlab="Time post exposure (hr)",ylab="Foci/cell", main=strain_list[i_strain])
+        + stat_smooth(method = 'lm', formula = 'y~log(x)', size=0.3,se=TRUE) )
+  #dev.off()
+}
+ print(qplot(hour, nfoci_bgdsub, data = foci[keep_ind,], ylim=c(0,8), 
+              geom=c("point"), fill = I("grey"), linetype=Gender, shape=Gender, facets=.~Radiation, size=Gender,
+              xlab="Time post exposure (hr)",ylab="RIF/cell-Bgd", main=strain_list[i_strain])
+        + scale_shape_manual(values=c(21,22))
+        + scale_size_manual(values=c(4,3))
+        + stat_smooth(method = 'lm', formula = 'y~log(x)', size=1, se=FALSE, color=I("black")) )
+```
+
+```{r}
+# Plot kinetics with individual values for each strain (high LETs)
+for (i_strain in 1:num_strain) {
+  keep_ind = foci$Strain == strain_list[i_strain] & foci$dose_level != "Control" & foci$let > 100
+  print(qplot(hour, norm_nfoci, data = foci[keep_ind,], ylim=c(0,2), 
+               color=as.factor(fluence),linetype=factor(duplicate), shape = factor(Gender), facets=.~Radiation.Type, size=I(2.5),
+              xlab="Time post exposure (hr)",ylab="RIF/cell/fluence/volume", main=strain_list[i_strain])
+        + stat_smooth(method = 'lm', formula = 'y~log(x)', size=0.3,se=FALSE) )
+}
+
+i_strain = 13
+keep_ind = foci$Strain == strain_list[i_strain] & foci$dose_level != "Control" & foci$let > 100
+print(qplot(hour, norm_nfoci, data = foci[keep_ind,], ylim=c(0,2), 
+              color=as.factor(fluence),linetype=factor(duplicate), shape = factor(Gender), facets=.~Radiation.Type,    size=I(2.5),
+              xlab="Time post exposure (hr)",ylab="RIF/cell/fluence/volume", main=strain_list[i_strain])
+        + stat_smooth(method = 'lm', formula = 'y~log(x)', size=0.3,se=FALSE) )
+
+```
+
+```{r}
+# Plot kinetics with individual values for each strain (X-ray)
+for (i_strain in 1:num_strain) {
+  keep_ind = foci$Strain == strain_list[i_strain] & foci$dose_level != "Control" & foci$let == 1
+  print(qplot(hour, nfoci_bgdsub, data = foci[keep_ind,], ylim=c(0,8),linetype=factor(duplicate), shape = factor(Gender), facets=.~Radiation, size=I(2.5),
+              xlab="Time post exposure (hr)",ylab="RIF/cell-Bgd", main=strain_list[i_strain])
+        + stat_smooth(method = 'lm', formula = 'y~log(x)', size=0.3,se=FALSE) )
+}
+
+i_strain = 13
+keep_ind = foci$Strain == strain_list[i_strain] & foci$dose_level != "Control" & foci$let == 1
+  print(qplot(hour, nfoci_bgdsub, data = foci[keep_ind,], ylim=c(0,8),linetype=factor(duplicate), shape = factor(Gender), facets=.~Radiation, size=I(2.5),
+              xlab="Time post exposure (hr)",ylab="RIF/cell-Bgd", main=strain_list[i_strain])
+        + stat_smooth(method = 'lm', formula = 'y~log(x)', size=0.3,se=FALSE) )
+
+```
+
+```{r}
+#Kinetics for Ar/Fe/X-ray, all strains combined, control
+keep_ind = foci$dose_level == "Control" & foci$let != "63"
+
+p <- qplot(hour, avg_nfoci, data = foci[keep_ind,], ylim=c(0,6),
+              xlab="Time post exposure (hr)",ylab="Foci/cell", main=strain_list[i_strain])
+        + stat_smooth(method = 'lm', formula = 'y~x+I(x^2)', size=0.3,se=TRUE, color=I("black"))
+facet(p, facet.by = c("Radiation.Type","Strain")) + stat_smooth() + theme(axis.text.x = element_blank())
+
+```
+
+```{r}
+#Kinetics for Ar/Fe/X-ray, all strains combined, low dose
+keep_ind = foci$dose_level == "Low Dose" & foci$let != "63"
+
+p <- qplot(hour, avg_nfoci, data = foci[keep_ind,], ylim=c(0,6),
+              xlab="Time post exposure (hr)",ylab="RIF/cell", main=strain_list[i_strain]
+        + stat_smooth(method = 'loess', formula = 'y~x', size=0.3,se=TRUE, color=I("black")))
+facet(p, facet.by = c("Radiation.Type","Strain")) + stat_smooth() + theme(axis.text.x = element_blank())
+
+```
+
+```{r}
+#Kinetics for Ar/Fe/X-ray, per strain, high dose
+keep_ind = foci$dose_level == "High Dose" & foci$let != "63"
+
+p <- qplot(hour, avg_nfoci, data = foci[keep_ind,], ylim=c(0,6),
+              xlab="Time post exposure (hr)",ylab="RIF/cell", main=strain_list[i_strain]
+        + stat_smooth(method = 'loess', formula = y~x, size=0.3,se=FALSE))
+facet(p, facet.by = c("Radiation.Type","Strain")) + stat_smooth() + theme(axis.text.x = element_blank())
+
+```
+
+```{r}
+
+keep_ind = foci$dose_level == "Control" & foci$let != "63"
+
+p <- qplot(hour, avg_nfoci, data = foci[keep_ind,], ylim=c(0,6),
+              xlab="Time post exposure (hr)",ylab="Foci/cell", main=strain_list[i_strain]
+        + stat_smooth(method = 'lm', formula = 'y~log(x)', size=0.3,se=TRUE, color=I("black")))
+facet(p, facet.by = c("Radiation.Type","Strain"))
+
+```
