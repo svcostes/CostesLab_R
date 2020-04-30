@@ -1,0 +1,1481 @@
+## Analysing DNA damage/repair in response to different doses and types of radiation.
+## In human samples. 
+## Eloise Pariset, USRA/NASA Ames, January 2020
+## For all BNL19A run on this project, all sets A
+
+## To be expanded (in the same file) by adding data on BNL18B, BNL19A sets B and BNL19C
+## To be expanded (in a separate file) by adding data on cell death, CellROX intensity and cell number
+
+
+```{r}
+require('lattice')
+require('ggplot2')
+require('polynom')
+require('corrplot')
+require('ggpubr')
+require('plyr')
+require('reshape2')
+require('cowplot')
+require('stringr')
+```
+
+```{r}
+setwd("/Users/epariset/Desktop/R_Code-work") ## Change as necessary: this is the main directory
+theme_set(theme_bw(base_size = 12)) ## For prettier graphs
+theme_update(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+ar_plate_nums = c(481, 483, 485, 487, 489, 491, 493, 495, 497, 499, 501, 503, 505, 507, 509, 511, 513, 515, 517, 519, 521, 523, 525,527)
+ar_plate_count = length(ar_plate_nums)
+si_plate_nums = c(577, 579, 581, 583, 585, 587, 589, 591, 593, 595, 597, 599, 601, 603, 605,607, 609, 611, 613,615, 617, 619, 621, 623)
+si_plate_count = length(si_plate_nums)
+fe_plate_nums = c(529, 531, 533, 535, 537, 539, 541, 543, 545, 547, 549, 551, 553, 555, 557, 559, 561, 563, 565, 567, 569, 571, 573,575)
+fe_plate_count = length(fe_plate_nums)
+gamma_plate_nums = c(433, 435, 437, 439, 441, 444, 445, 447, 449, 451, 453, 455, 457, 459, 461, 463, 465, 467, 469, 471, 473, 475, 477,479)
+gamma_plate_count = length(gamma_plate_nums)
+gamma_si_fe_ar_plate_nums = c(gamma_plate_nums, si_plate_nums, fe_plate_nums, ar_plate_nums)
+gamma_si_fe_ar_plate_count = length(gamma_si_fe_ar_plate_nums)
+```
+
+```{r}
+## Read all metadata
+subject_meta = read.csv('/Users/epariset/Desktop/R_Code-work/Sample_metadata.csv', sep = ",", header = TRUE)
+colnames(subject_meta)[colnames(subject_meta)=="ï..Sample_ID"]<-"Sample_ID"
+subject_ids = unique(subject_meta$Sample_ID)
+num_subj = length(subject_ids)
+plate_meta = read.csv('/Users/epariset/Desktop/R_Code-work/Plate_metadata.csv', sep = ",", header = TRUE)
+plate_ids = unique(plate_meta$Plate_number)
+num_plate = length(plate_ids)
+```
+
+```{r}
+## Read first file
+foci_gamma_first = data.frame(Plate = gamma_plate_nums[1], Plate_well = paste(gamma_plate_nums[1], read.table(paste("/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P", gamma_plate_nums[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P", gamma_plate_nums[1],'.txt', sep=""), sep="\t", header = TRUE))
+
+gamma_table=foci_gamma_first
+
+foci_si_first = data.frame(Plate = si_plate_nums[1], Plate_well = paste(si_plate_nums[1], read.table(paste("/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P", si_plate_nums[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P", si_plate_nums[1],'.txt', sep=""), sep="\t", header = TRUE))
+
+si_table=foci_si_first
+
+foci_ar_first = data.frame(Plate = ar_plate_nums[1], Plate_well = paste(ar_plate_nums[1], read.table(paste("/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P", ar_plate_nums[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P", ar_plate_nums[1],'.txt', sep=""), sep="\t", header = TRUE))
+
+ar_table=foci_ar_first
+
+foci_fe_first = data.frame(Plate = fe_plate_nums[1], Plate_well = paste(fe_plate_nums[1], read.table(paste("/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P", fe_plate_nums[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P", fe_plate_nums[1],'.txt', sep=""), sep="\t", header = TRUE))
+
+fe_table=foci_fe_first
+```
+
+```{r}
+## Read all the other files and combine them into a single giant file with ALL the plates and ALL the wells
+for(ii in 2:gamma_plate_count){
+  temp_gamma_filename = paste('/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P', gamma_plate_nums[ii],'.txt', sep="")
+  temp_gamma_table = data.frame(Plate = gamma_plate_nums[ii], Plate_well = paste(gamma_plate_nums[ii], read.table(paste('/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P', gamma_plate_nums[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P', gamma_plate_nums[ii],'.txt', sep=""), sep="\t", header = TRUE))
+  gamma_table = rbind(gamma_table, temp_gamma_table)
+}
+
+for(ii in 2:si_plate_count){
+  temp_si_filename = paste('/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P', si_plate_nums[ii],'.txt', sep="")
+  temp_si_table = data.frame(Plate = si_plate_nums[ii], Plate_well = paste(si_plate_nums[ii], read.table(paste('/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P', si_plate_nums[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P', si_plate_nums[ii],'.txt', sep=""), sep="\t", header = TRUE))
+  si_table = rbind(si_table, temp_si_table)
+}
+
+for(ii in 2:ar_plate_count){
+  temp_ar_filename = paste('/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P', ar_plate_nums[ii],'.txt', sep="")
+  temp_ar_table = data.frame(Plate = ar_plate_nums[ii], Plate_well = paste(ar_plate_nums[ii], read.table(paste('/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P', ar_plate_nums[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P', ar_plate_nums[ii],'.txt', sep=""), sep="\t", header = TRUE))
+  ar_table = rbind(ar_table, temp_ar_table)
+  }
+
+for(ii in 2:fe_plate_count){
+  temp_fe_filename = paste('/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P', fe_plate_nums[ii],'.txt', sep="")
+  temp_fe_table = data.frame(Plate = fe_plate_nums[ii], Plate_well = paste(fe_plate_nums[ii], read.table(paste('/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P', fe_plate_nums[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P', fe_plate_nums[ii],'.txt', sep=""), sep="\t", header = TRUE))
+  fe_table = rbind(fe_table, temp_fe_table)
+  }
+```
+
+```{r}
+## Now we will add plate metadata
+fe_table_w_plate_meta = merge(fe_table, plate_meta, by.x = 'Plate', by.y = 'Plate_number', all.x = TRUE, all.y = FALSE)
+ar_table_w_plate_meta = merge(ar_table, plate_meta, by.x = 'Plate', by.y = 'Plate_number', all.x = TRUE, all.y = FALSE)
+si_table_w_plate_meta = merge(si_table, plate_meta, by.x = 'Plate', by.y = 'Plate_number', all.x = TRUE, all.y = FALSE)
+gamma_table_w_plate_meta = merge(gamma_table, plate_meta, by.x = 'Plate', by.y = 'Plate_number', all.x = TRUE, all.y = FALSE)
+
+## Now we will add well metadata
+
+# Wells are different based on sample sets, so we need to make an extra column for Set_Well, and then add well metadata based on it.
+fe_table_w_plate_meta$Set_well = paste(fe_table_w_plate_meta$Sample_sets, fe_table_w_plate_meta$Well, sep = "_")
+subject_meta$Set_well = paste(subject_meta$Sample_ID, subject_meta$Well, sep = "_")
+fe_table_w_meta = merge(fe_table_w_plate_meta, subject_meta, by.x = 'Set_well', by.y = 'Set_Well', all.x=TRUE)
+
+ar_table_w_plate_meta$Set_well = paste(ar_table_w_plate_meta$Sample_sets, ar_table_w_plate_meta$Well, sep = "_")
+subject_meta$Set_well = paste(subject_meta$Sample_ID, subject_meta$Well, sep = "_")
+ar_table_w_meta = merge(ar_table_w_plate_meta, subject_meta, by.x = 'Set_well', by.y = 'Set_Well', all.x=TRUE)
+
+si_table_w_plate_meta$Set_well = paste(si_table_w_plate_meta$Sample_sets, si_table_w_plate_meta$Well, sep = "_")
+subject_meta$Set_well = paste(subject_meta$Sample_ID, subject_meta$Well, sep = "_")
+si_table_w_meta = merge(si_table_w_plate_meta, subject_meta, by.x ="Set_well", by.y="Set_Well", all.x=TRUE)
+
+gamma_table_w_plate_meta$Set_well = paste(gamma_table_w_plate_meta$Sample_sets, gamma_table_w_plate_meta$Well, sep = "_")
+subject_meta$Set_well = paste(subject_meta$Sample_ID, subject_meta$Well, sep = "_")
+gamma_table_w_meta = merge(gamma_table_w_plate_meta, subject_meta, by.x ="Set_well", by.y="Set_Well", all.x=TRUE)
+
+# Clean up: this has Well.x and Well.y, which are duplicates; Sample_sets and Set which are also duplicates.
+fe_table_w_meta$Well = fe_table_w_meta$Well.x
+cols_to_drop = c('Well.x', 'Well.y', 'Sample_sets', 'Plate.1')
+fe_long = fe_table_w_meta[, !colnames(fe_table_w_meta) %in% cols_to_drop]
+
+ar_table_w_meta$Well = ar_table_w_meta$Well.x 
+cols_to_drop = c('Well.x', 'Well.y', 'Sample_sets')
+ar_long = ar_table_w_meta[, !colnames(ar_table_w_meta) %in% cols_to_drop]
+
+si_table_w_meta$Well = si_table_w_meta$Well.x
+cols_to_drop = c('Well.x', 'Well.y', 'Sample_sets')
+si_long = si_table_w_meta[, !colnames(si_table_w_meta) %in% cols_to_drop]
+
+gamma_table_w_meta$Well = gamma_table_w_meta$Well.x
+cols_to_drop = c('Well.x', 'Well.y', 'Sample_sets')
+gamma_long = gamma_table_w_meta[, !colnames(gamma_table_w_meta) %in% cols_to_drop]
+```
+
+```{r}
+# Set low bar. This is arbitrary! We will ask for at least 50 imaged nuclei per well to consider that well. 
+low_bar = 50
+fe_filt = fe_long[fe_long$num_nuc > (low_bar-1),]
+ar_filt = ar_long[ar_long$num_nuc > (low_bar-1),]
+si_filt = si_long[si_long$num_nuc > (low_bar-1),]
+gamma_filt = gamma_long[gamma_long$num_nuc > (low_bar-1),]
+
+print("How many wells are left after filtering for Fe?")
+print(c(nrow(fe_filt),"out of", nrow(fe_long), "which is", (nrow(fe_filt)/nrow(fe_long))*100,"%"))
+
+print("How many wells are left after filtering for Ar?")
+print(c(nrow(ar_filt),"out of", nrow(ar_long), "which is", (nrow(ar_filt)/nrow(ar_long))*100,"%"))
+
+print("How many wells are left after filtering for Si?")
+print(c(nrow(si_filt),"out of", nrow(si_long), "which is", (nrow(si_filt)/nrow(si_long))*100,"%"))
+
+print("How many wells are left after filtering for Gamma?")
+print(c(nrow(gamma_filt),"out of", nrow(gamma_long), "which is", (nrow(gamma_filt)/nrow(gamma_long))*100,"%"))
+```
+```{r}
+# If we don't want to filter
+fe_filt = fe_long
+```
+
+```{r}
+# Truncate dataframe to only include the columns of interest
+col_trunc = c("Sample_ID", "Duplicates", "avg_nfoci", "num_nuc", "Set", "Rad_type", "Dose_Fluence", "Timepoint", "Age", "Gender", "BMI", "BMI_group", "baseline_avg_nfoci")
+fe_trunc = fe_filt[,colnames(fe_filt) %in% col_trunc]
+fe_trunc$ID_Fluence_Timepoint = paste(fe_trunc$Sample_ID, fe_trunc$Dose_Fluence, fe_trunc$Timepoint, sep = "_")
+
+col_trunc = c("Sample_ID", "Duplicates", "avg_nfoci", "num_nuc", "Set", "Rad_type", "Dose_Fluence", "Timepoint", "Age", "Gender", "BMI", "BMI_group", "baseline_avg_nfoci")
+ar_trunc = ar_filt[,colnames(ar_filt) %in% col_trunc]
+ar_trunc$ID_Fluence_Timepoint = paste(ar_trunc$Sample_ID, ar_trunc$Dose_Fluence, ar_trunc$Timepoint, sep = "_")
+
+col_trunc = c("Sample_ID", "Duplicates", "avg_nfoci", "num_nuc", "Set", "Rad_type", "Dose_Fluence", "Timepoint", "Age", "Gender", "BMI", "BMI_group", "baseline_avg_nfoci")
+si_trunc = si_filt[,colnames(si_filt) %in% col_trunc]
+si_trunc$ID_Fluence_Timepoint = paste(si_trunc$Sample_ID, si_trunc$Dose_Fluence, si_trunc$Timepoint, sep = "_")
+
+col_trunc = c("Sample_ID", "Duplicates", "avg_nfoci", "num_nuc", "Set", "Rad_type", "Dose_Fluence", "Timepoint", "Age", "Gender", "BMI", "BMI_group", "baseline_avg_nfoci")
+gamma_trunc = gamma_filt[,colnames(gamma_filt) %in% col_trunc]
+gamma_trunc$ID_Fluence_Timepoint = paste(gamma_trunc$Sample_ID, gamma_trunc$Dose_Fluence, gamma_trunc$Timepoint, sep = "_")
+```
+
+```{r}
+# Now we will need to average A and B duplicates
+fe_avg = ddply(fe_trunc, .(ID_Fluence_Timepoint, Sample_ID, Set, Rad_type, Dose_Fluence, Timepoint, Age, Gender, BMI, BMI_group), summarise, avg_nfoci = mean(avg_nfoci), num_nuc = mean(num_nuc))
+ar_avg = ddply(ar_trunc, .(ID_Fluence_Timepoint, Sample_ID, Set, Rad_type, Dose_Fluence, Timepoint, Age, Gender, BMI, BMI_group), summarise, num_nuc = mean(num_nuc), avg_nfoci = mean(avg_nfoci))
+si_avg = ddply(si_trunc, .(ID_Fluence_Timepoint, Sample_ID, Set, Rad_type, Dose_Fluence, Timepoint, Age, Gender, BMI, BMI_group), summarise, num_nuc = mean(num_nuc), avg_nfoci = mean(avg_nfoci))
+gamma_avg = ddply(gamma_trunc, .(ID_Fluence_Timepoint, Sample_ID, Set, Rad_type, Dose_Fluence, Timepoint, Age, Gender, BMI, BMI_group), summarise, avg_nfoci = mean(avg_nfoci), num_nuc = mean(num_nuc))
+```
+
+```{r}
+# I don't like calling "Dose_Fluence" when we only have fluence or dose; also it is a factor instead of a number
+colnames(fe_avg)[colnames(fe_avg) == "Dose_Fluence"] = "Fluence"
+fe_avg$Fluence = as.factor(fe_avg$Fluence)
+
+colnames(ar_avg)[colnames(ar_avg) == "Dose_Fluence"] = "Fluence"
+ar_avg$Fluence = as.factor(ar_avg$Fluence)
+
+colnames(si_avg)[colnames(si_avg) == "Dose_Fluence"] = "Fluence"
+si_avg$Fluence = as.factor(si_avg$Fluence)
+
+colnames(gamma_avg)[colnames(gamma_avg) == "Dose_Fluence"] = "Dose"
+gamma_avg$Dose = as.factor(gamma_avg$Dose)
+```
+
+```{r}
+# Also I want my timepoint to go from 4h to 24h in outputs
+fe_avg$Timepoint = factor(fe_avg$Timepoint, levels = c("4h", "24h")) 
+ar_avg$Timepoint = factor(ar_avg$Timepoint, levels = c("4h", "24h")) 
+si_avg$Timepoint = factor(si_avg$Timepoint, levels = c("4h", "24h")) 
+gamma_avg$Timepoint = factor(gamma_avg$Timepoint, levels = c("4h", "24h")) 
+```
+
+```{r}
+# Also I want my BMI group to go from Underweight to Normal to Overweight to Obese in outputs
+fe_avg$BMI_group = factor(fe_avg$BMI_group, levels = c("Underweight", "Normal", "Overweight", "Obese")) 
+ar_avg$BMI_group = factor(ar_avg$BMI_group, levels = c("Underweight", "Normal", "Overweight", "Obese"))
+si_avg$BMI_group = factor(si_avg$BMI_group, levels = c("Underweight", "Normal", "Overweight", "Obese")) 
+gamma_avg$BMI_group = factor(gamma_avg$BMI_group, levels = c("Underweight", "Normal", "Overweight", "Obese"))
+```
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+```{r}
+# First, let's see how avg_nfoci relates to the fluence/dose for each irradiation at 4h and 24h (as a boxplot form)
+all_plot = ggplot(fe_avg, aes(x = Fluence, y = avg_nfoci, col = Gender)) + 
+geom_boxplot() + ggtitle("Iron") + ylim(0,7)
+facet(all_plot, facet.by = 'Timepoint')
+
+all_plot = ggplot(ar_avg, aes(x = Fluence, y = avg_nfoci, col = Gender)) + 
+geom_boxplot() + ggtitle("Argon - BNL19A") + ylim(0,3)
+facet(all_plot, facet.by = 'Timepoint')
+
+all_plot = ggplot(si_avg, aes(x = Fluence, y = avg_nfoci, col = Gender)) + 
+geom_boxplot() + ggtitle("Silicon")
+facet(all_plot, facet.by = 'Timepoint')
+
+all_plot = ggplot(gamma_avg, aes(x = Dose, y = avg_nfoci, col = Gender)) + 
+geom_boxplot() + ggtitle("Gamma")
+facet(all_plot, facet.by = 'Timepoint')
+```
+
+```{r}
+# Then, let's see how avg_nfoci relates to the fluence/dose for each irradiation at 4h and 24h as individual samples
+
+fe_avg$Fluence_num = as.numeric(as.character(fe_avg$Fluence)) # This is to add slopes of avg_nfoci = f(fluence)
+fe_avg_1st_slope = fe_avg[(fe_avg$Fluence_num != "3"),] # First slope between fluences 0 and 1.1
+fe_avg_2nd_slope = fe_avg[(fe_avg$Fluence_num != "0"),] # Second slope between fluence 1.1 and 3
+
+all_plot_dots_fe_slopes = ggplot(fe_avg, aes(x = Fluence_num, y = avg_nfoci, col = Gender)) + geom_point() + geom_jitter() + 
+  geom_smooth(data = fe_avg_1st_slope, method = "glm") +
+  geom_smooth(data = fe_avg_2nd_slope, method = "glm") + ggtitle("Iron") + xlab("Fluence")
+facet(all_plot_dots_fe_slopes, facet.by = 'Timepoint')
+
+ar_avg$Fluence_num = as.numeric(as.character(ar_avg$Fluence)) # This is to add slopes of avg_nfoci = f(fluence)
+ar_avg_1st_slope = ar_avg[(ar_avg$Fluence_num != "3"),] # First slope between fluences 0 and 1.1
+ar_avg_2nd_slope = ar_avg[(ar_avg$Fluence_num != "0"),] # Second slope between fluence 1.1 and 3
+
+all_plot_dots_ar_slopes = ggplot(ar_avg, aes(x = Fluence_num, y = avg_nfoci, col = Gender)) + geom_point() + geom_jitter() + 
+  geom_smooth(data = ar_avg_1st_slope, method = "glm") +
+  geom_smooth(data = ar_avg_2nd_slope, method = "glm") + ggtitle("Argon") + xlab("Fluence")
+facet(all_plot_dots_ar_slopes, facet.by = 'Timepoint')
+
+si_avg$Fluence_num = as.numeric(as.character(si_avg$Fluence)) # This is to add slopes of avg_nfoci = f(fluence)
+si_avg_1st_slope = si_avg[(si_avg$Fluence_num != "3"),] # First slope between fluences 0 and 1.1
+si_avg_2nd_slope = si_avg[(si_avg$Fluence_num != "0"),] # Second slope between fluence 1.1 and 3
+
+all_plot_dots_si_slopes = ggplot(si_avg, aes(x = Fluence_num, y = avg_nfoci, col = Gender)) + geom_point() + geom_jitter() + 
+  geom_smooth(data = si_avg_1st_slope, method = "glm") +
+  geom_smooth(data = si_avg_2nd_slope, method = "glm") + ggtitle("Silicon") + xlab("Fluence")
+facet(all_plot_dots_si_slopes, facet.by = 'Timepoint')
+
+gamma_avg$Dose_num = as.numeric(as.character(gamma_avg$Dose)) # This is to add slopes of avg_nfoci = f(dose)
+gamma_avg_1st_slope = gamma_avg[(gamma_avg$Dose_num != "1"),] # First slope between fluences 0 and 0.1
+gamma_avg_2nd_slope = gamma_avg[(gamma_avg$Dose_num != "0"),] # Second slope between fluence 0.1 and 1
+
+all_plot_dots_gamma_slopes = ggplot(gamma_avg, aes(x = Dose_num, y = avg_nfoci, col = Gender)) + geom_point() + geom_jitter() + 
+  geom_smooth(data = gamma_avg_1st_slope, method = "glm") +
+  geom_smooth(data = gamma_avg_2nd_slope, method = "glm") + ggtitle("Gamma")
+facet(all_plot_dots_gamma_slopes, facet.by = 'Timepoint')
+```
+
+```{r}
+# Now we combine all data for all 4 irradiation types and plot as a function of dose (no normalization)
+
+fe_avg_0 = fe_avg[fe_avg$Fluence == "0",]
+fe_avg_0$dose = "0"
+fe_avg_dose1 = fe_avg[fe_avg$Fluence == "1.1",]
+fe_avg_dose1$dose = "0.31"
+fe_avg_dose2 = fe_avg[fe_avg$Fluence == "3",]
+fe_avg_dose2$dose = "0.83"
+
+ar_avg_0 = ar_avg[ar_avg$Fluence == "0",]
+ar_avg_0$dose = "0"
+ar_avg_dose1 = ar_avg[ar_avg$Fluence == "1.1",]
+ar_avg_dose1$dose = "0.18"
+ar_avg_dose2 = ar_avg[ar_avg$Fluence == "3",]
+ar_avg_dose2$dose = "0.5"
+
+si_avg_0 = si_avg[si_avg$Fluence == "0",]
+si_avg_0$dose = "0"
+si_avg_dose1 = si_avg[si_avg$Fluence == "1.1",]
+si_avg_dose1$dose = "0.11"
+si_avg_dose2 = si_avg[si_avg$Fluence == "3",]
+si_avg_dose2$dose = "0.29"
+
+colnames(gamma_avg)[5] <- "Fluence"
+gamma_avg_0 = gamma_avg[gamma_avg$Fluence == "0",]
+gamma_avg_0$dose = "0"
+gamma_avg_dose1 = gamma_avg[gamma_avg$Fluence == "0.1",]
+gamma_avg_dose1$dose = "0.1"
+gamma_avg_dose2 = gamma_avg[gamma_avg$Fluence == "1",]
+gamma_avg_dose2$dose = "1"
+
+all_dose = rbind(fe_avg_0,fe_avg_dose1,fe_avg_dose2,ar_avg_0,ar_avg_dose1,ar_avg_dose2,si_avg_0,si_avg_dose1,si_avg_dose2,gamma_avg_0,gamma_avg_dose1,gamma_avg_dose2)
+
+dose_plot = ggplot(all_dose, aes(x = dose, y = avg_nfoci, fill = Rad_type)) + 
+  geom_boxplot()
+facet(dose_plot, facet.by = 'Timepoint')
+```
+-----------------------------------------------------------------------------------------------------------------------------------------
+# # Are controls (no irradiation) values correlated between irradiation types, between 4h and 24h and with baselines? Sort of a sanity check.
+
+```{r}
+fe_avg$Fluence_Timepoint = paste("Fe",fe_avg$Fluence, fe_avg$Timepoint, sep = "_")
+fe_fluencetime = dcast(fe_avg, Sample_ID ~ Fluence_Timepoint, value.var = "avg_nfoci")
+
+ar_avg$Fluence_Timepoint = paste("Ar",ar_avg$Fluence, ar_avg$Timepoint, sep = "_")
+ar_fluencetime = dcast(ar_avg, Sample_ID ~ Fluence_Timepoint, value.var = "avg_nfoci")
+
+si_avg$Fluence_Timepoint = paste("Si",si_avg$Fluence, si_avg$Timepoint, sep = "_")
+si_fluencetime = dcast(si_avg, Sample_ID ~ Fluence_Timepoint, value.var = "avg_nfoci")
+
+gamma_avg$Fluence_Timepoint = paste("Gamma",gamma_avg$Dose, gamma_avg$Timepoint, sep = "_")
+gamma_fluencetime = dcast(gamma_avg, Sample_ID ~ Fluence_Timepoint, value.var = "avg_nfoci")
+gamma_fluencetime_filtered = gamma_fluencetime[gamma_fluencetime$Sample_ID < 1406 | gamma_fluencetime$Sample_ID > 1501,]
+
+all_Fluence_Timepoint = merge(fe_fluencetime,ar_fluencetime)
+all_Fluence_Timepoint = merge(all_Fluence_Timepoint,si_fluencetime)
+all_Fluence_Timepoint = merge(all_Fluence_Timepoint,gamma_fluencetime)
+all_Fluence_Timepoint_Baselines = merge(all_Fluence_Timepoint,baseline_avgfoci, all = TRUE)
+all_Fluence_Timepoint_Baselines = all_Fluence_Timepoint_Baselines[all_Fluence_Timepoint_Baselines$Sample_ID>1213 & all_Fluence_Timepoint_Baselines$Sample_ID<1598,]
+colnames(all_Fluence_Timepoint_Baselines)[colnames(all_Fluence_Timepoint_Baselines) == "avg_nfoci"] = "baseline_avg_nfoci"
+
+# We want to add sample metadata to plot by set
+sample_meta = read.csv('/Users/epariset/Desktop/R_Code-work/Sample_metadata.csv', sep = ",", header = TRUE)
+all_Fluence_Timepoint_Baselines_meta = merge(all_Fluence_Timepoint_Baselines,sample_meta,by.x="Sample_ID",by.y="Sample_ID")
+```
+```{r}
+# Extract values for repeats
+Repeat_Sample_ID = c(1214:1223)
+fe_repeat = fe_avg[fe_avg$Sample_ID %in% Repeat_Sample_ID,]
+fe_repeat$Fluence_Timepoint = paste(fe_repeat$Rad_type, fe_repeat$Fluence, fe_repeat$Timepoint, "19A", sep = "_")
+fe_repeat$Timepoint = factor(fe_repeat$Timepoint, levels = c("4h", "24h"))
+fe_repeat$Fluence = factor(fe_repeat$Fluence, levels = c("0", "1.1","3"))
+fe_repeat_RIF <- dcast(fe_repeat, Sample_ID ~ Fluence_Timepoint, value.var = 'avg_nfoci')
+fe_repeat_num_nuc <- dcast(fe_repeat, Sample_ID ~ Fluence_Timepoint, value.var = 'num_nuc')
+
+write.csv(fe_repeat_RIF,"Repeat_Fe_19A_RIF.csv")
+write.csv(fe_repeat_num_nuc,"Repeat_Fe_19A_num_nuc.csv")
+```
+
+```{r}
+## Plotting corrplots
+
+#All correlations
+col_trunc = c("Fe_0_4h","Fe_1.1_4h","Fe_3_4h","Fe_0_24h","Fe_1.1_24h","Fe_3_24h","Ar_0_4h","Ar_1.1_4h","Ar_3_4h","Ar_0_24h","Ar_1.1_24h","Ar_3_24h","Si_0_4h","Si_1.1_4h","Si_3_4h","Si_0_24h","Si_1.1_24h","Si_3_24h","Gamma_0_4h","Gamma_0.1_4h","Gamma_1_4h","Gamma_0_24h","Gamma_0.1_24h","Gamma_1_24h","baseline_avg_nfoci")
+list_all = all_Fluence_Timepoint_Baselines[,colnames(all_Fluence_Timepoint_Baselines) %in% col_trunc]
+list_all = list_all[,col_trunc]
+colnames(list_all)[colnames(list_all)=="baseline_avg_nfoci"] = "Baseline"
+
+# We replace NA values by the mean of non-missing rows in the corresponding column
+means = colMeans(na.omit(list_all))
+ncol = ncol(list_all)
+for(ii in 1:ncol){
+  list_all[ii][is.na(list_all[ii])] = means[ii]
+}
+
+res = cor(as.matrix(list_all))
+p.mat <- cor.mtest(as.matrix(list_all))$p
+#corrplot(res, type = "upper", order = "original", number.font = 5, tl.col = "black", tl.srt = 45, p.mat=p.mat, insig = "p-value", sig.level=-1)
+corrplot(res, type = "upper", order = "original", number.font = 5, tl.col = "black", tl.srt = 45, p.mat=p.mat,sig.level=0.05,insig="blank")
+
+
+#Only controls and baselines
+col_trunc = c("Fe_0_4h","Fe_0_24h","Ar_0_4h","Ar_0_24h","Si_0_4h","Si_0_24h","Gamma_0_4h","Gamma_0_24h","baseline_avg_nfoci")
+list_controls_baselines = all_Fluence_Timepoint_Baselines[,colnames(all_Fluence_Timepoint_Baselines) %in% col_trunc]
+list_controls_baselines = list_controls_baselines[,col_trunc]
+colnames(list_controls_baselines)[colnames(list_controls_baselines)=="baseline_avg_nfoci"] = "Baseline"
+
+# We replace NA values by the mean of non-missing rows in the corresponding column
+means = colMeans(na.omit(list_controls_baselines))
+ncol = ncol(list_controls_baselines)
+for(ii in 1:ncol){
+  list_controls_baselines[ii][is.na(list_controls_baselines[ii])] = means[ii]
+}
+
+res = cor(as.matrix(list_controls_baselines))
+p.mat <- cor.mtest(as.matrix(list_controls_baselines))$p
+#corrplot(res, type = "upper", order = "original", number.font = 5, tl.col = "black", tl.srt = 45, p.mat=p.mat, insig = "p-value", sig.level=-1)
+corrplot(res, type = "upper", order = "original", number.font = 5, tl.col = "black", tl.srt = 45, p.mat=p.mat,insig = "p-value", sig.level=-1)
+
+#Correlation between repeats (BNL18B - BNL19A: 1214 - 1223)
+repeats = read.csv('/Users/epariset/Desktop/R_Code-work/Fe_Repeat_comparison.csv', sep = ",", header = TRUE)
+col_trunc = c("Sample_ID")
+repeats = repeats[,!colnames(repeats) %in% col_trunc]
+res = cor(as.matrix(repeats))
+p.mat <- cor.mtest(as.matrix(repeats))$p
+corrplot(res, type = "upper", order = "original", number.font = 5, tl.col = "black", tl.srt = 45, p.mat=p.mat,insig = "p-value", sig.level=-1)
+
+repeats = read.csv('/Users/epariset/Desktop/R_Code-work/Fe_Repeat_comparison_2.csv', sep = ",", header = TRUE)
+col_trunc = c("Sample_ID")
+repeats = repeats[,!colnames(repeats) %in% col_trunc]
+res = cor(as.matrix(repeats))
+p.mat <- cor.mtest(as.matrix(repeats))$p
+corrplot(res, type = "upper", order = "original", number.font = 5, tl.col = "black", tl.srt = 45, p.mat=p.mat,insig = "p-value", sig.level=-1)
+```
+
+```{r}
+## Comparison of control values
+
+plot_0_4h_fe_ar = ggplot(all_Fluence_Timepoint, aes(x = Fe_0_4h, y = Ar_0_4h)) + geom_point() + geom_smooth(method = "lm")
+plot_0_4h_fe_ar + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_4h_fe_ar = ggplot(all_Fluence_Timepoint_Baselines_meta, aes(x = Fe_0_4h, y = Ar_0_4h, col = Set)) + geom_point()
+plot_0_4h_fe_ar + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_4h_fe_si = ggplot(all_Fluence_Timepoint, aes(x = Fe_0_4h, y = Si_0_4h)) + geom_point() + geom_smooth(method = "lm")
+plot_0_4h_fe_si + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_4h_fe_si = ggplot(all_Fluence_Timepoint_Baselines_meta, aes(x = Fe_0_4h, y = Si_0_4h, col = Set)) + geom_point()
+plot_0_4h_fe_si + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_4h_fe_gamma = ggplot(all_Fluence_Timepoint, aes(x = Fe_0_4h, y = Gamma_0_4h)) + geom_point() + geom_smooth(method = "lm")
+plot_0_4h_fe_gamma + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_4h_fe_gamma = ggplot(all_Fluence_Timepoint_Baselines_meta, aes(x = Fe_0_4h, y = Gamma_0_4h, col = Set)) + geom_point()
+plot_0_4h_fe_gamma + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_4h_si_ar = ggplot(all_Fluence_Timepoint, aes(x = Si_0_4h, y = Ar_0_4h)) + geom_point() + geom_smooth(method = "lm")
+plot_0_4h_si_ar + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_4h_si_ar = ggplot(all_Fluence_Timepoint_Baselines_meta, aes(x = Si_0_4h, y = Ar_0_4h, col = Set)) + geom_point()
+plot_0_4h_si_ar + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_4h_si_gamma = ggplot(all_Fluence_Timepoint, aes(x = Si_0_4h, y = Gamma_0_4h)) + geom_point() + geom_smooth(method = "lm") 
+plot_0_4h_si_gamma + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_4h_si_gamma = ggplot(all_Fluence_Timepoint_Baselines_meta, aes(x = Si_0_4h, y = Gamma_0_4h, col = Set)) + geom_point()
+plot_0_4h_si_gamma + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_4h_ar_gamma = ggplot(all_Fluence_Timepoint, aes(x = Ar_0_4h, y = Gamma_0_4h)) + geom_point() + geom_smooth(method = "lm") 
+plot_0_4h_ar_gamma + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_4h_ar_gamma = ggplot(all_Fluence_Timepoint_Baselines_meta, aes(x = Ar_0_4h, y = Gamma_0_4h, col = Set)) + geom_point()
+plot_0_4h_ar_gamma + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_24h_fe_ar = ggplot(all_Fluence_Timepoint, aes(x = Fe_0_24h, y = Ar_0_24h)) + geom_point() + geom_smooth(method = "lm")
+plot_0_24h_fe_ar + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_24h_fe_ar = ggplot(all_Fluence_Timepoint_Baselines_meta, aes(x = Fe_0_24h, y = Ar_0_24h, col = Set)) + geom_point()
+plot_0_24h_fe_ar + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_24h_fe_si = ggplot(all_Fluence_Timepoint, aes(x = Fe_0_24h, y = Si_0_24h)) + geom_point() + geom_smooth(method = "lm")
+plot_0_24h_fe_si + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_24h_fe_si = ggplot(all_Fluence_Timepoint_Baselines_meta, aes(x = Fe_0_24h, y = Si_0_24h, col = Set)) + geom_point()
+plot_0_24h_fe_si + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_24h_fe_gamma = ggplot(all_Fluence_Timepoint, aes(x = Fe_0_24h, y = Gamma_0_24h)) + geom_point() + geom_smooth(method = "lm")
+plot_0_24h_fe_gamma + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_24h_fe_gamma = ggplot(all_Fluence_Timepoint_Baselines_meta, aes(x = Fe_0_24h, y = Gamma_0_24h, col = Set)) + geom_point()
+plot_0_24h_fe_gamma + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_24h_si_ar = ggplot(all_Fluence_Timepoint, aes(x = Si_0_24h, y = Ar_0_24h)) + geom_point() + geom_smooth(method = "lm")
+plot_0_24h_si_ar + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_24h_si_ar = ggplot(all_Fluence_Timepoint_Baselines_meta, aes(x = Si_0_24h, y = Ar_0_24h, col = Set)) + geom_point()
+plot_0_24h_si_ar + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_24h_si_gamma = ggplot(all_Fluence_Timepoint, aes(x = Si_0_24h, y = Gamma_0_24h)) + geom_point() + geom_smooth(method = "lm") 
+plot_0_24h_si_gamma + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_24h_si_gamma = ggplot(all_Fluence_Timepoint_Baselines_meta, aes(x = Si_0_24h, y = Gamma_0_24h, col = Set)) + geom_point() 
+plot_0_24h_si_gamma + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_24h_ar_gamma = ggplot(all_Fluence_Timepoint, aes(x = Ar_0_24h, y = Gamma_0_24h)) + geom_point() + geom_smooth(method = "lm") 
+plot_0_24h_ar_gamma + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_24h_ar_gamma = ggplot(all_Fluence_Timepoint_Baselines_meta, aes(x = Ar_0_24h, y = Gamma_0_24h, col = Set)) + geom_point()
+plot_0_24h_ar_gamma + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+## Plotting 4h/24h
+plot_0_4h_24h_fe = ggplot(all_Fluence_Timepoint, aes(x = Fe_0_24h, y = Fe_0_4h)) + geom_point() + geom_smooth(method = "lm")
+plot_0_4h_24h_fe + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_4h_24h_fe = ggplot(all_Fluence_Timepoint_Baselines_meta, aes(x = Fe_0_24h, y = Fe_0_4h, col = Set)) + geom_point()
+plot_0_4h_24h_fe + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_4h_24h_ar = ggplot(all_Fluence_Timepoint, aes(x = Ar_0_24h, y = Ar_0_4h)) + geom_point() + geom_smooth(method = "lm")
+plot_0_4h_24h_ar + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_4h_24h_ar = ggplot(all_Fluence_Timepoint_Baselines_meta, aes(x = Ar_0_24h, y = Ar_0_4h, col = Set)) + geom_point()
+plot_0_4h_24h_ar + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_4h_24h_si = ggplot(all_Fluence_Timepoint, aes(x = Si_0_24h, y = Si_0_4h)) + geom_point() + geom_smooth(method = "lm")
+plot_0_4h_24h_si + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_4h_24h_si = ggplot(all_Fluence_Timepoint_Baselines_meta, aes(x = Si_0_24h, y = Si_0_4h, col = Set)) + geom_point()
+plot_0_4h_24h_si + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_4h_24h_gamma = ggplot(all_Fluence_Timepoint, aes(x = Gamma_0_24h, y = Gamma_0_4h)) + geom_point() + geom_smooth(method = "lm")
+plot_0_4h_24h_gamma + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_4h_24h_gamma = ggplot(all_Fluence_Timepoint_Baselines_meta, aes(x = Gamma_0_24h, y = Gamma_0_4h, col = Set)) + geom_point()
+plot_0_4h_24h_gamma + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+```
+
+
+```{r}
+## Comparison of controls with baselines
+
+plot_0_4h_fe = ggplot(all_Fluence_Timepoint_Baselines, aes(x = baseline_avg_nfoci, y = Fe_0_4h)) + geom_point() + geom_smooth(method = "lm") + ylim(0,4)
+plot_0_4h_fe + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_4h_fe = ggplot(all_Fluence_Timepoint_Baselines_meta, aes(x = baseline_avg_nfoci, y = Fe_0_4h, col = Set)) + geom_point() + ylim(0,4)
+plot_0_4h_fe + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_4h_ar = ggplot(all_Fluence_Timepoint_Baselines, aes(x = baseline_avg_nfoci, y = Ar_0_4h)) + geom_point() + geom_smooth(method = "lm") + ylim(0,4)
+plot_0_4h_ar + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_4h_ar = ggplot(all_Fluence_Timepoint_Baselines_meta, aes(x = baseline_avg_nfoci, y = Ar_0_4h, col = Set)) + geom_point() + ylim(0,4)
+plot_0_4h_ar + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_4h_si = ggplot(all_Fluence_Timepoint_Baselines, aes(x = baseline_avg_nfoci, y = Si_0_4h)) + geom_point() + geom_smooth(method = "lm") + ylim(0,4)
+plot_0_4h_si + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_4h_si = ggplot(all_Fluence_Timepoint_Baselines_meta, aes(x = baseline_avg_nfoci, y = Si_0_4h, col = Set)) + geom_point() + ylim(0,4)
+plot_0_4h_si + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_4h_gamma = ggplot(all_Fluence_Timepoint_Baselines, aes(x = baseline_avg_nfoci, y = Gamma_0_4h)) + geom_point() + geom_smooth(method = "lm") + ylim(0,4)
+plot_0_4h_gamma + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_4h_gamma = ggplot(all_Fluence_Timepoint_Baselines_meta, aes(x = baseline_avg_nfoci, y = Gamma_0_4h, col = Set)) + geom_point() + ylim(0,4)
+plot_0_4h_gamma + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_24h_fe = ggplot(all_Fluence_Timepoint_Baselines, aes(x = baseline_avg_nfoci, y = Fe_0_24h)) + geom_point() + geom_smooth(method = "lm") + ylim(0,4)
+plot_0_24h_fe + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_24h_fe = ggplot(all_Fluence_Timepoint_Baselines_meta, aes(x = baseline_avg_nfoci, y = Fe_0_24h, col = Set)) + geom_point() + ylim(0,4)
+plot_0_24h_fe + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_24h_ar = ggplot(all_Fluence_Timepoint_Baselines, aes(x = baseline_avg_nfoci, y = Ar_0_24h)) + geom_point() + geom_smooth(method = "lm") + ylim(0,4)
+plot_0_24h_ar + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_24h_ar = ggplot(all_Fluence_Timepoint_Baselines_meta, aes(x = baseline_avg_nfoci, y = Ar_0_24h, col = Set)) + geom_point() + ylim(0,4)
+plot_0_24h_ar + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_24h_si = ggplot(all_Fluence_Timepoint_Baselines, aes(x = baseline_avg_nfoci, y = Si_0_24h)) + geom_point() + geom_smooth(method = "lm") + ylim(0,4)
+plot_0_24h_si + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_24h_si = ggplot(all_Fluence_Timepoint_Baselines_meta, aes(x = baseline_avg_nfoci, y = Si_0_24h, col = Set)) + geom_point() + ylim(0,4)
+plot_0_24h_si + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_24h_gamma = ggplot(all_Fluence_Timepoint_Baselines, aes(x = baseline_avg_nfoci, y = Gamma_0_24h)) + geom_point() + geom_smooth(method = "lm") + ylim(0,4)
+plot_0_24h_gamma + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+
+plot_0_24h_gamma = ggplot(all_Fluence_Timepoint_Baselines_meta, aes(x = baseline_avg_nfoci, y = Gamma_0_24h, col = Set)) + geom_point() + ylim(0,4)
+plot_0_24h_gamma + geom_abline(intercept=0, slope=1, color="red", size=1.5)
+```
+
+# Study of demographic variables ----------------------------------------------------------------------------------------------------------------------------
+
+```{r}
+# Influence of gender and BMI
+all_plot_bmi_fe = ggplot(fe_avg, aes(x = Fluence, y = avg_nfoci, col = BMI_group)) + 
+  geom_boxplot() + ggtitle("Iron")
+facet(all_plot_bmi_fe, facet.by = c('Timepoint', 'Gender'))
+
+all_plot_bmi2_fe = ggplot(fe_avg, aes(x = BMI, y = avg_nfoci, col = Fluence)) + 
+  geom_point() + geom_smooth(method = "lm") + ggtitle("Iron")
+facet(all_plot_bmi2_fe, facet.by = c('Timepoint', 'Gender'))
+
+all_plot_bmi_ar = ggplot(ar_avg, aes(x = Fluence, y = avg_nfoci, col = BMI_group)) + 
+  geom_boxplot() + ggtitle("Argon")
+facet(all_plot_bmi_ar, facet.by = c('Timepoint', 'Gender'))
+
+all_plot_bmi2_ar = ggplot(ar_avg, aes(x = BMI, y = avg_nfoci, col = Fluence)) + 
+  geom_point() + geom_smooth(method = "lm") + ggtitle("Argon")
+facet(all_plot_bmi2_ar, facet.by = c('Timepoint', 'Gender'))
+
+all_plot_bmi_si = ggplot(si_avg, aes(x = Fluence, y = avg_nfoci, col = BMI_group)) + 
+  geom_boxplot() + ggtitle("Silicon")
+facet(all_plot_bmi_si, facet.by = c('Timepoint', 'Gender'))
+
+all_plot_bmi2_si = ggplot(si_avg, aes(x = BMI, y = avg_nfoci, col = Fluence)) + 
+  geom_point() + geom_smooth(method = "lm") + ggtitle("Silicon")
+facet(all_plot_bmi2_si, facet.by = c('Timepoint', 'Gender'))
+
+all_plot_bmi_gamma = ggplot(gamma_avg, aes(x = Dose, y = avg_nfoci, col = BMI_group)) + 
+  geom_boxplot() + ggtitle("Gamma")
+facet(all_plot_bmi_gamma, facet.by = c('Timepoint', 'Gender'))
+
+all_plot_bmi2_gamma = ggplot(gamma_avg, aes(x = BMI, y = avg_nfoci, col = Dose)) + 
+  geom_point() + geom_smooth(method = "lm") + ggtitle("Gamma") 
+facet(all_plot_bmi2_gamma, facet.by = c('Timepoint', 'Gender'))
+```
+
+```{r}
+# Influence of age 
+all_plot_age_fe = ggplot(fe_avg, aes(x = Age, y = avg_nfoci, col = Fluence)) + 
+  geom_point() + geom_smooth(method = "lm") + ggtitle("Iron")
+facet(all_plot_age_fe, facet.by = c('Timepoint', 'Gender'))
+
+all_plot_age_ar = ggplot(ar_avg, aes(x = Age, y = avg_nfoci, col = Fluence)) + 
+  geom_point() + geom_smooth(method = "lm") + ggtitle("Argon")
+facet(all_plot_age_ar, facet.by = c('Timepoint', 'Gender'))
+
+all_plot_age_si = ggplot(si_avg, aes(x = Age, y = avg_nfoci, col = Fluence)) + 
+  geom_point() + geom_smooth(method = "lm") + ggtitle("Silicon")
+facet(all_plot_age_si, facet.by = c('Timepoint', 'Gender'))
+
+all_plot_age_gamma = ggplot(gamma_avg, aes(x = Age, y = avg_nfoci, col = Dose)) + 
+  geom_point() + geom_smooth(method = "lm") + ggtitle("Gamma")
+facet(all_plot_age_gamma, facet.by = c('Timepoint', 'Gender'))
+```
+
+# Normalization----------------------------------------------------------------------------------------------------------------------------------------------
+
+```{r}
+# We want to normalize both fluences/doses to the sham-irradiated control
+
+# We'll have one table at 4h and one table at 24h
+fe_avg_4h = fe_avg[fe_avg$Timepoint == "4h",]
+fe_avg_24h = fe_avg[fe_avg$Timepoint == "24h",]
+ar_avg_4h = ar_avg[ar_avg$Timepoint == "4h",]
+ar_avg_24h = ar_avg[ar_avg$Timepoint == "24h",]
+si_avg_4h = si_avg[si_avg$Timepoint == "4h",]
+si_avg_24h = si_avg[si_avg$Timepoint == "24h",]
+gamma_avg_4h = gamma_avg[gamma_avg$Timepoint == "4h",]
+gamma_avg_24h = gamma_avg[gamma_avg$Timepoint == "24h",]
+
+fe_avg_4h_norm <- dcast(fe_avg_4h, Sample_ID ~ Fluence, value.var = 'avg_nfoci') #reshape the table fe_avg_4h
+fe_avg_24h_norm <- dcast(fe_avg_24h, Sample_ID ~ Fluence, value.var = 'avg_nfoci') #reshape the table fe_avg_24h
+ar_avg_4h_norm <- dcast(ar_avg_4h, Sample_ID ~ Fluence, value.var = 'avg_nfoci') #reshape the table ar_avg_4h
+ar_avg_24h_norm <- dcast(ar_avg_24h, Sample_ID ~ Fluence, value.var = 'avg_nfoci') #reshape the table ar_avg_24h
+si_avg_4h_norm <- dcast(si_avg_4h, Sample_ID ~ Fluence, value.var = 'avg_nfoci') #reshape the table si_avg_4h
+si_avg_24h_norm <- dcast(si_avg_24h, Sample_ID ~ Fluence, value.var = 'avg_nfoci') #reshape the table si_avg_24h
+gamma_avg_4h_norm <- dcast(gamma_avg_4h, Sample_ID ~ Fluence, value.var = 'avg_nfoci') #reshape the table gamma_avg_4h
+gamma_avg_24h_norm <- dcast(gamma_avg_24h, Sample_ID ~ Fluence, value.var = 'avg_nfoci') #reshape the table gamma_avg_24h
+```
+
+```{r}
+# # We choose to keep only the data for which avg_nfoci at dose 1 and dose 2 >= avg_nfoci at dose 0
+# fe_avg_4h_norm = fe_avg_4h_norm[fe_avg_4h_norm$'1.1' >= fe_avg_4h_norm$'0',]
+# fe_avg_4h_norm = fe_avg_4h_norm[fe_avg_4h_norm$'3' >= fe_avg_4h_norm$'0',]
+# fe_avg_4h_norm <- na.omit(fe_avg_4h_norm)
+# fe_avg_24h_norm = fe_avg_24h_norm[fe_avg_24h_norm$'1.1' >= fe_avg_24h_norm$'0',]
+# fe_avg_24h_norm = fe_avg_24h_norm[fe_avg_24h_norm$'3' >= fe_avg_24h_norm$'0',]
+# fe_avg_24h_norm <- na.omit(fe_avg_24h_norm)
+# 
+# ar_avg_4h_norm = ar_avg_4h_norm[ar_avg_4h_norm$'1.1' >= ar_avg_4h_norm$'0',]
+# ar_avg_4h_norm = ar_avg_4h_norm[ar_avg_4h_norm$'3' >= ar_avg_4h_norm$'0',]
+# ar_avg_4h_norm <- na.omit(ar_avg_4h_norm)
+# ar_avg_24h_norm = ar_avg_24h_norm[ar_avg_24h_norm$'1.1' >= ar_avg_24h_norm$'0',]
+# ar_avg_24h_norm = ar_avg_24h_norm[ar_avg_24h_norm$'3' >= ar_avg_24h_norm$'0',]
+# ar_avg_24h_norm <- na.omit(ar_avg_24h_norm)
+# 
+# si_avg_4h_norm = si_avg_4h_norm[si_avg_4h_norm$'1.1' >= si_avg_4h_norm$'0',]
+# si_avg_4h_norm = si_avg_4h_norm[si_avg_4h_norm$'3' >= si_avg_4h_norm$'0',]
+# si_avg_4h_norm <- na.omit(si_avg_4h_norm)
+# si_avg_24h_norm = si_avg_24h_norm[si_avg_24h_norm$'1.1' >= si_avg_24h_norm$'0',]
+# si_avg_24h_norm = si_avg_24h_norm[si_avg_24h_norm$'3' >= si_avg_24h_norm$'0',]
+# si_avg_24h_norm <- na.omit(si_avg_24h_norm)
+# 
+# gamma_avg_4h_norm = gamma_avg_4h_norm[gamma_avg_4h_norm$'0.1' >= gamma_avg_4h_norm$'0',]
+# gamma_avg_4h_norm = gamma_avg_4h_norm[gamma_avg_4h_norm$'1' >= gamma_avg_4h_norm$'0',]
+# gamma_avg_4h_norm <- na.omit(gamma_avg_4h_norm)
+# gamma_avg_24h_norm = gamma_avg_24h_norm[gamma_avg_24h_norm$'0.1' >= gamma_avg_24h_norm$'0',]
+# gamma_avg_24h_norm = gamma_avg_24h_norm[gamma_avg_24h_norm$'1' >= gamma_avg_24h_norm$'0',]
+# gamma_avg_24h_norm <- na.omit(gamma_avg_24h_norm)
+```
+
+```{r}
+# We normalize by dividing avg_nfoci for each of the doses to the sham-irradiated control
+fe_avg_4h_norm$norm_nfoci1 = fe_avg_4h_norm$'1.1'/fe_avg_4h_norm$'0'
+fe_avg_4h_norm$norm_nfoci2 = fe_avg_4h_norm$'3'/fe_avg_4h_norm$'0'
+fe_avg_24h_norm$norm_nfoci1 = fe_avg_24h_norm$'1.1'/fe_avg_24h_norm$'0'
+fe_avg_24h_norm$norm_nfoci2 = fe_avg_24h_norm$'3'/fe_avg_24h_norm$'0'
+
+ar_avg_4h_norm$norm_nfoci1 = ar_avg_4h_norm$'1.1'/ar_avg_4h_norm$'0'
+ar_avg_4h_norm$norm_nfoci2 = ar_avg_4h_norm$'3'/ar_avg_4h_norm$'0'
+ar_avg_24h_norm$norm_nfoci1 = ar_avg_24h_norm$'1.1'/ar_avg_24h_norm$'0'
+ar_avg_24h_norm$norm_nfoci2 = ar_avg_24h_norm$'3'/ar_avg_24h_norm$'0'
+
+si_avg_4h_norm$norm_nfoci1 = si_avg_4h_norm$'1.1'/si_avg_4h_norm$'0'
+si_avg_4h_norm$norm_nfoci2 = si_avg_4h_norm$'3'/si_avg_4h_norm$'0'
+si_avg_24h_norm$norm_nfoci1 = si_avg_24h_norm$'1.1'/si_avg_24h_norm$'0'
+si_avg_24h_norm$norm_nfoci2 = si_avg_24h_norm$'3'/si_avg_24h_norm$'0'
+
+gamma_avg_4h_norm$norm_nfoci1 = gamma_avg_4h_norm$'0.1'/gamma_avg_4h_norm$'0'
+gamma_avg_4h_norm$norm_nfoci2 = gamma_avg_4h_norm$'1'/gamma_avg_4h_norm$'0'
+gamma_avg_24h_norm$norm_nfoci1 = gamma_avg_24h_norm$'0.1'/gamma_avg_24h_norm$'0'
+gamma_avg_24h_norm$norm_nfoci2 = gamma_avg_24h_norm$'1'/gamma_avg_24h_norm$'0'
+```
+
+```{r}
+# We reshape the table to keep only normalized data and combine all radiation types
+col_trunc = c("Sample_ID","norm_nfoci1", "norm_nfoci2")
+fe_avg_4h_norm = fe_avg_4h_norm[,colnames(fe_avg_4h_norm) %in% col_trunc]
+colnames(fe_avg_4h_norm)[colnames(fe_avg_4h_norm) == "norm_nfoci1"] = "1.1"
+colnames(fe_avg_4h_norm)[colnames(fe_avg_4h_norm) == "norm_nfoci2"] = "3"
+fe_avg_4h_norm <- melt(fe_avg_4h_norm, id = c("Sample_ID"))
+fe_avg_4h_norm$Rad_type = "Fe"
+fe_avg_24h_norm = fe_avg_24h_norm[,colnames(fe_avg_24h_norm) %in% col_trunc]
+colnames(fe_avg_24h_norm)[colnames(fe_avg_24h_norm) == "norm_nfoci1"] = "1.1"
+colnames(fe_avg_24h_norm)[colnames(fe_avg_24h_norm) == "norm_nfoci2"] = "3"
+fe_avg_24h_norm <- melt(fe_avg_24h_norm, id = c("Sample_ID"))
+fe_avg_24h_norm$Rad_type = "Fe"
+
+ar_avg_4h_norm = ar_avg_4h_norm[,colnames(ar_avg_4h_norm) %in% col_trunc]
+colnames(ar_avg_4h_norm)[colnames(ar_avg_4h_norm) == "norm_nfoci1"] = "1.1"
+colnames(ar_avg_4h_norm)[colnames(ar_avg_4h_norm) == "norm_nfoci2"] = "3"
+ar_avg_4h_norm <- melt(ar_avg_4h_norm, id = c("Sample_ID"))
+ar_avg_4h_norm$Rad_type = "Ar"
+ar_avg_24h_norm = ar_avg_24h_norm[,colnames(ar_avg_24h_norm) %in% col_trunc]
+colnames(ar_avg_24h_norm)[colnames(ar_avg_24h_norm) == "norm_nfoci1"] = "1.1"
+colnames(ar_avg_24h_norm)[colnames(ar_avg_24h_norm) == "norm_nfoci2"] = "3"
+ar_avg_24h_norm <- melt(ar_avg_24h_norm, id = c("Sample_ID"))
+ar_avg_24h_norm$Rad_type = "Ar"
+
+si_avg_4h_norm = si_avg_4h_norm[,colnames(si_avg_4h_norm) %in% col_trunc]
+colnames(si_avg_4h_norm)[colnames(si_avg_4h_norm) == "norm_nfoci1"] = "1.1"
+colnames(si_avg_4h_norm)[colnames(si_avg_4h_norm) == "norm_nfoci2"] = "3"
+si_avg_4h_norm <- melt(si_avg_4h_norm, id = c("Sample_ID"))
+si_avg_4h_norm$Rad_type = "Si"
+si_avg_24h_norm = si_avg_24h_norm[,colnames(si_avg_24h_norm) %in% col_trunc]
+colnames(si_avg_24h_norm)[colnames(si_avg_24h_norm) == "norm_nfoci1"] = "1.1"
+colnames(si_avg_24h_norm)[colnames(si_avg_24h_norm) == "norm_nfoci2"] = "3"
+si_avg_24h_norm <- melt(si_avg_24h_norm, id = c("Sample_ID"))
+si_avg_24h_norm$Rad_type = "Si"
+
+gamma_avg_4h_norm = gamma_avg_4h_norm[,colnames(gamma_avg_4h_norm) %in% col_trunc]
+colnames(gamma_avg_4h_norm)[colnames(gamma_avg_4h_norm) == "norm_nfoci1"] = "0.1"
+colnames(gamma_avg_4h_norm)[colnames(gamma_avg_4h_norm) == "norm_nfoci2"] = "1"
+gamma_avg_4h_norm <- melt(gamma_avg_4h_norm, id = c("Sample_ID"))
+gamma_avg_4h_norm$Rad_type = "Gamma"
+gamma_avg_24h_norm = gamma_avg_24h_norm[,colnames(gamma_avg_24h_norm) %in% col_trunc]
+colnames(gamma_avg_24h_norm)[colnames(gamma_avg_24h_norm) == "norm_nfoci1"] = "0.1"
+colnames(gamma_avg_24h_norm)[colnames(gamma_avg_24h_norm) == "norm_nfoci2"] = "1"
+gamma_avg_24h_norm <- melt(gamma_avg_24h_norm, id = c("Sample_ID"))
+gamma_avg_24h_norm$Rad_type = "Gamma"
+
+colnames(gamma_avg_4h_norm)[colnames(gamma_avg_4h_norm) == "variable"] = "Dose"
+colnames(gamma_avg_4h_norm)[colnames(gamma_avg_4h_norm) == "value"] = "norm_nfoci"
+colnames(gamma_avg_24h_norm)[colnames(gamma_avg_24h_norm) == "variable"] = "Dose"
+colnames(gamma_avg_24h_norm)[colnames(gamma_avg_24h_norm) == "value"] = "norm_nfoci"
+
+all_4h_norm <- rbind(fe_avg_4h_norm, ar_avg_4h_norm, si_avg_4h_norm)
+colnames(all_4h_norm)[colnames(all_4h_norm) == "variable"] = "Fluence"
+colnames(all_4h_norm)[colnames(all_4h_norm) == "value"] = "norm_nfoci"
+all_24h_norm <- rbind(fe_avg_24h_norm, ar_avg_24h_norm, si_avg_24h_norm)
+colnames(all_24h_norm)[colnames(all_24h_norm) == "variable"] = "Fluence"
+colnames(all_24h_norm)[colnames(all_24h_norm) == "value"] = "norm_nfoci"
+```
+
+```{r}
+# We want the ions to go from Si to Ar to Fe
+all_4h_norm$Rad_type = factor(all_4h_norm$Rad_type, levels = c("Si", "Ar", "Fe")) 
+all_24h_norm$Rad_type = factor(all_24h_norm$Rad_type, levels = c("Si", "Ar", "Fe"))
+all_4h_norm$Timepoint = "4h"
+all_24h_norm$Timepoint = "24h"
+all = rbind(all_4h_norm,all_24h_norm)
+```
+
+```{r}
+# Now, let's plot it for ions together + gamma separately
+all_plot = ggplot(all_4h_norm, aes(x = Fluence, y = norm_nfoci, col = Rad_type)) + 
+  geom_boxplot() + ggtitle("Time point: 4h post-irradiation") 
+all_plot  + ylim(1,2.5) + xlab("Fluence (particles/100um^2)") + ylab("Normalized Average Number of Foci per Nucleus") + theme(axis.text.x = element_text(size=18)) + theme(axis.text.y = element_text(size=18)) + theme(axis.title.x = element_text(size=18)) + theme(axis.title.y = element_text(size=18)) + labs(col="Radiation") + theme(plot.title = element_text(size=18, face="bold"), legend.text=element_text(size=16), legend.title=element_text(size=16))
+
+all_plot = ggplot(gamma_avg_4h_norm, aes(x = Dose, y = norm_nfoci)) + 
+  geom_boxplot() + ggtitle("Time point: 4h post-irradiation")
+all_plot + ylim(1,2.5) + xlab("Dose (Gy)") + ylab("Normalized Average Number of Foci per Nucleus") + theme(axis.text.x = element_text(size=18)) + theme(axis.text.y = element_text(size=18)) + theme(axis.title.x = element_text(size=18)) + theme(axis.title.y = element_text(size=18)) + labs(col="Radiation") + theme(plot.title = element_text(size=18, face="bold"), legend.text=element_text(size=16), legend.title=element_text(size=16))
+
+all_plot = ggplot(all_24h_norm, aes(x = Fluence, y = norm_nfoci, col = Rad_type)) + 
+  geom_boxplot(lwd=1) + ggtitle("Time point: 24h post-irradiation")
+all_plot + ylim(1,2.5) + xlab("Fluence (particles/100um^2)") + ylab("Normalized Average Number of Foci per Nucleus") + theme(axis.text.x = element_text(size=18)) + theme(axis.text.y = element_text(size=18)) + theme(axis.title.x = element_text(size=18)) + theme(axis.title.y = element_text(size=18)) + labs(col="Radiation") + theme(plot.title = element_text(size=18, face="bold"), legend.text=element_text(size=16), legend.title=element_text(size=16))
+
+all_plot = ggplot(gamma_avg_24h_norm, aes(x = Dose, y = norm_nfoci)) + 
+  geom_boxplot() + ggtitle("Time point: 24h post-irradiation")
+all_plot + ylim(1,2.5) + xlab("Dose (Gy)") + ylab("Normalized Average Number of Foci per Nucleus") + theme(axis.text.x = element_text(size=18)) + theme(axis.text.y = element_text(size=18)) + theme(axis.title.x = element_text(size=18)) + theme(axis.title.y = element_text(size=18)) + labs(col="Radiation") + theme(plot.title = element_text(size=18, face="bold"), legend.text=element_text(size=16), legend.title=element_text(size=16))
+
+all_plot = ggplot(fe_avg_4h_norm, aes(x = variable, y = value)) + 
+  geom_boxplot() + ggtitle("Time point: 4h post-irradiation") 
+all_plot  + ylim(1,2.5) + xlab("Fluence (particles/100um^2)") + ylab("Normalized avg_nfoci") + theme(axis.text.x = element_text(size=18)) + theme(axis.text.y = element_text(size=18)) + theme(axis.title.x = element_text(size=18)) + theme(axis.title.y = element_text(size=18)) + theme(plot.title = element_text(size=18, face="bold"), legend.text=element_text(size=16), legend.title=element_text(size=16))
+
+all_plot = ggplot(fe_avg_24h_norm, aes(x = variable, y = value)) + 
+  geom_boxplot(lwd=1) + ggtitle("Time point: 24h post-irradiation")
+all_plot + ylim(1,2.5) + xlab("Fluence (particles/100um^2)") + ylab("Normalized avg_nfoci") + theme(axis.text.x = element_text(size=18)) + theme(axis.text.y = element_text(size=18)) + theme(axis.title.x = element_text(size=18)) + theme(axis.title.y = element_text(size=18)) + labs(col="Radiation") + theme(plot.title = element_text(size=18, face="bold"), legend.text=element_text(size=16), legend.title=element_text(size=16))
+
+ar_avg_4h_norm$Timepoint = "4h"
+ar_avg_24h_norm$Timepoint = "24h"
+ar_all = rbind(ar_avg_4h_norm,ar_avg_24h_norm)
+colnames(ar_all)[colnames(ar_all)=="variable"] = "Fluence"
+colnames(ar_all)[colnames(ar_all)=="value"] = "norm_nfoci"
+ar_all$Fluence <- as.character(ar_all$Fluence)
+ar_all$Fluence[ar_all$Fluence == "1.1"] = "low"
+ar_all$Fluence[ar_all$Fluence == "3"] = "high"
+ar_all$Fluence = factor(ar_all$Fluence, levels = c("low", "high")) 
+ar_all$Timepoint = factor(ar_all$Timepoint, levels = c("4h","24h"))
+
+ar_plot = ggplot(ar_all, aes(x = Fluence, y = norm_nfoci)) + 
+  geom_boxplot() + ggtitle("Argon - BNL19B") + ylim(0,4)
+facet(ar_plot, facet.by = 'Timepoint')
+
+si_avg_4h_norm$Timepoint = "4h"
+si_avg_24h_norm$Timepoint = "24h"
+si_all = rbind(si_avg_4h_norm,si_avg_24h_norm)
+colnames(si_all)[colnames(si_all)=="variable"] = "Fluence"
+colnames(si_all)[colnames(si_all)=="value"] = "norm_nfoci"
+si_all$Fluence <- as.character(si_all$Fluence)
+si_all$Fluence[si_all$Fluence == "1.1"] = "low"
+si_all$Fluence[si_all$Fluence == "3"] = "high"
+si_all$Fluence = factor(si_all$Fluence, levels = c("low", "high")) 
+si_all$Timepoint = factor(si_all$Timepoint, levels = c("4h","24h"))
+
+si_plot = ggplot(si_all, aes(x = Fluence, y = norm_nfoci)) + 
+  geom_boxplot() + ggtitle("Silicon - BNL19B") + ylim(0,4)
+facet(si_plot, facet.by = 'Timepoint')
+```
+
+# Extreme Responders ----------------------------------------------------------------------------------------------------------------------------------------
+
+```{r}
+# Now we look for extreme responders for each ion: defined as the individuals that show the highest/lowest normalized level of avg_nfoci at fluence 1.1 / dose 0.1, at 4h (not much repair yet)
+
+Nextreme = 10 # Number of extreme low responders / high responders we want to consider
+
+# For Fe:
+fe_4h_dose1 = all_4h_norm[all_4h_norm$Rad_type == "Fe" & all_4h_norm$Fluence == "1.1",]
+fe_4h_dose1_ranked = fe_4h_dose1[order(fe_4h_dose1$norm_nfoci, decreasing = TRUE),]
+fe_4h_dose1_ranked2 = fe_4h_dose1[order(fe_4h_dose1$norm_nfoci),]
+
+fe_high = fe_4h_dose1_ranked$Sample_ID[1:Nextreme] # Gives the list of Sample_ID for most sensitive
+fe_low = fe_4h_dose1_ranked2$Sample_ID[1:Nextreme] # Gives the list of Sample_ID for most resistant
+
+fe_4h_norm_extreme_high <- fe_avg_4h_norm[ which(fe_avg_4h_norm$Sample_ID %in% fe_high),] # Extract data from most sensitive only
+fe_4h_norm_extreme_low <- fe_avg_4h_norm[ which(fe_avg_4h_norm$Sample_ID %in% fe_low),] # Extract data from most resistant only
+
+colnames(fe_4h_norm_extreme_high)[colnames(fe_4h_norm_extreme_high) == "variable"] = "Fluence"
+colnames(fe_4h_norm_extreme_high)[colnames(fe_4h_norm_extreme_high) == "value"] = "norm_nfoci"
+colnames(fe_4h_norm_extreme_low)[colnames(fe_4h_norm_extreme_low) == "variable"] = "Fluence"
+colnames(fe_4h_norm_extreme_low)[colnames(fe_4h_norm_extreme_low) == "value"] = "norm_nfoci"
+
+fe_extreme_high = merge(fe_4h_norm_extreme_high, subject_meta, by.x = 'Sample_ID', by.y = 'Sample_ID', all.x = FALSE, all.y = FALSE)
+col_trunc = c("Sample_ID","Fluence", "norm_nfoci","Age","Gender","BMI","BMI_group")
+fe_extreme_high = fe_extreme_high[,colnames(fe_extreme_high) %in% col_trunc]
+fe_extreme_high$BMI_group = factor(fe_extreme_high$BMI_group, levels = c("Normal", "Overweight", "Obese")) 
+
+fe_extreme_low = merge(fe_4h_norm_extreme_low, subject_meta, by.x = 'Sample_ID', by.y = 'Sample_ID', all.x = FALSE, all.y = FALSE)
+col_trunc = c("Sample_ID","Fluence", "norm_nfoci","Age","Gender","BMI","BMI_group")
+fe_extreme_low = fe_extreme_low[,colnames(fe_extreme_low) %in% col_trunc]
+fe_extreme_low$BMI_group = factor(fe_extreme_low$BMI_group, levels = c("Normal", "Overweight", "Obese")) 
+
+# For Ar:
+ar_4h_dose1 = all_4h_norm[all_4h_norm$Rad_type == "Ar" & all_4h_norm$Fluence == "1.1",]
+ar_4h_dose1_ranked = ar_4h_dose1[order(ar_4h_dose1$norm_nfoci, decreasing = TRUE),]
+ar_4h_dose1_ranked2 = ar_4h_dose1[order(ar_4h_dose1$norm_nfoci),]
+
+ar_high = ar_4h_dose1_ranked$Sample_ID[1:Nextreme] # Gives the list of Sample_ID for most sensitive
+ar_low = ar_4h_dose1_ranked2$Sample_ID[1:Nextreme] # Gives the list of Sample_ID for most resistant
+
+ar_4h_norm_extreme_high <- ar_avg_4h_norm[ which(ar_avg_4h_norm$Sample_ID %in% ar_high),] # Extract data from most sensitive only
+ar_4h_norm_extreme_low <- ar_avg_4h_norm[ which(ar_avg_4h_norm$Sample_ID %in% ar_low),] # Extract data from most resistant only
+
+colnames(ar_4h_norm_extreme_high)[colnames(ar_4h_norm_extreme_high) == "variable"] = "Fluence"
+colnames(ar_4h_norm_extreme_high)[colnames(ar_4h_norm_extreme_high) == "value"] = "norm_nfoci"
+colnames(ar_4h_norm_extreme_low)[colnames(ar_4h_norm_extreme_low) == "variable"] = "Fluence"
+colnames(ar_4h_norm_extreme_low)[colnames(ar_4h_norm_extreme_low) == "value"] = "norm_nfoci"
+
+ar_extreme_high = merge(ar_4h_norm_extreme_high, subject_meta, by.x = 'Sample_ID', by.y = 'Sample_ID', all.x = FALSE, all.y = FALSE)
+col_trunc = c("Sample_ID","Fluence", "norm_nfoci","Age","Gender","BMI","BMI_group")
+ar_extreme_high = ar_extreme_high[,colnames(ar_extreme_high) %in% col_trunc]
+ar_extreme_high$BMI_group = factor(ar_extreme_high$BMI_group, levels = c("Normal", "Overweight", "Obese")) 
+
+ar_extreme_low = merge(ar_4h_norm_extreme_low, subject_meta, by.x = 'Sample_ID', by.y = 'Sample_ID', all.x = FALSE, all.y = FALSE)
+col_trunc = c("Sample_ID","Fluence", "norm_nfoci","Age","Gender","BMI","BMI_group")
+ar_extreme_low = ar_extreme_low[,colnames(ar_extreme_low) %in% col_trunc]
+ar_extreme_low$BMI_group = factor(ar_extreme_low$BMI_group, levels = c("Normal", "Overweight", "Obese")) 
+
+
+# For Si:
+si_4h_dose1 = all_4h_norm[all_4h_norm$Rad_type == "Si" & all_4h_norm$Fluence == "1.1",]
+si_4h_dose1_ranked = si_4h_dose1[order(si_4h_dose1$norm_nfoci, decreasing = TRUE),]
+si_4h_dose1_ranked2 = si_4h_dose1[order(si_4h_dose1$norm_nfoci),]
+
+si_high = si_4h_dose1_ranked$Sample_ID[1:Nextreme] # Gives the list of Sample_ID for most sensitive
+si_low = si_4h_dose1_ranked2$Sample_ID[1:Nextreme] # Gives the list of Sample_ID for most resistant
+
+si_4h_norm_extreme_high <- si_avg_4h_norm[ which(si_avg_4h_norm$Sample_ID %in% si_high),] # Extract data from most sensitive only
+si_4h_norm_extreme_low <- si_avg_4h_norm[ which(si_avg_4h_norm$Sample_ID %in% si_low),] # Extract data from most resistant only
+
+colnames(si_4h_norm_extreme_high)[colnames(si_4h_norm_extreme_high) == "variable"] = "Fluence"
+colnames(si_4h_norm_extreme_high)[colnames(si_4h_norm_extreme_high) == "value"] = "norm_nfoci"
+colnames(si_4h_norm_extreme_low)[colnames(si_4h_norm_extreme_low) == "variable"] = "Fluence"
+colnames(si_4h_norm_extreme_low)[colnames(si_4h_norm_extreme_low) == "value"] = "norm_nfoci"
+
+si_extreme_high = merge(si_4h_norm_extreme_high, subject_meta, by.x = 'Sample_ID', by.y = 'Sample_ID', all.x = FALSE, all.y = FALSE)
+col_trunc = c("Sample_ID","Fluence", "norm_nfoci","Age","Gender","BMI","BMI_group")
+si_extreme_high = si_extreme_high[,colnames(si_extreme_high) %in% col_trunc]
+si_extreme_high$BMI_group = factor(si_extreme_high$BMI_group, levels = c("Normal", "Overweight", "Obese")) 
+
+si_extreme_low = merge(si_4h_norm_extreme_low, subject_meta, by.x = 'Sample_ID', by.y = 'Sample_ID', all.x = FALSE, all.y = FALSE)
+col_trunc = c("Sample_ID","Fluence", "norm_nfoci","Age","Gender","BMI","BMI_group")
+si_extreme_low = si_extreme_low[,colnames(si_extreme_low) %in% col_trunc]
+si_extreme_low$BMI_group = factor(si_extreme_low$BMI_group, levels = c("Normal", "Overweight", "Obese")) 
+
+
+# For Gamma:
+gamma_4h_dose1 = gamma_avg_4h_norm[gamma_avg_4h_norm$Dose == "0.1",]
+gamma_4h_dose1_ranked = gamma_4h_dose1[order(gamma_4h_dose1$norm_nfoci, decreasing = TRUE),]
+gamma_4h_dose1_ranked2 = gamma_4h_dose1[order(gamma_4h_dose1$norm_nfoci),]
+
+gamma_high = gamma_4h_dose1_ranked$Sample_ID[1:Nextreme] # Gives the list of Sample_ID for most sensitive
+gamma_low = gamma_4h_dose1_ranked2$Sample_ID[1:Nextreme] # Gives the list of Sample_ID for most resistant
+
+gamma_4h_norm_extreme_high <- gamma_avg_4h_norm[ which(gamma_avg_4h_norm$Sample_ID %in% gamma_high),] # Extract data from most sensitive only
+gamma_4h_norm_extreme_low <- gamma_avg_4h_norm[ which(gamma_avg_4h_norm$Sample_ID %in% gamma_low),] # Extract data from most resistant only
+
+colnames(gamma_4h_norm_extreme_high)[colnames(gamma_4h_norm_extreme_high) == "variable"] = "Dose"
+colnames(gamma_4h_norm_extreme_high)[colnames(gamma_4h_norm_extreme_high) == "value"] = "norm_nfoci"
+colnames(gamma_4h_norm_extreme_low)[colnames(gamma_4h_norm_extreme_low) == "variable"] = "Dose"
+colnames(gamma_4h_norm_extreme_low)[colnames(gamma_4h_norm_extreme_low) == "value"] = "norm_nfoci"
+
+gamma_extreme_high = merge(gamma_4h_norm_extreme_high, subject_meta, by.x = 'Sample_ID', by.y = 'Sample_ID', all.x = FALSE, all.y = FALSE)
+col_trunc = c("Sample_ID","Dose", "norm_nfoci","Age","Gender","BMI","BMI_group")
+gamma_extreme_high = gamma_extreme_high[,colnames(gamma_extreme_high) %in% col_trunc]
+gamma_extreme_high$BMI_group = factor(gamma_extreme_high$BMI_group, levels = c("Normal", "Overweight", "Obese")) 
+
+gamma_extreme_low = merge(gamma_4h_norm_extreme_low, subject_meta, by.x = 'Sample_ID', by.y = 'Sample_ID', all.x = FALSE, all.y = FALSE)
+col_trunc = c("Sample_ID","Dose", "norm_nfoci","Age","Gender","BMI","BMI_group")
+gamma_extreme_low = gamma_extreme_low[,colnames(gamma_extreme_low) %in% col_trunc]
+gamma_extreme_low$BMI_group = factor(gamma_extreme_low$BMI_group, levels = c("Normal", "Overweight", "Obese")) 
+```
+
+```{r}
+# We plot the dose-response for these extreme responders
+
+# For Fe
+all_plot = ggplot(fe_extreme_high, aes(x = Fluence, y = norm_nfoci, col = Age, label = Sample_ID)) + geom_point(aes(shape=Gender), size=3) + geom_line(aes(group = Sample_ID, linetype = BMI_group), size=1) + ggtitle("Fe: top 10 sensitive")
+all_plot + ylim(1,2.5) + xlab("Fluence (particles/100um^2)") + ylab("Normalized Average Number of Foci per Nucleus") + theme(axis.text.x = element_text(size=18)) + theme(axis.text.y = element_text(size=18)) + theme(axis.title.x = element_text(size=18)) + theme(axis.title.y = element_text(size=18)) + labs(col="Age") + theme(plot.title = element_text(size=18, face="bold"), legend.text=element_text(size=16), legend.title=element_text(size=16)) 
+
+all_plot = ggplot(fe_extreme_low, aes(x = Fluence, y = norm_nfoci, col = Age, label = Sample_ID)) + geom_point(aes(shape=Gender), size=3) + geom_line(aes(group = Sample_ID, linetype = BMI_group), size=1) + ggtitle("Fe: top 10 resistant")
+all_plot + xlab("Fluence (particles/100um^2)") + ylab("Normalized Average Number of Foci per Nucleus") + theme(axis.text.x = element_text(size=18)) + theme(axis.text.y = element_text(size=18)) + theme(axis.title.x = element_text(size=18)) + theme(axis.title.y = element_text(size=18)) + labs(col="Age") + theme(plot.title = element_text(size=18, face="bold"), legend.text=element_text(size=16), legend.title=element_text(size=16)) 
+
+# For Ar
+all_plot = ggplot(ar_extreme_high, aes(x = Fluence, y = norm_nfoci, col = Age, label = Sample_ID)) + geom_point(aes(shape=Gender), size=3) + geom_line(aes(group = Sample_ID, linetype = BMI_group), size=1) + ggtitle("Ar: top 10 sensitive")
+all_plot + ylim(1,2.5) + xlab("Fluence (particles/100um^2)") + ylab("Normalized Average Number of Foci per Nucleus") + theme(axis.text.x = element_text(size=18)) + theme(axis.text.y = element_text(size=18)) + theme(axis.title.x = element_text(size=18)) + theme(axis.title.y = element_text(size=18)) + labs(col="Age") + theme(plot.title = element_text(size=18, face="bold"), legend.text=element_text(size=16), legend.title=element_text(size=16)) 
+
+all_plot = ggplot(ar_extreme_low, aes(x = Fluence, y = norm_nfoci, col = Age, label = Sample_ID)) + geom_point(aes(shape=Gender), size=3) + geom_line(aes(group = Sample_ID, linetype = BMI_group), size=1) + ggtitle("Ar: top 10 resistant")
+all_plot + xlab("Fluence (particles/100um^2)") + ylab("Normalized Average Number of Foci per Nucleus") + theme(axis.text.x = element_text(size=18)) + theme(axis.text.y = element_text(size=18)) + theme(axis.title.x = element_text(size=18)) + theme(axis.title.y = element_text(size=18)) + labs(col="Age") + theme(plot.title = element_text(size=18, face="bold"), legend.text=element_text(size=16), legend.title=element_text(size=16)) 
+
+# For Si
+all_plot = ggplot(si_extreme_high, aes(x = Fluence, y = norm_nfoci, col = Age, label = Sample_ID)) + geom_point(aes(shape=Gender), size=3) + geom_line(aes(group = Sample_ID, linetype = BMI_group), size=1) + ggtitle("Si: top 10 sensitive")
+all_plot + ylim(1,2.5) + xlab("Fluence (particles/100um^2)") + ylab("Normalized Average Number of Foci per Nucleus") + theme(axis.text.x = element_text(size=18)) + theme(axis.text.y = element_text(size=18)) + theme(axis.title.x = element_text(size=18)) + theme(axis.title.y = element_text(size=18)) + labs(col="Age") + theme(plot.title = element_text(size=18, face="bold"), legend.text=element_text(size=16), legend.title=element_text(size=16)) 
+
+all_plot = ggplot(si_extreme_low, aes(x = Fluence, y = norm_nfoci, col = Age, label = Sample_ID)) + geom_point(aes(shape=Gender), size=3) + geom_line(aes(group = Sample_ID, linetype = BMI_group), size=1) + ggtitle("Si: top 10 resistant")
+all_plot + xlab("Fluence (particles/100um^2)") + ylab("Normalized Average Number of Foci per Nucleus") + theme(axis.text.x = element_text(size=18)) + theme(axis.text.y = element_text(size=18)) + theme(axis.title.x = element_text(size=18)) + theme(axis.title.y = element_text(size=18)) + labs(col="Age") + theme(plot.title = element_text(size=18, face="bold"), legend.text=element_text(size=16), legend.title=element_text(size=16)) 
+
+# For Gamma
+all_plot = ggplot(gamma_extreme_high, aes(x = Dose, y = norm_nfoci, col = Age, label = Sample_ID)) + geom_point(aes(shape=Gender), size=3) + geom_line(aes(group = Sample_ID, linetype = BMI_group), size=1) + ggtitle("Gamma: top 10 sensitive")
+all_plot + xlab("Dose (Gy)") + ylab("Normalized Average Number of Foci per Nucleus") + theme(axis.text.x = element_text(size=18)) + theme(axis.text.y = element_text(size=18)) + theme(axis.title.x = element_text(size=18)) + theme(axis.title.y = element_text(size=18)) + labs(col="Age") + theme(plot.title = element_text(size=18, face="bold"), legend.text=element_text(size=16), legend.title=element_text(size=16)) 
+
+all_plot = ggplot(gamma_extreme_low, aes(x = Dose, y = norm_nfoci, col = Age, label = Sample_ID)) + geom_point(aes(shape=Gender), size=3) + geom_line(aes(group = Sample_ID, linetype = BMI_group), size=1) + ggtitle("Gamma: top 10 resistant")
+all_plot + xlab("Dose (Gy)") + ylab("Normalized Average Number of Foci per Nucleus") + theme(axis.text.x = element_text(size=18)) + theme(axis.text.y = element_text(size=18)) + theme(axis.title.x = element_text(size=18)) + theme(axis.title.y = element_text(size=18)) + labs(col="Age") + theme(plot.title = element_text(size=18, face="bold"), legend.text=element_text(size=16), legend.title=element_text(size=16))
+```
+
+```{r}
+# Another way to define extreme responders: Determine extreme responders based on bottom and top quantiles for normalized number of foci at first fluence/dose
+
+quant_fe_bottom = quantile(fe_avg_4h_norm$value, na.rm = TRUE)[2]
+quant_fe_top = quantile(fe_avg_4h_norm$value, na.rm = TRUE)[4]
+subj_fe_res_bottom = fe_avg_4h_norm$Sample_ID[fe_avg_4h_norm$value < quant_fe_bottom]
+subj_fe_res_top = fe_avg_4h_norm$Sample_ID[fe_avg_4h_norm$value > quant_fe_bottom]
+
+fe_res_bottom <- fe_avg_4h_norm[ which(fe_avg_4h_norm$Sample_ID %in% subj_fe_res_bottom),]
+fe_res_bottom = merge(fe_res_bottom, subject_meta, by.x = 'Sample_ID', by.y = 'Sample_ID', all.x = FALSE, all.y = FALSE) # we want to add sample metadata
+col_trunc = c("Sample_ID","Fluence", "norm_nfoci","Age","Gender","BMI","BMI_group")
+fe_res_bottom = fe_res_bottom[,colnames(fe_res_bottom) %in% col_trunc]
+fe_res_bottom$BMI_group = factor(fe_res_bottom$BMI_group, levels = c("Normal", "Overweight", "Obese"))
+hist(fe_res_bottom$Age)
+
+quant_si_bottom = quantile(si_avg_4h_norm$value, na.rm = TRUE)[2]
+quant_si_top = quantile(si_avg_4h_norm$value, na.rm = TRUE)[4]
+subj_si_res_bottom = si_avg_4h_norm$Sample_ID[si_avg_4h_norm$value < quant_si_bottom]
+subj_si_res_top = si_avg_4h_norm$Sample_ID[si_avg_4h_norm$value > quant_si_bottom]
+
+quant_ar_bottom = quantile(ar_avg_4h_norm$value, na.rm = TRUE)[2]
+quant_ar_top = quantile(ar_avg_4h_norm$value, na.rm = TRUE)[4]
+subj_ar_res_bottom = ar_avg_4h_norm$Sample_ID[ar_avg_4h_norm$value < quant_ar_bottom]
+subj_ar_res_top = ar_avg_4h_norm$Sample_ID[ar_avg_4h_norm$value > quant_ar_bottom]
+
+quant_gamma_bottom = quantile(gamma_avg_4h_norm$value, na.rm = TRUE)[2]
+quant_gamma_top = quantile(gamma_avg_4h_norm$value, na.rm = TRUE)[4]
+subj_gamma_res_bottom = gamma_avg_4h_norm$Sample_ID[gamma_avg_4h_norm$value < quant_gamma_bottom]
+subj_gamma_res_top = gamma_avg_4h_norm$Sample_ID[gamma_avg_4h_norm$value > quant_gamma_bottom]
+
+subj_common_res_bottom = intersect(intersect(subj_fe_res_bottom, subj_si_res_bottom), subj_ar_res_bottom)
+subj_common_res_top = intersect(intersect(subj_fe_res_top, subj_si_res_top),subj_ar_res_top)
+```
+
+# Extreme Baselines -------------------------------------------------------------------------------------------------------------------------------------------
+
+```{r}
+N_extreme = 2*10 # Number of individuals we want to consider for each group of extreme baselines
+
+# For Fe:
+fe_avg_4h_norm_base = merge(fe_avg_4h_norm,baseline_avgfoci, by.x = 'Sample_ID', by.y = 'Sample_ID', all.x = FALSE, all.y = FALSE) #adds baseline data
+colnames(fe_avg_4h_norm_base)[colnames(fe_avg_4h_norm_base) == "variable"] = "Fluence"
+colnames(fe_avg_4h_norm_base)[colnames(fe_avg_4h_norm_base) == "avg_nfoci"] = "baseline_avg_nfoci"
+colnames(fe_avg_4h_norm_base)[colnames(fe_avg_4h_norm_base) == "value"] = "avg_nfoci"
+
+fe_baseline_order_min <- fe_avg_4h_norm_base[order(fe_avg_4h_norm_base$baseline_avg_nfoci),]
+fe_baseline_order_max <- fe_avg_4h_norm_base[order(fe_avg_4h_norm_base$baseline_avg_nfoci, decreasing = TRUE),]
+fe_baseline_low <- fe_baseline_order_min[1:N_extreme,]
+fe_baseline_low["Baseline"] <- rep("low",nrow(fe_baseline_low))
+fe_baseline_high <- fe_baseline_order_max[1:N_extreme,]
+fe_baseline_high["Baseline"] <- rep("high",nrow(fe_baseline_high))
+fe_baseline_extreme <- rbind.data.frame(fe_baseline_low,fe_baseline_high)
+
+plot_fe_extreme_base = ggplot(fe_baseline_extreme, aes(x = Fluence, y = avg_nfoci, fill=Baseline)) +  
+  geom_boxplot(lwd=1) + scale_fill_brewer(palette = "Pastel2") + ggtitle("Iron")
+plot_fe_extreme_base + ylim(1,2.2) + xlab("Fluence (particles/100um^2)") + ylab("Normalized Average Number of Foci per Nucleus") + theme(axis.text.x = element_text(size=18)) + theme(axis.text.y = element_text(size=18)) + theme(axis.title.x = element_text(size=18)) + theme(axis.title.y = element_text(size=18)) + labs(col="Radiation") + theme(plot.title = element_text(size=18, face="bold"), legend.text=element_text(size=16), legend.title=element_text(size=16))
+
+# For Ar:
+ar_avg_4h_norm_base = merge(ar_avg_4h_norm,baseline_avgfoci, by.x = 'Sample_ID', by.y = 'Sample_ID', all.x = FALSE, all.y = FALSE)
+colnames(ar_avg_4h_norm_base)[colnames(ar_avg_4h_norm_base) == "variable"] = "Fluence"
+colnames(ar_avg_4h_norm_base)[colnames(ar_avg_4h_norm_base) == "avg_nfoci"] = "baseline_avg_nfoci"
+colnames(ar_avg_4h_norm_base)[colnames(ar_avg_4h_norm_base) == "value"] = "avg_nfoci"
+
+ar_baseline_order_min <- ar_avg_4h_norm_base[order(ar_avg_4h_norm_base$baseline_avg_nfoci),]
+ar_baseline_order_max <- ar_avg_4h_norm_base[order(ar_avg_4h_norm_base$baseline_avg_nfoci, decreasing = TRUE),]
+ar_baseline_low <- ar_baseline_order_min[1:N_extreme,]
+ar_baseline_low["Baseline"] <- rep("low",nrow(ar_baseline_low))
+ar_baseline_high <- ar_baseline_order_max[1:N_extreme,]
+ar_baseline_high["Baseline"] <- rep("high",nrow(ar_baseline_high))
+ar_baseline_extreme <- rbind.data.frame(ar_baseline_low,ar_baseline_high)
+
+plot_ar_extreme_base = ggplot(ar_baseline_extreme, aes(x = Fluence, y = avg_nfoci, fill=Baseline)) +  
+  geom_boxplot(lwd=1) + scale_fill_brewer(palette = "Pastel2") + ggtitle("Argon")
+plot_ar_extreme_base + ylim(1,2.2) + xlab("Fluence (particles/100um^2)") + ylab("Normalized Average Number of Foci per Nucleus") + theme(axis.text.x = element_text(size=18)) + theme(axis.text.y = element_text(size=18)) + theme(axis.title.x = element_text(size=18)) + theme(axis.title.y = element_text(size=18)) + labs(col="Radiation") + theme(plot.title = element_text(size=18, face="bold"), legend.text=element_text(size=16), legend.title=element_text(size=16))
+
+# For Si:
+si_avg_4h_norm_base = merge(si_avg_4h_norm,baseline_avgfoci, by.x = 'Sample_ID', by.y = 'Sample_ID', all.x = FALSE, all.y = FALSE)
+colnames(si_avg_4h_norm_base)[colnames(si_avg_4h_norm_base) == "variable"] = "Fluence"
+colnames(si_avg_4h_norm_base)[colnames(si_avg_4h_norm_base) == "avg_nfoci"] = "baseline_avg_nfoci"
+colnames(si_avg_4h_norm_base)[colnames(si_avg_4h_norm_base) == "value"] = "avg_nfoci"
+
+si_baseline_order_min <- si_avg_4h_norm_base[order(si_avg_4h_norm_base$baseline_avg_nfoci),]
+si_baseline_order_max <- si_avg_4h_norm_base[order(si_avg_4h_norm_base$baseline_avg_nfoci, decreasing = TRUE),]
+si_baseline_low <- si_baseline_order_min[1:N_extreme,]
+si_baseline_low["Baseline"] <- rep("low",nrow(si_baseline_low))
+si_baseline_high <- si_baseline_order_max[1:N_extreme,]
+si_baseline_high["Baseline"] <- rep("high",nrow(si_baseline_high))
+si_baseline_extreme <- rbind.data.frame(si_baseline_low,si_baseline_high)
+
+plot_si_extreme_base = ggplot(si_baseline_extreme, aes(x = Fluence, y = avg_nfoci, fill=Baseline)) +  
+  geom_boxplot(lwd=1) + scale_fill_brewer(palette = "Pastel2") + ggtitle("Silicon")
+plot_si_extreme_base + ylim(1,2) + xlab("Fluence (particles/100um^2)") + ylab("Normalized Average Number of Foci per Nucleus") + theme(axis.text.x = element_text(size=18)) + theme(axis.text.y = element_text(size=18)) + theme(axis.title.x = element_text(size=18)) + theme(axis.title.y = element_text(size=18)) + labs(col="Radiation") + theme(plot.title = element_text(size=18, face="bold"), legend.text=element_text(size=16), legend.title=element_text(size=16))
+
+# For Gamma:
+gamma_avg_4h_norm_base = merge(gamma_avg_4h_norm,baseline_avgfoci, by.x = 'Sample_ID', by.y = 'Sample_ID', all.x = FALSE, all.y = FALSE)
+colnames(gamma_avg_4h_norm_base)[colnames(gamma_avg_4h_norm_base) == "avg_nfoci"] = "baseline_avg_nfoci"
+
+gamma_baseline_order_min <- gamma_avg_4h_norm_base[order(gamma_avg_4h_norm_base$baseline_avg_nfoci),]
+gamma_baseline_order_max <- gamma_avg_4h_norm_base[order(gamma_avg_4h_norm_base$baseline_avg_nfoci, decreasing = TRUE),]
+gamma_baseline_low <- gamma_baseline_order_min[1:N_extreme,]
+gamma_baseline_low["Baseline"] <- rep("low",nrow(gamma_baseline_low))
+gamma_baseline_high <- gamma_baseline_order_max[1:N_extreme,]
+gamma_baseline_high["Baseline"] <- rep("high",nrow(gamma_baseline_high))
+gamma_baseline_extreme <- rbind.data.frame(gamma_baseline_low,gamma_baseline_high)
+
+plot_gamma_extreme_base = ggplot(gamma_baseline_extreme, aes(x = Dose, y = norm_nfoci, fill=Baseline)) +  
+  geom_boxplot(lwd=1) + scale_fill_brewer(palette = "Pastel2") + ggtitle("Gamma")
+plot_gamma_extreme_base + ylim(1,2) + xlab("Dose (Gy)") + ylab("Normalized Average Number of Foci per Nucleus") + theme(axis.text.x = element_text(size=18)) + theme(axis.text.y = element_text(size=18)) + theme(axis.title.x = element_text(size=18)) + theme(axis.title.y = element_text(size=18)) + labs(col="Radiation") + theme(plot.title = element_text(size=18, face="bold"), legend.text=element_text(size=16), legend.title=element_text(size=16))
+```
+
+## Combine all RIF data in a table for study with all other phenotypes ----------------------------------------------------------------------------------------------------------------------
+
+```{r}
+## For Fe:
+fe_reshaped <- dcast(fe_avg, Sample_ID + Timepoint ~ Fluence, value.var = 'avg_nfoci')
+colnames(fe_reshaped)[colnames(fe_reshaped) == "0"] = "Fe_avg_nfoci_0"
+colnames(fe_reshaped)[colnames(fe_reshaped) == "1.1"] = "Fe_avg_nfoci_1"
+colnames(fe_reshaped)[colnames(fe_reshaped) == "3"] = "Fe_avg_nfoci_3"
+fe_reshaped$Fe_avg_nfoci_fold_low = fe_reshaped$Fe_avg_nfoci_1 / fe_reshaped$Fe_avg_nfoci_0
+fe_reshaped$Fe_avg_nfoci_fold_high = fe_reshaped$Fe_avg_nfoci_3 / fe_reshaped$Fe_avg_nfoci_0
+
+fe_reshaped_4h = fe_reshaped[fe_reshaped$Timepoint == "4h",]
+colnames(fe_reshaped_4h)[colnames(fe_reshaped_4h) == "Fe_avg_nfoci_0"] = "Fe_avg_nfoci_0_4h"
+colnames(fe_reshaped_4h)[colnames(fe_reshaped_4h) == "Fe_avg_nfoci_1"] = "Fe_avg_nfoci_1_4h"
+colnames(fe_reshaped_4h)[colnames(fe_reshaped_4h) == "Fe_avg_nfoci_3"] = "Fe_avg_nfoci_3_4h"
+colnames(fe_reshaped_4h)[colnames(fe_reshaped_4h) == "Fe_avg_nfoci_fold_low"] = "Fe_avg_nfoci_fold_low_4h"
+colnames(fe_reshaped_4h)[colnames(fe_reshaped_4h) == "Fe_avg_nfoci_fold_high"] = "Fe_avg_nfoci_fold_high_4h"
+
+fe_reshaped_24h = fe_reshaped[fe_reshaped$Timepoint == "24h",]
+colnames(fe_reshaped_24h)[colnames(fe_reshaped_24h) == "Fe_avg_nfoci_0"] = "Fe_avg_nfoci_0_24h"
+colnames(fe_reshaped_24h)[colnames(fe_reshaped_24h) == "Fe_avg_nfoci_1"] = "Fe_avg_nfoci_1_24h"
+colnames(fe_reshaped_24h)[colnames(fe_reshaped_24h) == "Fe_avg_nfoci_3"] = "Fe_avg_nfoci_3_24h"
+colnames(fe_reshaped_24h)[colnames(fe_reshaped_24h) == "Fe_avg_nfoci_fold_low"] = "Fe_avg_nfoci_fold_low_24h"
+colnames(fe_reshaped_24h)[colnames(fe_reshaped_24h) == "Fe_avg_nfoci_fold_high"] = "Fe_avg_nfoci_fold_high_24h"
+
+fe_temp = merge(fe_reshaped_4h, fe_reshaped_24h, by.x = 'Sample_ID', by.y = 'Sample_ID')
+fe_temp$Fe_avg_nfoci_decay_0 = fe_temp$Fe_avg_nfoci_0_24h / fe_temp$Fe_avg_nfoci_0_4h
+fe_temp$Fe_avg_nfoci_decay_1 = fe_temp$Fe_avg_nfoci_1_24h / fe_temp$Fe_avg_nfoci_1_4h
+fe_temp$Fe_avg_nfoci_decay_3 = fe_temp$Fe_avg_nfoci_3_24h / fe_temp$Fe_avg_nfoci_3_4h
+fe_temp$Fe_avg_nfoci_decay_fold_low = fe_temp$Fe_avg_nfoci_decay_1/fe_temp$Fe_avg_nfoci_decay_0
+fe_temp$Fe_avg_nfoci_decay_fold_high = fe_temp$Fe_avg_nfoci_decay_3/fe_temp$Fe_avg_nfoci_decay_0
+fe_temp$Fe_avg_nfoci_decay_fold_fluence_low = fe_temp$Fe_avg_nfoci_decay_fold_low/1.1
+fe_temp$Fe_avg_nfoci_decay_fold_fluence_high = fe_temp$Fe_avg_nfoci_decay_fold_high/3
+
+fe_all_temp = merge(fe_reshaped, fe_temp, by.x = 'Sample_ID', by.y = 'Sample_ID')
+cols_to_keep = c('Sample_ID','Fe_avg_nfoci_0_4h','Fe_avg_nfoci_1_4h','Fe_avg_nfoci_3_4h','Fe_avg_nfoci_0_24h','Fe_avg_nfoci_1_24h','Fe_avg_nfoci_3_24h')
+fe_all_kinetics = fe_all_temp[, colnames(fe_all_temp) %in% cols_to_keep]
+fe_all_kinetics$Fe_avg_nfoci_1_4h_norm = fe_all_kinetics$Fe_avg_nfoci_1_4h / 1.1
+fe_all_kinetics$Fe_avg_nfoci_3_4h_norm = fe_all_kinetics$Fe_avg_nfoci_3_4h / 3
+fe_all_kinetics$Fe_avg_nfoci_1_24h_norm = fe_all_kinetics$Fe_avg_nfoci_1_24h / 1.1
+fe_all_kinetics$Fe_avg_nfoci_3_24h_norm = fe_all_kinetics$Fe_avg_nfoci_3_24h / 3
+fe_all_kinetics$Fe_avg_nfoci_1_residual = fe_all_kinetics$Fe_avg_nfoci_1_24h_norm / fe_all_kinetics$Fe_avg_nfoci_1_4h_norm 
+fe_all_kinetics$Fe_avg_nfoci_3_residual = fe_all_kinetics$Fe_avg_nfoci_3_24h_norm / fe_all_kinetics$Fe_avg_nfoci_3_4h_norm 
+fe_all_kinetics = unique(fe_all_kinetics)
+
+cols_to_drop = c('Timepoint.x', 'Fe_avg_nfoci_0_4h', 'Fe_avg_nfoci_1_4h', 'Fe_avg_nfoci_3_4h', 'Fe_avg_nfoci_fold_low_4h', 'Fe_avg_nfoci_fold_high_4h', 'Timepoint.y', 'Fe_avg_nfoci_0_24h', 'Fe_avg_nfoci_1_24h', 'Fe_avg_nfoci_3_24h', 'Fe_avg_nfoci_fold_low_24h', 'Fe_avg_nfoci_fold_high_24h')
+fe_all = fe_all_temp[, !colnames(fe_all_temp) %in% cols_to_drop]
+
+## For Ar:
+ar_reshaped <- dcast(ar_avg, Sample_ID + Timepoint ~ Fluence, value.var = 'avg_nfoci')
+colnames(ar_reshaped)[colnames(ar_reshaped) == "0"] = "Ar_avg_nfoci_0"
+colnames(ar_reshaped)[colnames(ar_reshaped) == "1.1"] = "Ar_avg_nfoci_1"
+colnames(ar_reshaped)[colnames(ar_reshaped) == "3"] = "Ar_avg_nfoci_3"
+ar_reshaped$Ar_avg_nfoci_fold_low = ar_reshaped$Ar_avg_nfoci_1 / ar_reshaped$Ar_avg_nfoci_0
+ar_reshaped$Ar_avg_nfoci_fold_high = ar_reshaped$Ar_avg_nfoci_3 / ar_reshaped$Ar_avg_nfoci_0
+
+ar_reshaped_4h = ar_reshaped[ar_reshaped$Timepoint == "4h",]
+colnames(ar_reshaped_4h)[colnames(ar_reshaped_4h) == "Ar_avg_nfoci_0"] = "Ar_avg_nfoci_0_4h"
+colnames(ar_reshaped_4h)[colnames(ar_reshaped_4h) == "Ar_avg_nfoci_1"] = "Ar_avg_nfoci_1_4h"
+colnames(ar_reshaped_4h)[colnames(ar_reshaped_4h) == "Ar_avg_nfoci_3"] = "Ar_avg_nfoci_3_4h"
+colnames(ar_reshaped_4h)[colnames(ar_reshaped_4h) == "Ar_avg_nfoci_fold_low"] = "Ar_avg_nfoci_fold_low_4h"
+colnames(ar_reshaped_4h)[colnames(ar_reshaped_4h) == "Ar_avg_nfoci_fold_high"] = "Ar_avg_nfoci_fold_high_4h"
+
+ar_reshaped_24h = ar_reshaped[ar_reshaped$Timepoint == "24h",]
+colnames(ar_reshaped_24h)[colnames(ar_reshaped_24h) == "Ar_avg_nfoci_0"] = "Ar_avg_nfoci_0_24h"
+colnames(ar_reshaped_24h)[colnames(ar_reshaped_24h) == "Ar_avg_nfoci_1"] = "Ar_avg_nfoci_1_24h"
+colnames(ar_reshaped_24h)[colnames(ar_reshaped_24h) == "Ar_avg_nfoci_3"] = "Ar_avg_nfoci_3_24h"
+colnames(ar_reshaped_24h)[colnames(ar_reshaped_24h) == "Ar_avg_nfoci_fold_low"] = "Ar_avg_nfoci_fold_low_24h"
+colnames(ar_reshaped_24h)[colnames(ar_reshaped_24h) == "Ar_avg_nfoci_fold_high"] = "Ar_avg_nfoci_fold_high_24h"
+
+ar_temp = merge(ar_reshaped_4h, ar_reshaped_24h, by.x = 'Sample_ID', by.y = 'Sample_ID')
+ar_temp$Ar_avg_nfoci_decay_0 = ar_temp$Ar_avg_nfoci_0_24h / ar_temp$Ar_avg_nfoci_0_4h
+ar_temp$Ar_avg_nfoci_decay_1 = ar_temp$Ar_avg_nfoci_1_24h / ar_temp$Ar_avg_nfoci_1_4h
+ar_temp$Ar_avg_nfoci_decay_3 = ar_temp$Ar_avg_nfoci_3_24h / ar_temp$Ar_avg_nfoci_3_4h
+ar_temp$Ar_avg_nfoci_decay_fold_low = ar_temp$Ar_avg_nfoci_decay_1/ar_temp$Ar_avg_nfoci_decay_0
+ar_temp$Ar_avg_nfoci_decay_fold_high = ar_temp$Ar_avg_nfoci_decay_3/ar_temp$Ar_avg_nfoci_decay_0
+ar_temp$Ar_avg_nfoci_decay_fold_fluence_low = ar_temp$Ar_avg_nfoci_decay_fold_low/1.1
+ar_temp$Ar_avg_nfoci_decay_fold_fluence_high = ar_temp$Ar_avg_nfoci_decay_fold_high/3
+
+ar_all_temp = merge(ar_reshaped, ar_temp, by.x = 'Sample_ID', by.y = 'Sample_ID')
+cols_to_keep = c('Sample_ID','Ar_avg_nfoci_0_4h','Ar_avg_nfoci_1_4h','Ar_avg_nfoci_3_4h','Ar_avg_nfoci_0_24h','Ar_avg_nfoci_1_24h','Ar_avg_nfoci_3_24h')
+ar_all_kinetics = ar_all_temp[, colnames(ar_all_temp) %in% cols_to_keep]
+ar_all_kinetics$Ar_avg_nfoci_1_4h_norm = ar_all_kinetics$Ar_avg_nfoci_1_4h / 1.1
+ar_all_kinetics$Ar_avg_nfoci_3_4h_norm = ar_all_kinetics$Ar_avg_nfoci_3_4h / 3
+ar_all_kinetics$Ar_avg_nfoci_1_24h_norm = ar_all_kinetics$Ar_avg_nfoci_1_24h / 1.1
+ar_all_kinetics$Ar_avg_nfoci_3_24h_norm = ar_all_kinetics$Ar_avg_nfoci_3_24h / 3
+ar_all_kinetics$Ar_avg_nfoci_1_residual = ar_all_kinetics$Ar_avg_nfoci_1_24h_norm / ar_all_kinetics$Ar_avg_nfoci_1_4h_norm 
+ar_all_kinetics$Ar_avg_nfoci_3_residual = ar_all_kinetics$Ar_avg_nfoci_3_24h_norm / ar_all_kinetics$Ar_avg_nfoci_3_4h_norm 
+ar_all_kinetics = unique(ar_all_kinetics)
+
+cols_to_drop = c('Timepoint.x', 'Ar_avg_nfoci_0_4h', 'Ar_avg_nfoci_1_4h', 'Ar_avg_nfoci_3_4h', 'Ar_avg_nfoci_fold_low_4h', 'Ar_avg_nfoci_fold_high_4h', 'Timepoint.y', 'Ar_avg_nfoci_0_24h', 'Ar_avg_nfoci_1_24h', 'Ar_avg_nfoci_3_24h', 'Ar_avg_nfoci_fold_low_24h', 'Ar_avg_nfoci_fold_high_24h')
+ar_all = ar_all_temp[, !colnames(ar_all_temp) %in% cols_to_drop]
+
+## For Si:
+si_reshaped <- dcast(si_avg, Sample_ID + Timepoint ~ Fluence, value.var = 'avg_nfoci')
+colnames(si_reshaped)[colnames(si_reshaped) == "0"] = "Si_avg_nfoci_0"
+colnames(si_reshaped)[colnames(si_reshaped) == "1.1"] = "Si_avg_nfoci_1"
+colnames(si_reshaped)[colnames(si_reshaped) == "3"] = "Si_avg_nfoci_3"
+si_reshaped$Si_avg_nfoci_fold_low = si_reshaped$Si_avg_nfoci_1 / si_reshaped$Si_avg_nfoci_0
+si_reshaped$Si_avg_nfoci_fold_high = si_reshaped$Si_avg_nfoci_3 / si_reshaped$Si_avg_nfoci_0
+
+si_reshaped_4h = si_reshaped[si_reshaped$Timepoint == "4h",]
+colnames(si_reshaped_4h)[colnames(si_reshaped_4h) == "Si_avg_nfoci_0"] = "Si_avg_nfoci_0_4h"
+colnames(si_reshaped_4h)[colnames(si_reshaped_4h) == "Si_avg_nfoci_1"] = "Si_avg_nfoci_1_4h"
+colnames(si_reshaped_4h)[colnames(si_reshaped_4h) == "Si_avg_nfoci_3"] = "Si_avg_nfoci_3_4h"
+colnames(si_reshaped_4h)[colnames(si_reshaped_4h) == "Si_avg_nfoci_fold_low"] = "Si_avg_nfoci_fold_low_4h"
+colnames(si_reshaped_4h)[colnames(si_reshaped_4h) == "Si_avg_nfoci_fold_high"] = "Si_avg_nfoci_fold_high_4h"
+
+si_reshaped_24h = si_reshaped[si_reshaped$Timepoint == "24h",]
+colnames(si_reshaped_24h)[colnames(si_reshaped_24h) == "Si_avg_nfoci_0"] = "Si_avg_nfoci_0_24h"
+colnames(si_reshaped_24h)[colnames(si_reshaped_24h) == "Si_avg_nfoci_1"] = "Si_avg_nfoci_1_24h"
+colnames(si_reshaped_24h)[colnames(si_reshaped_24h) == "Si_avg_nfoci_3"] = "Si_avg_nfoci_3_24h"
+colnames(si_reshaped_24h)[colnames(si_reshaped_24h) == "Si_avg_nfoci_fold_low"] = "Si_avg_nfoci_fold_low_24h"
+colnames(si_reshaped_24h)[colnames(si_reshaped_24h) == "Si_avg_nfoci_fold_high"] = "Si_avg_nfoci_fold_high_24h"
+
+si_temp = merge(si_reshaped_4h, si_reshaped_24h, by.x = 'Sample_ID', by.y = 'Sample_ID')
+si_temp$Si_avg_nfoci_decay_0 = si_temp$Si_avg_nfoci_0_24h / si_temp$Si_avg_nfoci_0_4h
+si_temp$Si_avg_nfoci_decay_1 = si_temp$Si_avg_nfoci_1_24h / si_temp$Si_avg_nfoci_1_4h
+si_temp$Si_avg_nfoci_decay_3 = si_temp$Si_avg_nfoci_3_24h / si_temp$Si_avg_nfoci_3_4h
+si_temp$Si_avg_nfoci_decay_fold_low = si_temp$Si_avg_nfoci_decay_1/si_temp$Si_avg_nfoci_decay_0
+si_temp$Si_avg_nfoci_decay_fold_high = si_temp$Si_avg_nfoci_decay_3/si_temp$Si_avg_nfoci_decay_0
+si_temp$Si_avg_nfoci_decay_fold_fluence_low = si_temp$Si_avg_nfoci_decay_fold_low/1.1
+si_temp$Si_avg_nfoci_decay_fold_fluence_high = si_temp$Si_avg_nfoci_decay_fold_high/3
+
+si_all_temp = merge(si_reshaped, si_temp, by.x = 'Sample_ID', by.y = 'Sample_ID')
+cols_to_keep = c('Sample_ID','Si_avg_nfoci_0_4h','Si_avg_nfoci_1_4h','Si_avg_nfoci_3_4h','Si_avg_nfoci_0_24h','Si_avg_nfoci_1_24h','Si_avg_nfoci_3_24h')
+si_all_kinetics = si_all_temp[, colnames(si_all_temp) %in% cols_to_keep]
+si_all_kinetics$Si_avg_nfoci_1_4h_norm = si_all_kinetics$Si_avg_nfoci_1_4h / 1.1
+si_all_kinetics$Si_avg_nfoci_3_4h_norm = si_all_kinetics$Si_avg_nfoci_3_4h / 3
+si_all_kinetics$Si_avg_nfoci_1_24h_norm = si_all_kinetics$Si_avg_nfoci_1_24h / 1.1
+si_all_kinetics$Si_avg_nfoci_3_24h_norm = si_all_kinetics$Si_avg_nfoci_3_24h / 3
+si_all_kinetics$Si_avg_nfoci_1_residual = si_all_kinetics$Si_avg_nfoci_1_24h_norm / si_all_kinetics$Si_avg_nfoci_1_4h_norm 
+si_all_kinetics$Si_avg_nfoci_3_residual = si_all_kinetics$Si_avg_nfoci_3_24h_norm / si_all_kinetics$Si_avg_nfoci_3_4h_norm 
+si_all_kinetics = unique(si_all_kinetics)
+
+cols_to_drop = c('Timepoint.x', 'Si_avg_nfoci_0_4h', 'Si_avg_nfoci_1_4h', 'Si_avg_nfoci_3_4h', 'Si_avg_nfoci_fold_low_4h', 'Si_avg_nfoci_fold_high_4h', 'Timepoint.y', 'Si_avg_nfoci_0_24h', 'Si_avg_nfoci_1_24h', 'Si_avg_nfoci_3_24h', 'Si_avg_nfoci_fold_low_24h', 'Si_avg_nfoci_fold_high_24h')
+si_all = si_all_temp[, !colnames(si_all_temp) %in% cols_to_drop]
+
+## For Gamma:
+gamma_reshaped <- dcast(gamma_avg, Sample_ID + Timepoint ~ Fluence, value.var = 'avg_nfoci')
+colnames(gamma_reshaped)[colnames(gamma_reshaped) == "0"] = "Gamma_avg_nfoci_0"
+colnames(gamma_reshaped)[colnames(gamma_reshaped) == "0.1"] = "Gamma_avg_nfoci_10"
+colnames(gamma_reshaped)[colnames(gamma_reshaped) == "1"] = "Gamma_avg_nfoci_100"
+gamma_reshaped$Gamma_avg_nfoci_fold_low = gamma_reshaped$Gamma_avg_nfoci_10 / gamma_reshaped$Gamma_avg_nfoci_0
+gamma_reshaped$Gamma_avg_nfoci_fold_high = gamma_reshaped$Gamma_avg_nfoci_100 / gamma_reshaped$Gamma_avg_nfoci_0
+
+gamma_reshaped_4h = gamma_reshaped[gamma_reshaped$Timepoint == "4h",]
+colnames(gamma_reshaped_4h)[colnames(gamma_reshaped_4h) == "Gamma_avg_nfoci_0"] = "Gamma_avg_nfoci_0_4h"
+colnames(gamma_reshaped_4h)[colnames(gamma_reshaped_4h) == "Gamma_avg_nfoci_10"] = "Gamma_avg_nfoci_10_4h"
+colnames(gamma_reshaped_4h)[colnames(gamma_reshaped_4h) == "Gamma_avg_nfoci_100"] = "Gamma_avg_nfoci_100_4h"
+colnames(gamma_reshaped_4h)[colnames(gamma_reshaped_4h) == "Gamma_avg_nfoci_fold_low"] = "Gamma_avg_nfoci_fold_low_4h"
+colnames(gamma_reshaped_4h)[colnames(gamma_reshaped_4h) == "Gamma_avg_nfoci_fold_high"] = "Gamma_avg_nfoci_fold_high_4h"
+
+gamma_reshaped_24h = gamma_reshaped[gamma_reshaped$Timepoint == "24h",]
+colnames(gamma_reshaped_24h)[colnames(gamma_reshaped_24h) == "Gamma_avg_nfoci_0"] = "Gamma_avg_nfoci_0_24h"
+colnames(gamma_reshaped_24h)[colnames(gamma_reshaped_24h) == "Gamma_avg_nfoci_10"] = "Gamma_avg_nfoci_10_24h"
+colnames(gamma_reshaped_24h)[colnames(gamma_reshaped_24h) == "Gamma_avg_nfoci_100"] = "Gamma_avg_nfoci_100_24h"
+colnames(gamma_reshaped_24h)[colnames(gamma_reshaped_24h) == "Gamma_avg_nfoci_fold_low"] = "Gamma_avg_nfoci_fold_low_24h"
+colnames(gamma_reshaped_24h)[colnames(gamma_reshaped_24h) == "Gamma_avg_nfoci_fold_high"] = "Gamma_avg_nfoci_fold_high_24h"
+
+gamma_temp = merge(gamma_reshaped_4h, gamma_reshaped_24h, by.x = 'Sample_ID', by.y = 'Sample_ID')
+gamma_temp$Gamma_avg_nfoci_decay_0 = gamma_temp$Gamma_avg_nfoci_0_24h / gamma_temp$Gamma_avg_nfoci_0_4h
+gamma_temp$Gamma_avg_nfoci_decay_10 = gamma_temp$Gamma_avg_nfoci_10_24h / gamma_temp$Gamma_avg_nfoci_10_4h
+gamma_temp$Gamma_avg_nfoci_decay_100 = gamma_temp$Gamma_avg_nfoci_100_24h / gamma_temp$Gamma_avg_nfoci_100_4h
+gamma_temp$Gamma_avg_nfoci_decay_fold_low = gamma_temp$Gamma_avg_nfoci_decay_10/gamma_temp$Gamma_avg_nfoci_decay_0
+gamma_temp$Gamma_avg_nfoci_decay_fold_high = gamma_temp$Gamma_avg_nfoci_decay_100/gamma_temp$Gamma_avg_nfoci_decay_0
+gamma_temp$Gamma_avg_nfoci_decay_fold_dose_low = gamma_temp$Gamma_avg_nfoci_decay_fold_low/0.1
+gamma_temp$Gamma_avg_nfoci_decay_fold_dose_high = gamma_temp$Gamma_avg_nfoci_decay_fold_high/1
+
+gamma_all = merge(gamma_reshaped, gamma_temp, by.x = 'Sample_ID', by.y = 'Sample_ID')
+
+cols_to_drop = c('Timepoint.x', 'Gamma_avg_nfoci_0_4h', 'Gamma_avg_nfoci_10_4h', 'Gamma_avg_nfoci_100_4h', 'Gamma_avg_nfoci_fold_low_4h', 'Gamma_avg_nfoci_fold_high_4h', 'Timepoint.y', 'Gamma_avg_nfoci_0_24h', 'Gamma_avg_nfoci_10_24h', 'Gamma_avg_nfoci_100_24h', 'Gamma_avg_nfoci_fold_low_24h', 'Gamma_avg_nfoci_fold_high_24h')
+gamma_all = gamma_all[, !colnames(gamma_all) %in% cols_to_drop]
+
+## Combine all:
+all_RIF = merge(fe_all, ar_all, by.x = c('Sample_ID','Timepoint'), by.y = c('Sample_ID','Timepoint'))
+all_RIF = merge(all_RIF, si_all, by.x = c('Sample_ID','Timepoint'), by.y = c('Sample_ID','Timepoint'))
+all_RIF = merge(all_RIF, gamma_all, by.x = c('Sample_ID','Timepoint'), by.y = c('Sample_ID','Timepoint'))
+```
+
+## Generating tables for plotting on Prism
+```{r}
+all_RIF_4h = all_RIF[all_RIF$Timepoint == "4h",]
+all_RIF_24h = all_RIF[all_RIF$Timepoint == "24h",]
+
+write.csv(all_RIF_4h,"all_RIF_4h.csv")
+write.csv(all_RIF_24h,"all_RIF_24h.csv")
+
+cols_gamma = c('Gamma_avg_nfoci_0','Gamma_avg_nfoci_10','Gamma_avg_nfoci_100')
+RIF_gamma_4h = na.omit(all_RIF_4h[, colnames(all_RIF_4h) %in% cols_gamma])
+RIF_gamma_24h = na.omit(all_RIF_24h[, colnames(all_RIF_24h) %in% cols_gamma])
+write.csv(RIF_gamma_4h,"RIF_gamma_4h.csv")
+write.csv(RIF_gamma_24h,"RIF_gamma_24h.csv")
+
+cols_fe = c('Fe_avg_nfoci_0','Fe_avg_nfoci_1','Fe_avg_nfoci_3')
+RIF_fe_4h = na.omit(all_RIF_4h[, colnames(all_RIF_4h) %in% cols_fe])
+RIF_fe_24h = na.omit(all_RIF_24h[, colnames(all_RIF_24h) %in% cols_fe])
+write.csv(RIF_fe_4h,"RIF_fe_4h.csv")
+write.csv(RIF_fe_24h,"RIF_fe_24h.csv")
+
+cols_gamma = c('Gamma_avg_nfoci_fold_low','Gamma_avg_nfoci_fold_high')
+RIF_gamma_4h = all_RIF_4h[, colnames(all_RIF_4h) %in% cols_gamma]
+RIF_gamma_24h = all_RIF_24h[, colnames(all_RIF_24h) %in% cols_gamma]
+write.csv(RIF_gamma_4h,"RIF_gamma_4h.csv")
+write.csv(RIF_gamma_24h,"RIF_gamma_24h.csv")
+
+cols_fe = c('Fe_avg_nfoci_fold_low','Fe_avg_nfoci_fold_high')
+RIF_fe_4h = all_RIF_4h[, colnames(all_RIF_4h) %in% cols_fe]
+RIF_fe_24h = all_RIF_24h[, colnames(all_RIF_24h) %in% cols_fe]
+write.csv(RIF_fe_4h,"RIF_fe_4h.csv")
+write.csv(RIF_fe_24h,"RIF_fe_24h.csv")
+
+cols_ar = c('Ar_avg_nfoci_fold_low','Ar_avg_nfoci_fold_high')
+RIF_ar_4h = all_RIF_4h[, colnames(all_RIF_4h) %in% cols_ar]
+RIF_ar_24h = all_RIF_24h[, colnames(all_RIF_24h) %in% cols_ar]
+write.csv(RIF_ar_4h,"RIF_ar_4h.csv")
+write.csv(RIF_ar_24h,"RIF_ar_24h.csv")
+
+cols_si = c('Si_avg_nfoci_fold_low','Si_avg_nfoci_fold_high')
+RIF_si_4h = all_RIF_4h[, colnames(all_RIF_4h) %in% cols_si]
+RIF_si_24h = all_RIF_24h[, colnames(all_RIF_24h) %in% cols_si]
+write.csv(RIF_si_4h,"RIF_si_4h.csv")
+write.csv(RIF_si_24h,"RIF_si_24h.csv")
+
+cols_gamma = c('Gamma_avg_nfoci_decay_fold_low','Gamma_avg_nfoci_decay_fold_high')
+RIF_gamma_decay = all_RIF_24h[, colnames(all_RIF_24h) %in% cols_gamma]
+write.csv(RIF_gamma_decay,"RIF_gamma_decay.csv")
+
+cols_fe = c('Fe_avg_nfoci_decay_fold_low','Fe_avg_nfoci_decay_fold_high')
+RIF_fe_decay = all_RIF_24h[, colnames(all_RIF_24h) %in% cols_fe]
+write.csv(RIF_fe_decay,"RIF_fe_decay.csv")
+
+cols_ar = c('Ar_avg_nfoci_decay_fold_low','Ar_avg_nfoci_decay_fold_high')
+RIF_ar_decay = all_RIF_24h[, colnames(all_RIF_24h) %in% cols_ar]
+write.csv(RIF_ar_decay,"RIF_ar_decay.csv")
+
+cols_si = c('Si_avg_nfoci_decay_fold_low','Si_avg_nfoci_decay_fold_high')
+RIF_si_decay = all_RIF_24h[, colnames(all_RIF_24h) %in% cols_si]
+write.csv(RIF_si_decay,"RIF_si_decay.csv")
+
+subject_meta = read.csv('/Users/epariset/Desktop/R_Code-work/Sample_metadata.csv', sep = ",", header = TRUE)
+all_RIF_meta = merge(all_RIF, subject_meta, by.x = 'Sample_ID', by.y = 'Sample_ID', all.x = TRUE, all.y = TRUE)
+
+cols_gamma = c('Timepoint','Gender','Age','BMI','Gamma_avg_nfoci_fold_low','Gamma_avg_nfoci_fold_high')
+RIF_gamma_meta = all_RIF_meta[, colnames(all_RIF_meta) %in% cols_gamma]
+RIF_gamma_4h_male = RIF_gamma_meta[RIF_gamma_meta$Gender == 'M' & RIF_gamma_meta$Timepoint == '4h',]
+RIF_gamma_4h_female = RIF_gamma_meta[RIF_gamma_meta$Gender == 'F' & RIF_gamma_meta$Timepoint == '4h',]
+write.csv(RIF_gamma_4h_male,"RIF_gamma_4h_male.csv")
+write.csv(RIF_gamma_4h_female,"RIF_gamma_4h_female.csv")
+RIF_gamma_24h_male = RIF_gamma_meta[RIF_gamma_meta$Gender == 'M' & RIF_gamma_meta$Timepoint == '24h',]
+RIF_gamma_24h_female = RIF_gamma_meta[RIF_gamma_meta$Gender == 'F' & RIF_gamma_meta$Timepoint == '24h',]
+write.csv(RIF_gamma_24h_male,"RIF_gamma_24h_male.csv")
+write.csv(RIF_gamma_24h_female,"RIF_gamma_24h_female.csv")
+
+cols_fe = c('Timepoint','Gender','Age','BMI','Fe_avg_nfoci_fold_low','Fe_avg_nfoci_fold_high')
+RIF_fe_meta = all_RIF_meta[, colnames(all_RIF_meta) %in% cols_fe]
+RIF_fe_4h_male = RIF_fe_meta[RIF_fe_meta$Gender == 'M' & RIF_fe_meta$Timepoint == '4h',]
+RIF_fe_4h_female = RIF_fe_meta[RIF_fe_meta$Gender == 'F' & RIF_fe_meta$Timepoint == '4h',]
+write.csv(RIF_fe_4h_male,"RIF_fe_4h_male.csv")
+write.csv(RIF_fe_4h_female,"RIF_fe_4h_female.csv")
+RIF_fe_24h_male = RIF_fe_meta[RIF_fe_meta$Gender == 'M' & RIF_fe_meta$Timepoint == '24h',]
+RIF_fe_24h_female = RIF_fe_meta[RIF_fe_meta$Gender == 'F' & RIF_fe_meta$Timepoint == '24h',]
+write.csv(RIF_fe_24h_male,"RIF_fe_24h_male.csv")
+write.csv(RIF_fe_24h_female,"RIF_fe_24h_female.csv")
+
+cols_ar = c('Timepoint','Gender','Age','BMI','Ar_avg_nfoci_fold_low','Ar_avg_nfoci_fold_high')
+RIF_ar_meta = all_RIF_meta[, colnames(all_RIF_meta) %in% cols_ar]
+RIF_ar_4h_male = RIF_ar_meta[RIF_ar_meta$Gender == 'M' & RIF_ar_meta$Timepoint == '4h',]
+RIF_ar_4h_female = RIF_ar_meta[RIF_ar_meta$Gender == 'F' & RIF_ar_meta$Timepoint == '4h',]
+write.csv(RIF_ar_4h_male,"RIF_ar_4h_male.csv")
+write.csv(RIF_ar_4h_female,"RIF_ar_4h_female.csv")
+RIF_ar_24h_male = RIF_ar_meta[RIF_ar_meta$Gender == 'M' & RIF_ar_meta$Timepoint == '24h',]
+RIF_ar_24h_female = RIF_ar_meta[RIF_ar_meta$Gender == 'F' & RIF_ar_meta$Timepoint == '24h',]
+write.csv(RIF_ar_24h_male,"RIF_ar_24h_male.csv")
+write.csv(RIF_ar_24h_female,"RIF_ar_24h_female.csv")
+
+cols_si = c('Timepoint','Gender','Age','BMI','Si_avg_nfoci_fold_low','Si_avg_nfoci_fold_high')
+RIF_si_meta = all_RIF_meta[, colnames(all_RIF_meta) %in% cols_si]
+RIF_si_4h_male = RIF_si_meta[RIF_si_meta$Gender == 'M' & RIF_si_meta$Timepoint == '4h',]
+RIF_si_4h_female = RIF_si_meta[RIF_si_meta$Gender == 'F' & RIF_si_meta$Timepoint == '4h',]
+write.csv(RIF_si_4h_male,"RIF_si_4h_male.csv")
+write.csv(RIF_si_4h_female,"RIF_si_4h_female.csv")
+RIF_si_24h_male = RIF_si_meta[RIF_si_meta$Gender == 'M' & RIF_si_meta$Timepoint == '24h',]
+RIF_si_24h_female = RIF_si_meta[RIF_si_meta$Gender == 'F' & RIF_si_meta$Timepoint == '24h',]
+write.csv(RIF_si_24h_male,"RIF_si_24h_male.csv")
+write.csv(RIF_si_24h_female,"RIF_si_24h_female.csv")
+
+RIF_gamma_4h_age = RIF_gamma_meta[RIF_gamma_meta$Timepoint == '4h',]
+write.csv(RIF_gamma_4h_age,"RIF_gamma_4h_age.csv")
+
+RIF_fe_4h_age = RIF_fe_meta[RIF_fe_meta$Timepoint == '4h',]
+write.csv(RIF_fe_4h_age,"RIF_fe_4h_age.csv")
+
+RIF_ar_4h_age = RIF_ar_meta[RIF_ar_meta$Timepoint == '4h',]
+write.csv(RIF_ar_4h_age,"RIF_ar_4h_age.csv")
+
+RIF_si_4h_age = RIF_si_meta[RIF_si_meta$Timepoint == '4h',]
+write.csv(RIF_si_4h_age,"RIF_si_4h_age.csv")
+
+RIF_gamma_24h_age = RIF_gamma_meta[RIF_gamma_meta$Timepoint == '24h',]
+write.csv(RIF_gamma_24h_age,"RIF_gamma_24h_age.csv")
+
+RIF_fe_24h_age = RIF_fe_meta[RIF_fe_meta$Timepoint == '24h',]
+write.csv(RIF_fe_24h_age,"RIF_fe_24h_age.csv")
+
+RIF_ar_24h_age = RIF_ar_meta[RIF_ar_meta$Timepoint == '24h',]
+write.csv(RIF_ar_24h_age,"RIF_ar_24h_age.csv")
+
+RIF_si_24h_age = RIF_si_meta[RIF_si_meta$Timepoint == '24h',]
+write.csv(RIF_si_24h_age,"RIF_si_24h_age.csv")
+
+N_extreme = 10
+
+cols_gamma = c('Sample_ID','Gamma_avg_nfoci_fold_low','Gamma_avg_nfoci_fold_high')
+RIF_gamma_4h = all_RIF_4h[, colnames(all_RIF_4h) %in% cols_gamma]
+RIF_gamma_24h = all_RIF_24h[, colnames(all_RIF_24h) %in% cols_gamma]
+RIF_gamma_4h = na.omit(merge(RIF_gamma_4h,baseline,by.x = 'Sample_ID',by.y = 'Sample_ID',all=FALSE))
+gamma_baseline_order_min_4h <- RIF_gamma_4h[order(RIF_gamma_4h$baseline_avg_nfoci),]
+gamma_baseline_order_max_4h <- RIF_gamma_4h[order(RIF_gamma_4h$baseline_avg_nfoci, decreasing = TRUE),]
+gamma_baseline_low_4h <- gamma_baseline_order_min_4h[1:N_extreme,]
+gamma_baseline_high_4h <- gamma_baseline_order_max_4h[1:N_extreme,]
+write.csv(gamma_baseline_low_4h,"gamma_baseline_low_4h.csv")
+write.csv(gamma_baseline_high_4h,"gamma_baseline_high_4h.csv")
+RIF_gamma_24h = na.omit(merge(RIF_gamma_24h,baseline,by.x = 'Sample_ID',by.y = 'Sample_ID',all=FALSE))
+gamma_baseline_order_min_24h <- RIF_gamma_24h[order(RIF_gamma_24h$baseline_avg_nfoci),]
+gamma_baseline_order_max_24h <- RIF_gamma_24h[order(RIF_gamma_24h$baseline_avg_nfoci, decreasing = TRUE),]
+gamma_baseline_low_24h <- gamma_baseline_order_min_24h[1:N_extreme,]
+gamma_baseline_high_24h <- gamma_baseline_order_max_24h[1:N_extreme,]
+write.csv(gamma_baseline_low_24h,"gamma_baseline_low_24h.csv")
+write.csv(gamma_baseline_high_24h,"gamma_baseline_high_24h.csv")
+
+cols_si = c('Sample_ID','Si_avg_nfoci_fold_low','Si_avg_nfoci_fold_high')
+RIF_si_4h = all_RIF_4h[, colnames(all_RIF_4h) %in% cols_si]
+RIF_si_24h = all_RIF_24h[, colnames(all_RIF_24h) %in% cols_si]
+RIF_si_4h = na.omit(merge(RIF_si_4h,baseline,by.x = 'Sample_ID',by.y = 'Sample_ID',all=FALSE))
+si_baseline_order_min_4h <- RIF_si_4h[order(RIF_si_4h$baseline_avg_nfoci),]
+si_baseline_order_max_4h <- RIF_si_4h[order(RIF_si_4h$baseline_avg_nfoci, decreasing = TRUE),]
+si_baseline_low_4h <- si_baseline_order_min_4h[1:N_extreme,]
+si_baseline_high_4h <- si_baseline_order_max_4h[1:N_extreme,]
+write.csv(si_baseline_low_4h,"si_baseline_low_4h.csv")
+write.csv(si_baseline_high_4h,"si_baseline_high_4h.csv")
+RIF_si_24h = na.omit(merge(RIF_si_24h,baseline,by.x = 'Sample_ID',by.y = 'Sample_ID',all=FALSE))
+si_baseline_order_min_24h <- RIF_si_24h[order(RIF_si_24h$baseline_avg_nfoci),]
+si_baseline_order_max_24h <- RIF_si_24h[order(RIF_si_24h$baseline_avg_nfoci, decreasing = TRUE),]
+si_baseline_low_24h <- si_baseline_order_min_24h[1:N_extreme,]
+si_baseline_high_24h <- si_baseline_order_max_24h[1:N_extreme,]
+write.csv(si_baseline_low_24h,"si_baseline_low_24h.csv")
+write.csv(si_baseline_high_24h,"si_baseline_high_24h.csv")
+
+cols_ar = c('Sample_ID','Ar_avg_nfoci_fold_low','Ar_avg_nfoci_fold_high')
+RIF_ar_4h = all_RIF_4h[, colnames(all_RIF_4h) %in% cols_ar]
+RIF_ar_24h = all_RIF_24h[, colnames(all_RIF_24h) %in% cols_ar]
+RIF_ar_4h = na.omit(merge(RIF_ar_4h,baseline,by.x = 'Sample_ID',by.y = 'Sample_ID',all=FALSE))
+ar_baseline_order_min_4h <- RIF_ar_4h[order(RIF_ar_4h$baseline_avg_nfoci),]
+ar_baseline_order_max_4h <- RIF_ar_4h[order(RIF_ar_4h$baseline_avg_nfoci, decreasing = TRUE),]
+ar_baseline_low_4h <- ar_baseline_order_min_4h[1:N_extreme,]
+ar_baseline_high_4h <- ar_baseline_order_max_4h[1:N_extreme,]
+write.csv(ar_baseline_low_4h,"ar_baseline_low_4h.csv")
+write.csv(ar_baseline_high_4h,"ar_baseline_high_4h.csv")
+RIF_ar_24h = na.omit(merge(RIF_ar_24h,baseline,by.x = 'Sample_ID',by.y = 'Sample_ID',all=FALSE))
+ar_baseline_order_min_24h <- RIF_ar_24h[order(RIF_ar_24h$baseline_avg_nfoci),]
+ar_baseline_order_max_24h <- RIF_ar_24h[order(RIF_ar_24h$baseline_avg_nfoci, decreasing = TRUE),]
+ar_baseline_low_24h <- ar_baseline_order_min_24h[1:N_extreme,]
+ar_baseline_high_24h <- ar_baseline_order_max_24h[1:N_extreme,]
+write.csv(ar_baseline_low_24h,"ar_baseline_low_24h.csv")
+write.csv(ar_baseline_high_24h,"ar_baseline_high_24h.csv")
+
+cols_fe = c('Sample_ID','Fe_avg_nfoci_fold_low','Fe_avg_nfoci_fold_high')
+RIF_fe_4h = all_RIF_4h[, colnames(all_RIF_4h) %in% cols_fe]
+RIF_fe_24h = all_RIF_24h[, colnames(all_RIF_24h) %in% cols_fe]
+RIF_fe_4h = na.omit(merge(RIF_fe_4h,baseline,by.x = 'Sample_ID',by.y = 'Sample_ID',all=FALSE))
+fe_baseline_order_min_4h <- RIF_fe_4h[order(RIF_fe_4h$baseline_avg_nfoci),]
+fe_baseline_order_max_4h <- RIF_fe_4h[order(RIF_fe_4h$baseline_avg_nfoci, decreasing = TRUE),]
+fe_baseline_low_4h <- fe_baseline_order_min_4h[1:N_extreme,]
+fe_baseline_high_4h <- fe_baseline_order_max_4h[1:N_extreme,]
+write.csv(fe_baseline_low_4h,"fe_baseline_low_4h.csv")
+write.csv(fe_baseline_high_4h,"fe_baseline_high_4h.csv")
+RIF_fe_24h = na.omit(merge(RIF_fe_24h,baseline,by.x = 'Sample_ID',by.y = 'Sample_ID',all=FALSE))
+fe_baseline_order_min_24h <- RIF_fe_24h[order(RIF_fe_24h$baseline_avg_nfoci),]
+fe_baseline_order_max_24h <- RIF_fe_24h[order(RIF_fe_24h$baseline_avg_nfoci, decreasing = TRUE),]
+fe_baseline_low_24h <- fe_baseline_order_min_24h[1:N_extreme,]
+fe_baseline_high_24h <- fe_baseline_order_max_24h[1:N_extreme,]
+write.csv(fe_baseline_low_24h,"fe_baseline_low_24h.csv")
+write.csv(fe_baseline_high_24h,"fe_baseline_high_24h.csv")
+
+write.csv(fe_all_kinetics,"Fe_kinetics.csv")
+write.csv(si_all_kinetics,"Si_kinetics.csv")
+write.csv(ar_all_kinetics,"Ar_kinetics.csv")
+```

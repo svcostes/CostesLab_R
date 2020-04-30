@@ -1,0 +1,1150 @@
+## Analysing CellROX intensity and cell death in response to different doses and types of radiation.
+## In human samples. 
+## Egle Cekanaviciute, USRA/NASA Ames, January 2020
+## For all BNL runs on this project: 19C (Fall 2019), 19A (Spring 2019) and 18B (Summer 2018).
+
+## To be expanded (in a separate file) by adding data on DNA damage/repair foci, this is JUST THE FLOW.
+
+
+```{r}
+require('lattice')
+require('ggplot2')
+require('polynom')
+require('corrplot')
+require('ggpubr')
+require('plyr')
+require('reshape2')
+require('cowplot')
+```
+
+```{r}
+setwd("/Users/epariset/Desktop/R_Code-work") ## Change as necessary: this is the working directory
+theme_set(theme_bw(base_size = 12)) ## For prettier graphs
+```
+
+```{r}
+## Read all flow data, which in this case includes metadata of CellROX intensity and cell death percentage in WIDE format
+flow_all_filt = read.csv('/Users/epariset/Desktop/R_Code-work/All_flow_w_metadata_filtered_20200108_no_He_Set2_0cGy.csv', sep = ",", header = TRUE)
+colnames(flow_all_filt)[colnames(flow_all_filt) == "ï..Sample_ID"] = "Sample_ID"
+```
+
+```{r}
+## Getting ready to establish metrics (starting with fold change at different fluences), top highest and top lowest people. 
+## First, make columns for fold, for both CR and dead
+flow_all_filt_fold = flow_all_filt
+flow_all_filt_fold$Ar_CR_fold_low = flow_all_filt_fold$Ar_Live_CR_mean_1 / flow_all_filt_fold$Ar_Live_CR_mean_0
+flow_all_filt_fold$Ar_CR_fold_high = flow_all_filt_fold$Ar_Live_CR_mean_3 / flow_all_filt_fold$Ar_Live_CR_mean_0
+flow_all_filt_fold$Si_CR_fold_low = flow_all_filt_fold$Si_Live_CR_mean_1 / flow_all_filt_fold$Si_Live_CR_mean_0
+flow_all_filt_fold$Si_CR_fold_high = flow_all_filt_fold$Si_Live_CR_mean_3 / flow_all_filt_fold$Si_Live_CR_mean_0
+flow_all_filt_fold$Fe_CR_fold_low = flow_all_filt_fold$Fe_Live_CR_mean_1 / flow_all_filt_fold$Fe_Live_CR_mean_0
+flow_all_filt_fold$Fe_CR_fold_high = flow_all_filt_fold$Fe_Live_CR_mean_3 / flow_all_filt_fold$Fe_Live_CR_mean_0
+flow_all_filt_fold$He_CR_fold_low = flow_all_filt_fold$He_Live_CR_mean_15 / flow_all_filt_fold$He_Live_CR_mean_0
+flow_all_filt_fold$He_CR_fold_high = flow_all_filt_fold$He_Live_CR_mean_50 / flow_all_filt_fold$He_Live_CR_mean_0
+flow_all_filt_fold$Gamma_CR_fold_low = flow_all_filt_fold$Gamma_Live_CR_mean_10 / flow_all_filt_fold$Gamma_Live_CR_mean_0
+flow_all_filt_fold$Gamma_CR_fold_high = flow_all_filt_fold$Gamma_Live_CR_mean_100 / flow_all_filt_fold$Gamma_Live_CR_mean_0
+
+flow_all_filt_fold$Ar_Dead_fold_low = flow_all_filt_fold$Ar_Dead_percentage_1 / flow_all_filt_fold$Ar_Dead_percentage_0
+flow_all_filt_fold$Ar_Dead_fold_high = flow_all_filt_fold$Ar_Dead_percentage_3 / flow_all_filt_fold$Ar_Dead_percentage_0
+flow_all_filt_fold$Si_Dead_fold_low = flow_all_filt_fold$Si_Dead_percentage_1 / flow_all_filt_fold$Si_Dead_percentage_0
+flow_all_filt_fold$Si_Dead_fold_high = flow_all_filt_fold$Si_Dead_percentage_3 / flow_all_filt_fold$Si_Dead_percentage_0
+flow_all_filt_fold$Fe_Dead_fold_low = flow_all_filt_fold$Fe_Dead_percentage_1 / flow_all_filt_fold$Fe_Dead_percentage_0
+flow_all_filt_fold$Fe_Dead_fold_high = flow_all_filt_fold$Fe_Dead_percentage_3 / flow_all_filt_fold$Fe_Dead_percentage_0
+flow_all_filt_fold$He_Dead_fold_low = flow_all_filt_fold$He_Dead_percentage_15 / flow_all_filt_fold$He_Dead_percentage_0
+flow_all_filt_fold$He_Dead_fold_high = flow_all_filt_fold$He_Dead_percentage_50 / flow_all_filt_fold$He_Dead_percentage_0
+flow_all_filt_fold$Gamma_Dead_fold_low = flow_all_filt_fold$Gamma_Dead_percentage_10 / flow_all_filt_fold$Gamma_Dead_percentage_0
+flow_all_filt_fold$Gamma_Dead_fold_high = flow_all_filt_fold$Gamma_Dead_percentage_100 / flow_all_filt_fold$Gamma_Dead_percentage_0
+```
+
+```{r}
+## Adding decay values at 24h vs 4h
+flow_all_filt_fold_decay = flow_all_filt_fold
+
+reshaped_flow_4h = flow_all_filt_fold_decay[flow_all_filt_fold_decay$Timepoint == "4h",]
+# can also use paste(colnames(reshaped_flow_4h),"4h", sep = "_")
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Ar_PBMC_count_0"] = "Ar_PBMC_count_0_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Ar_PBMC_count_1"] = "Ar_PBMC_count_1_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Ar_PBMC_count_3"] = "Ar_PBMC_count_3_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Ar_Dead_percentage_0"] = "Ar_Dead_percentage_0_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Ar_Dead_percentage_1"] = "Ar_Dead_percentage_1_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Ar_Dead_percentage_3"] = "Ar_Dead_percentage_3_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Ar_Dead_fold_low"] = "Ar_Dead_fold_low_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Ar_Dead_fold_high"] = "Ar_Dead_fold_high_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Ar_Live_CR_mean_0"] = "Ar_Live_CR_mean_0_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Ar_Live_CR_mean_1"] = "Ar_Live_CR_mean_1_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Ar_Live_CR_mean_3"] = "Ar_Live_CR_mean_3_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Ar_CR_fold_low"] = "Ar_CR_fold_low_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Ar_CR_fold_high"] = "Ar_CR_fold_high_4h"
+
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Si_PBMC_count_0"] = "Si_PBMC_count_0_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Si_PBMC_count_1"] = "Si_PBMC_count_1_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Si_PBMC_count_3"] = "Si_PBMC_count_3_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Si_Dead_percentage_0"] = "Si_Dead_percentage_0_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Si_Dead_percentage_1"] = "Si_Dead_percentage_1_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Si_Dead_percentage_3"] = "Si_Dead_percentage_3_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Si_Dead_fold_low"] = "Si_Dead_fold_low_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Si_Dead_fold_high"] = "Si_Dead_fold_high_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Si_Live_CR_mean_0"] = "Si_Live_CR_mean_0_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Si_Live_CR_mean_1"] = "Si_Live_CR_mean_1_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Si_Live_CR_mean_3"] = "Si_Live_CR_mean_3_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Si_CR_fold_low"] = "Si_CR_fold_low_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Si_CR_fold_high"] = "Si_CR_fold_high_4h"
+
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Fe_PBMC_count_0"] = "Fe_PBMC_count_0_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Fe_PBMC_count_1"] = "Fe_PBMC_count_1_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Fe_PBMC_count_3"] = "Fe_PBMC_count_3_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Fe_Dead_percentage_0"] = "Fe_Dead_percentage_0_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Fe_Dead_percentage_1"] = "Fe_Dead_percentage_1_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Fe_Dead_percentage_3"] = "Fe_Dead_percentage_3_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Fe_Dead_fold_low"] = "Fe_Dead_fold_low_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Fe_Dead_fold_high"] = "Fe_Dead_fold_high_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Fe_Live_CR_mean_0"] = "Fe_Live_CR_mean_0_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Fe_Live_CR_mean_1"] = "Fe_Live_CR_mean_1_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Fe_Live_CR_mean_3"] = "Fe_Live_CR_mean_3_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Fe_CR_fold_low"] = "Fe_CR_fold_low_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Fe_CR_fold_high"] = "Fe_CR_fold_high_4h"
+
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Gamma_PBMC_count_0"] = "Gamma_PBMC_count_0_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Gamma_PBMC_count_10"] = "Gamma_PBMC_count_10_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Gamma_PBMC_count_100"] = "Gamma_PBMC_count_100_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Gamma_Dead_percentage_0"] = "Gamma_Dead_percentage_0_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Gamma_Dead_percentage_10"] = "Gamma_Dead_percentage_10_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Gamma_Dead_percentage_100"] = "Gamma_Dead_percentage_100_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Gamma_Dead_fold_low"] = "Gamma_Dead_fold_low_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Gamma_Dead_fold_high"] = "Gamma_Dead_fold_high_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Gamma_Live_CR_mean_0"] = "Gamma_Live_CR_mean_0_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Gamma_Live_CR_mean_10"] = "Gamma_Live_CR_mean_10_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Gamma_Live_CR_mean_100"] = "Gamma_Live_CR_mean_100_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Gamma_CR_fold_low"] = "Gamma_CR_fold_low_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "Gamma_CR_fold_high"] = "Gamma_CR_fold_high_4h"
+
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "He_PBMC_count_0"] = "He_PBMC_count_0_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "He_PBMC_count_15"] = "He_PBMC_count_15_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "He_PBMC_count_50"] = "He_PBMC_count_50_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "He_Dead_percentage_0"] = "He_Dead_percentage_0_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "He_Dead_percentage_15"] = "He_Dead_percentage_15_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "He_Dead_percentage_50"] = "He_Dead_percentage_50_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "He_Dead_fold_low"] = "He_Dead_fold_low_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "He_Dead_fold_high"] = "He_Dead_fold_high_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "He_Live_CR_mean_0"] = "He_Live_CR_mean_0_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "He_Live_CR_mean_15"] = "He_Live_CR_mean_15_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "He_Live_CR_mean_50"] = "He_Live_CR_mean_50_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "He_CR_fold_low"] = "He_CR_fold_low_4h"
+colnames(reshaped_flow_4h)[colnames(reshaped_flow_4h) == "He_CR_fold_high"] = "He_CR_fold_high_4h"
+
+reshaped_flow_24h = flow_all_filt_fold_decay[flow_all_filt_fold_decay$Timepoint == "24h",]
+
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Ar_PBMC_count_0"] = "Ar_PBMC_count_0_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Ar_PBMC_count_1"] = "Ar_PBMC_count_1_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Ar_PBMC_count_3"] = "Ar_PBMC_count_3_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Ar_Dead_percentage_0"] = "Ar_Dead_percentage_0_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Ar_Dead_percentage_1"] = "Ar_Dead_percentage_1_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Ar_Dead_percentage_3"] = "Ar_Dead_percentage_3_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Ar_Dead_fold_low"] = "Ar_Dead_fold_low_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Ar_Dead_fold_high"] = "Ar_Dead_fold_high_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Ar_Live_CR_mean_0"] = "Ar_Live_CR_mean_0_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Ar_Live_CR_mean_1"] = "Ar_Live_CR_mean_1_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Ar_Live_CR_mean_3"] = "Ar_Live_CR_mean_3_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Ar_CR_fold_low"] = "Ar_CR_fold_low_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Ar_CR_fold_high"] = "Ar_CR_fold_high_24h"
+
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Si_PBMC_count_0"] = "Si_PBMC_count_0_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Si_PBMC_count_1"] = "Si_PBMC_count_1_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Si_PBMC_count_3"] = "Si_PBMC_count_3_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Si_Dead_percentage_0"] = "Si_Dead_percentage_0_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Si_Dead_percentage_1"] = "Si_Dead_percentage_1_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Si_Dead_percentage_3"] = "Si_Dead_percentage_3_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Si_Dead_fold_low"] = "Si_Dead_fold_low_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Si_Dead_fold_high"] = "Si_Dead_fold_high_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Si_Live_CR_mean_0"] = "Si_Live_CR_mean_0_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Si_Live_CR_mean_1"] = "Si_Live_CR_mean_1_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Si_Live_CR_mean_3"] = "Si_Live_CR_mean_3_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Si_CR_fold_low"] = "Si_CR_fold_low_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Si_CR_fold_high"] = "Si_CR_fold_high_24h"
+
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Fe_PBMC_count_0"] = "Fe_PBMC_count_0_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Fe_PBMC_count_1"] = "Fe_PBMC_count_1_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Fe_PBMC_count_3"] = "Fe_PBMC_count_3_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Fe_Dead_percentage_0"] = "Fe_Dead_percentage_0_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Fe_Dead_percentage_1"] = "Fe_Dead_percentage_1_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Fe_Dead_percentage_3"] = "Fe_Dead_percentage_3_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Fe_Dead_fold_low"] = "Fe_Dead_fold_low_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Fe_Dead_fold_high"] = "Fe_Dead_fold_high_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Fe_Live_CR_mean_0"] = "Fe_Live_CR_mean_0_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Fe_Live_CR_mean_1"] = "Fe_Live_CR_mean_1_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Fe_Live_CR_mean_3"] = "Fe_Live_CR_mean_3_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Fe_CR_fold_low"] = "Fe_CR_fold_low_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Fe_CR_fold_high"] = "Fe_CR_fold_high_24h"
+
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Gamma_PBMC_count_0"] = "Gamma_PBMC_count_0_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Gamma_PBMC_count_10"] = "Gamma_PBMC_count_10_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Gamma_PBMC_count_100"] = "Gamma_PBMC_count_100_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Gamma_Dead_percentage_0"] = "Gamma_Dead_percentage_0_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Gamma_Dead_percentage_10"] = "Gamma_Dead_percentage_10_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Gamma_Dead_percentage_100"] = "Gamma_Dead_percentage_100_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Gamma_Dead_fold_low"] = "Gamma_Dead_fold_low_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Gamma_Dead_fold_high"] = "Gamma_Dead_fold_high_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Gamma_Live_CR_mean_0"] = "Gamma_Live_CR_mean_0_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Gamma_Live_CR_mean_10"] = "Gamma_Live_CR_mean_10_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Gamma_Live_CR_mean_100"] = "Gamma_Live_CR_mean_100_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Gamma_CR_fold_low"] = "Gamma_CR_fold_low_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "Gamma_CR_fold_high"] = "Gamma_CR_fold_high_24h"
+
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "He_PBMC_count_0"] = "He_PBMC_count_0_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "He_PBMC_count_15"] = "He_PBMC_count_15_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "He_PBMC_count_50"] = "He_PBMC_count_50_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "He_Dead_percentage_0"] = "He_Dead_percentage_0_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "He_Dead_percentage_15"] = "He_Dead_percentage_15_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "He_Dead_percentage_50"] = "He_Dead_percentage_50_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "He_Dead_fold_low"] = "He_Dead_fold_low_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "He_Dead_fold_high"] = "He_Dead_fold_high_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "He_Live_CR_mean_0"] = "He_Live_CR_mean_0_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "He_Live_CR_mean_15"] = "He_Live_CR_mean_15_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "He_Live_CR_mean_50"] = "He_Live_CR_mean_50_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "He_CR_fold_low"] = "He_CR_fold_low_24h"
+colnames(reshaped_flow_24h)[colnames(reshaped_flow_24h) == "He_CR_fold_high"] = "He_CR_fold_high_24h"
+
+reshaped_flow = merge(reshaped_flow_4h, reshaped_flow_24h, by.x = 'Sample_ID', by.y = 'Sample_ID', all.x=TRUE, all.y=TRUE)
+
+reshaped_flow$Ar_PBMC_count_decay_0 = reshaped_flow$Ar_PBMC_count_0_24h / reshaped_flow$Ar_PBMC_count_0_4h
+reshaped_flow$Ar_PBMC_count_decay_1 = reshaped_flow$Ar_PBMC_count_1_24h / reshaped_flow$Ar_PBMC_count_1_4h
+reshaped_flow$Ar_PBMC_count_decay_3 = reshaped_flow$Ar_PBMC_count_3_24h / reshaped_flow$Ar_PBMC_count_3_4h
+reshaped_flow$Ar_Dead_percentage_decay_0 = reshaped_flow$Ar_Dead_percentage_0_24h / reshaped_flow$Ar_Dead_percentage_0_4h
+reshaped_flow$Ar_Dead_percentage_decay_1 = reshaped_flow$Ar_Dead_percentage_1_24h / reshaped_flow$Ar_Dead_percentage_1_4h
+reshaped_flow$Ar_Dead_percentage_decay_3 = reshaped_flow$Ar_Dead_percentage_3_24h / reshaped_flow$Ar_Dead_percentage_3_4h
+reshaped_flow$Ar_Live_CR_decay_0 = reshaped_flow$Ar_Live_CR_mean_0_24h / reshaped_flow$Ar_Live_CR_mean_0_4h
+reshaped_flow$Ar_Live_CR_decay_1 = reshaped_flow$Ar_Live_CR_mean_1_24h / reshaped_flow$Ar_Live_CR_mean_1_4h
+reshaped_flow$Ar_Live_CR_decay_3 = reshaped_flow$Ar_Live_CR_mean_3_24h / reshaped_flow$Ar_Live_CR_mean_3_4h
+reshaped_flow$Ar_Dead_fold_decay_low = reshaped_flow$Ar_Dead_fold_low_24h / reshaped_flow$Ar_Dead_fold_low_4h
+reshaped_flow$Ar_CR_fold_decay_low = reshaped_flow$Ar_CR_fold_low_24h / reshaped_flow$Ar_CR_fold_low_4h
+reshaped_flow$Ar_Dead_fold_decay_high = reshaped_flow$Ar_Dead_fold_high_24h / reshaped_flow$Ar_Dead_fold_high_4h
+reshaped_flow$Ar_CR_fold_decay_high = reshaped_flow$Ar_CR_fold_high_24h / reshaped_flow$Ar_CR_fold_high_4h
+
+reshaped_flow$Si_PBMC_count_decay_0 = reshaped_flow$Si_PBMC_count_0_24h / reshaped_flow$Si_PBMC_count_0_4h
+reshaped_flow$Si_PBMC_count_decay_1 = reshaped_flow$Si_PBMC_count_1_24h / reshaped_flow$Si_PBMC_count_1_4h
+reshaped_flow$Si_PBMC_count_decay_3 = reshaped_flow$Si_PBMC_count_3_24h / reshaped_flow$Si_PBMC_count_3_4h
+reshaped_flow$Si_Dead_percentage_decay_0 = reshaped_flow$Si_Dead_percentage_0_24h / reshaped_flow$Si_Dead_percentage_0_4h
+reshaped_flow$Si_Dead_percentage_decay_1 = reshaped_flow$Si_Dead_percentage_1_24h / reshaped_flow$Si_Dead_percentage_1_4h
+reshaped_flow$Si_Dead_percentage_decay_3 = reshaped_flow$Si_Dead_percentage_3_24h / reshaped_flow$Si_Dead_percentage_3_4h
+reshaped_flow$Si_Live_CR_decay_0 = reshaped_flow$Si_Live_CR_mean_0_24h / reshaped_flow$Si_Live_CR_mean_0_4h
+reshaped_flow$Si_Live_CR_decay_1 = reshaped_flow$Si_Live_CR_mean_1_24h / reshaped_flow$Si_Live_CR_mean_1_4h
+reshaped_flow$Si_Live_CR_decay_3 = reshaped_flow$Si_Live_CR_mean_3_24h / reshaped_flow$Si_Live_CR_mean_3_4h
+reshaped_flow$Si_Dead_fold_decay_low = reshaped_flow$Si_Dead_fold_low_24h / reshaped_flow$Si_Dead_fold_low_4h
+reshaped_flow$Si_CR_fold_decay_low = reshaped_flow$Si_CR_fold_low_24h / reshaped_flow$Si_CR_fold_low_4h
+reshaped_flow$Si_Dead_fold_decay_high = reshaped_flow$Si_Dead_fold_high_24h / reshaped_flow$Si_Dead_fold_high_4h
+reshaped_flow$Si_CR_fold_decay_high = reshaped_flow$Si_CR_fold_high_24h / reshaped_flow$Si_CR_fold_high_4h
+
+reshaped_flow$Fe_PBMC_count_decay_0 = reshaped_flow$Fe_PBMC_count_0_24h / reshaped_flow$Fe_PBMC_count_0_4h
+reshaped_flow$Fe_PBMC_count_decay_1 = reshaped_flow$Fe_PBMC_count_1_24h / reshaped_flow$Fe_PBMC_count_1_4h
+reshaped_flow$Fe_PBMC_count_decay_3 = reshaped_flow$Fe_PBMC_count_3_24h / reshaped_flow$Fe_PBMC_count_3_4h
+reshaped_flow$Fe_Dead_percentage_decay_0 = reshaped_flow$Fe_Dead_percentage_0_24h / reshaped_flow$Fe_Dead_percentage_0_4h
+reshaped_flow$Fe_Dead_percentage_decay_1 = reshaped_flow$Fe_Dead_percentage_1_24h / reshaped_flow$Fe_Dead_percentage_1_4h
+reshaped_flow$Fe_Dead_percentage_decay_3 = reshaped_flow$Fe_Dead_percentage_3_24h / reshaped_flow$Fe_Dead_percentage_3_4h
+reshaped_flow$Fe_Live_CR_decay_0 = reshaped_flow$Fe_Live_CR_mean_0_24h / reshaped_flow$Fe_Live_CR_mean_0_4h
+reshaped_flow$Fe_Live_CR_decay_1 = reshaped_flow$Fe_Live_CR_mean_1_24h / reshaped_flow$Fe_Live_CR_mean_1_4h
+reshaped_flow$Fe_Live_CR_decay_3 = reshaped_flow$Fe_Live_CR_mean_3_24h / reshaped_flow$Fe_Live_CR_mean_3_4h
+reshaped_flow$Fe_Dead_fold_decay_low = reshaped_flow$Fe_Dead_fold_low_24h / reshaped_flow$Fe_Dead_fold_low_4h
+reshaped_flow$Fe_CR_fold_decay_low = reshaped_flow$Fe_CR_fold_low_24h / reshaped_flow$Fe_CR_fold_low_4h
+reshaped_flow$Fe_Dead_fold_decay_high = reshaped_flow$Fe_Dead_fold_high_24h / reshaped_flow$Fe_Dead_fold_high_4h
+reshaped_flow$Fe_CR_fold_decay_high = reshaped_flow$Fe_CR_fold_high_24h / reshaped_flow$Fe_CR_fold_high_4h
+
+reshaped_flow$Gamma_PBMC_count_decay_0 = reshaped_flow$Gamma_PBMC_count_0_24h / reshaped_flow$Gamma_PBMC_count_0_4h
+reshaped_flow$Gamma_PBMC_count_decay_10 = reshaped_flow$Gamma_PBMC_count_10_24h / reshaped_flow$Gamma_PBMC_count_10_4h
+reshaped_flow$Gamma_PBMC_count_decay_100 = reshaped_flow$Gamma_PBMC_count_100_24h / reshaped_flow$Gamma_PBMC_count_100_4h
+reshaped_flow$Gamma_Dead_percentage_decay_0 = reshaped_flow$Gamma_Dead_percentage_0_24h / reshaped_flow$Gamma_Dead_percentage_0_4h
+reshaped_flow$Gamma_Dead_percentage_decay_10 = reshaped_flow$Gamma_Dead_percentage_10_24h / reshaped_flow$Gamma_Dead_percentage_10_4h
+reshaped_flow$Gamma_Dead_percentage_decay_100 = reshaped_flow$Gamma_Dead_percentage_100_24h / reshaped_flow$Gamma_Dead_percentage_100_4h
+reshaped_flow$Gamma_Live_CR_decay_0 = reshaped_flow$Gamma_Live_CR_mean_0_24h / reshaped_flow$Gamma_Live_CR_mean_0_4h
+reshaped_flow$Gamma_Live_CR_decay_10 = reshaped_flow$Gamma_Live_CR_mean_10_24h / reshaped_flow$Gamma_Live_CR_mean_10_4h
+reshaped_flow$Gamma_Live_CR_decay_100 = reshaped_flow$Gamma_Live_CR_mean_100_24h / reshaped_flow$Gamma_Live_CR_mean_100_4h
+reshaped_flow$Gamma_Dead_fold_decay_low = reshaped_flow$Gamma_Dead_fold_low_24h / reshaped_flow$Gamma_Dead_fold_low_4h
+reshaped_flow$Gamma_CR_fold_decay_low = reshaped_flow$Gamma_CR_fold_low_24h / reshaped_flow$Gamma_CR_fold_low_4h
+reshaped_flow$Gamma_Dead_fold_decay_high = reshaped_flow$Gamma_Dead_fold_high_24h / reshaped_flow$Gamma_Dead_fold_high_4h
+reshaped_flow$Gamma_CR_fold_decay_high = reshaped_flow$Gamma_CR_fold_high_24h / reshaped_flow$Gamma_CR_fold_high_4h
+
+reshaped_flow$He_PBMC_count_decay_0 = reshaped_flow$He_PBMC_count_0_24h / reshaped_flow$He_PBMC_count_0_4h
+reshaped_flow$He_PBMC_count_decay_15 = reshaped_flow$He_PBMC_count_15_24h / reshaped_flow$He_PBMC_count_15_4h
+reshaped_flow$He_PBMC_count_decay_50 = reshaped_flow$He_PBMC_count_50_24h / reshaped_flow$He_PBMC_count_50_4h
+reshaped_flow$He_Dead_percentage_decay_0 = reshaped_flow$He_Dead_percentage_0_24h / reshaped_flow$He_Dead_percentage_0_4h
+reshaped_flow$He_Dead_percentage_decay_15 = reshaped_flow$He_Dead_percentage_15_24h / reshaped_flow$He_Dead_percentage_15_4h
+reshaped_flow$He_Dead_percentage_decay_50 = reshaped_flow$He_Dead_percentage_50_24h / reshaped_flow$He_Dead_percentage_50_4h
+reshaped_flow$He_Live_CR_decay_0 = reshaped_flow$He_Live_CR_mean_0_24h / reshaped_flow$He_Live_CR_mean_0_4h
+reshaped_flow$He_Live_CR_decay_15 = reshaped_flow$He_Live_CR_mean_15_24h / reshaped_flow$He_Live_CR_mean_15_4h
+reshaped_flow$He_Live_CR_decay_50 = reshaped_flow$He_Live_CR_mean_50_24h / reshaped_flow$He_Live_CR_mean_50_4h
+reshaped_flow$He_Dead_fold_decay_low = reshaped_flow$He_Dead_fold_low_24h / reshaped_flow$He_Dead_fold_low_4h
+reshaped_flow$He_CR_fold_decay_low = reshaped_flow$He_CR_fold_low_24h / reshaped_flow$He_CR_fold_low_4h
+reshaped_flow$He_Dead_fold_decay_high = reshaped_flow$He_Dead_fold_high_24h / reshaped_flow$He_Dead_fold_high_4h
+reshaped_flow$He_CR_fold_decay_high = reshaped_flow$He_CR_fold_high_24h / reshaped_flow$He_CR_fold_high_4h
+
+cols_to_keep = c('Sample_ID','He_PBMC_count_decay_0','He_PBMC_count_decay_15','He_PBMC_count_decay_50','He_Dead_percentage_decay_0','He_Dead_percentage_decay_15','He_Dead_percentage_decay_50','He_Live_CR_decay_0','He_Live_CR_decay_15','He_Live_CR_decay_50','He_Dead_fold_decay_low','He_CR_fold_decay_low','He_Dead_fold_decay_high','He_CR_fold_decay_high','Gamma_PBMC_count_decay_0','Gamma_PBMC_count_decay_10','Gamma_PBMC_count_decay_100','Gamma_Dead_percentage_decay_0','Gamma_Dead_percentage_decay_10','Gamma_Dead_percentage_decay_100','Gamma_Live_CR_decay_0','Gamma_Live_CR_decay_10','Gamma_Live_CR_decay_100','Gamma_Dead_fold_decay_low','Gamma_CR_fold_decay_low','Gamma_Dead_fold_decay_high','Gamma_CR_fold_decay_high','Ar_PBMC_count_decay_0','Ar_PBMC_count_decay_1','Ar_PBMC_count_decay_3','Ar_Dead_percentage_decay_0','Ar_Dead_percentage_decay_1','Ar_Dead_percentage_decay_3','Ar_Live_CR_decay_0','Ar_Live_CR_decay_1','Ar_Live_CR_decay_3','Ar_Dead_fold_decay_low','Ar_CR_fold_decay_low','Ar_Dead_fold_decay_high','Ar_CR_fold_decay_high','Si_PBMC_count_decay_0','Si_PBMC_count_decay_1','Si_PBMC_count_decay_3','Si_Dead_percentage_decay_0','Si_Dead_percentage_decay_1','Si_Dead_percentage_decay_3','Si_Live_CR_decay_0','Si_Live_CR_decay_1','Si_Live_CR_decay_3','Si_Dead_fold_decay_low','Si_CR_fold_decay_low','Si_Dead_fold_decay_high','Si_CR_fold_decay_high','Fe_PBMC_count_decay_0','Fe_PBMC_count_decay_1','Fe_PBMC_count_decay_3','Fe_Dead_percentage_decay_0','Fe_Dead_percentage_decay_1','Fe_Dead_percentage_decay_3','Fe_Live_CR_decay_0','Fe_Live_CR_decay_1','Fe_Live_CR_decay_3','Fe_Dead_fold_decay_low','Fe_CR_fold_decay_low','Fe_Dead_fold_decay_high','Fe_CR_fold_decay_high')
+reshaped_all = reshaped_flow[, colnames(reshaped_flow) %in% cols_to_keep]
+
+#flow_all_filt_fold_decay_final = merge(flow_all_filt_fold_decay, reshaped_all, by.x = 'Sample_ID', by.y = 'Sample_ID', all.x = TRUE, all.y = TRUE) ## all.x = TRUE and all.y = TRUE keep values from both dataframes even if they only exist in 1 dataframe! 
+
+flow_all_filt_fold_decay_final = merge(flow_all_filt_fold_decay, reshaped_all, by.x = 'Sample_ID', by.y = 'Sample_ID', all.x = TRUE, all.y = TRUE)
+```
+
+```{r}
+
+## Now will make a LOOONG table and analyze based on demographics. Focusing on ROS (CellROX), because clear that the cell death is incomplete - should use the number of "missing cells" from RIF calculations instead. 
+
+all_cr_long = melt(flow_all_filt, id.vars = c("Sample_ID", "Gender", "Age", "BMI", "BMI_group", "CMV", "Timepoint", "Run", "Set", "Run_set"), measure.vars = colnames(flow_all_filt)[grepl("_CR_", colnames(flow_all_filt))], variable.name = "Metric_detailed", value.name = "Mean_CR")
+
+all_cr_long$BMI_group = factor(all_cr_long$BMI_group, levels = c("Underweight", "Normal", "Overweight", "Obese")) ## ordering BMI levels
+all_cr_long$Timepoint = factor(all_cr_long$Timepoint, levels = c("4h", "24h")) ## ordering timepoints to go from 4h (first) to 24h
+
+##Will add information about dose and fluence in the looong table
+
+all_cr_long$Fluence_level = "tempo"
+all_cr_long$Dose = "tempo" 
+
+all_cr_long$Fluence_level[grepl("0",all_cr_long$Metric_detailed)] = "None"
+all_cr_long$Fluence_level[grepl("_1",all_cr_long$Metric_detailed)] = "Low"
+all_cr_long$Fluence_level[grepl("_3",all_cr_long$Metric_detailed)] = "High"
+all_cr_long$Fluence_level[grepl("Gamma_Live_CR_mean_10",all_cr_long$Metric_detailed)] = "Low"
+all_cr_long$Fluence_level[grepl("Gamma_Live_CR_mean_100",all_cr_long$Metric_detailed)] = "High"
+all_cr_long$Fluence_level[grepl("He_Live_CR_mean_15",all_cr_long$Metric_detailed)] = "Low"
+all_cr_long$Fluence_level[grepl("He_Live_CR_mean_50",all_cr_long$Metric_detailed)] = "High"
+
+all_cr_long$Fluence_level = factor(all_cr_long$Fluence_level, levels = c("None", "Low", "High")) ## ordering fluence levels so that they would not be in alphabetical order!
+
+all_cr_long$Dose[grepl("0",all_cr_long$Metric_detailed)] = "0"
+all_cr_long$Dose[grepl("Ar_Live_CR_mean_1",all_cr_long$Metric_detailed)] = "18"
+all_cr_long$Dose[grepl("Ar_Live_CR_mean_3",all_cr_long$Metric_detailed)] = "50"
+all_cr_long$Dose[grepl("Si_Live_CR_mean_1",all_cr_long$Metric_detailed)] = "10"
+all_cr_long$Dose[grepl("Si_Live_CR_mean_3",all_cr_long$Metric_detailed)] = "30"
+all_cr_long$Dose[grepl("Fe_Live_CR_mean_1",all_cr_long$Metric_detailed)] = "30"
+all_cr_long$Dose[grepl("Fe_Live_CR_mean_3",all_cr_long$Metric_detailed)] = "82"
+all_cr_long$Dose[grepl("Gamma_Live_CR_mean_10",all_cr_long$Metric_detailed)] = "10"
+all_cr_long$Dose[grepl("Gamma_Live_CR_mean_100",all_cr_long$Metric_detailed)] = "100"
+all_cr_long$Dose[grepl("He_Live_CR_mean_15",all_cr_long$Metric_detailed)] = "15"
+all_cr_long$Dose[grepl("He_Live_CR_mean_50",all_cr_long$Metric_detailed)] = "50"
+all_cr_long$Dose = factor(all_cr_long$Dose, levels = c("0", "10", "15", "18", "30", "50", "82", "100")) ## ordering doses so that they would not be 1, 10, 18, 100, 30, etc... 
+
+##Will add information about radiation type in the looong table
+all_cr_long$Radiation_quality = "tempo"
+all_cr_long$Radiation_quality[grepl("Gamma",all_cr_long$Metric_detailed)] = "Gamma"
+all_cr_long$Radiation_quality[grepl("He",all_cr_long$Metric_detailed)] = "He"
+all_cr_long$Radiation_quality[grepl("Ar",all_cr_long$Metric_detailed)] = "Ar"
+all_cr_long$Radiation_quality[grepl("Si",all_cr_long$Metric_detailed)] = "Si"
+all_cr_long$Radiation_quality[grepl("Fe",all_cr_long$Metric_detailed)] = "Fe"
+all_cr_long$Radiation_quality = factor(all_cr_long$Radiation_quality, levels = c("Gamma", "He", "Si", "Ar", "Fe")) ## ordering radiation types from lowest to highest LET
+
+all_cr_long_4h = all_cr_long[all_cr_long$Timepoint == "4h",]
+all_cr_long_24h = all_cr_long[all_cr_long$Timepoint == "24h",]
+```
+
+```{r} 
+## plotting for CR, absolute values
+all_plot_box_cr = ggplot(all_cr_long, aes(x = Fluence_level, y = Mean_CR, col = Gender)) + geom_boxplot() + ylab("Mean CR in live PBMCs") + ylim(0,2000)
+facet(all_plot_box_cr, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_run_box_cr = ggplot(all_cr_long, aes(x = Fluence_level, y = Mean_CR, col = Run)) + geom_boxplot() + ylab("Mean CR in live PBMCs") + ylim(0,2000)
+facet(all_plot_run_box_cr, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_dots_cr = ggplot(all_cr_long, aes(x = Fluence_level, y = Mean_CR, col = Gender)) + geom_point(size = 0.1, stroke = 0, shape = 16) + geom_jitter() + ylab("Mean CR in live PBMCs") + ylim(0,2000)
+facet(all_plot_dots_cr, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_bmi_box_cr = ggplot(all_cr_long, aes(x = Fluence_level, y = Mean_CR, col = BMI_group)) + geom_boxplot() + ylab("Mean CR in live PBMCs") + ylim(0,2000)
+facet(all_plot_bmi_box_cr, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_age_cr = ggplot(all_cr_long, aes(x = Age, y = Mean_CR, col = Fluence_level)) + ylab("Mean CR in live PBMCs") + ylim(0,750) + geom_smooth(method = "glm")
+facet(all_plot_age_cr, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_bmi_cr = ggplot(all_cr_long, aes(x = BMI, y = Mean_CR, col = Fluence_level)) + ylab("Mean CR in live PBMCs") + ylim(0,750) + geom_smooth(method = "glm")
+facet(all_plot_bmi_cr, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_cmv_box_cr = ggplot(all_cr_long, aes(x = Fluence_level, y = Mean_CR, col = CMV)) + geom_boxplot() + ylab("Mean CR in live PBMCs") + ylim(0,2000)
+facet(all_plot_cmv_box_cr, facet.by = c('Timepoint', 'Radiation_quality'))
+
+```
+
+
+```{r}
+## Now will repeat the above with the cell death metric. 
+
+all_dead_long = melt(flow_all_filt, id.vars = c("Sample_ID", "Gender", "Age", "BMI", "BMI_group", "CMV", "Timepoint", "Run", "Set", "Run_set"), measure.vars = colnames(flow_all_filt)[grepl("_Dead_", colnames(flow_all_filt))], variable.name = "Metric_detailed", value.name = "Percentage_dead")
+all_dead_long$BMI_group = factor(all_dead_long$BMI_group, levels = c("Underweight", "Normal", "Overweight", "Obese")) ## ordering BMI levels
+all_dead_long$Timepoint = factor(all_dead_long$Timepoint, levels = c("4h", "24h")) ## ordering timepoints to go from 4h (first) to 24h
+
+##Will add information about dose and fluence in the looong table
+
+all_dead_long$Fluence_level = "tempo"
+all_dead_long$Dose = "tempo" 
+
+all_dead_long$Fluence_level[grepl("0",all_dead_long$Metric_detailed)] = "None"
+all_dead_long$Fluence_level[grepl("_1",all_dead_long$Metric_detailed)] = "Low"
+all_dead_long$Fluence_level[grepl("_3",all_dead_long$Metric_detailed)] = "High"
+all_dead_long$Fluence_level[grepl("Gamma_Dead_percentage_10",all_dead_long$Metric_detailed)] = "Low"
+all_dead_long$Fluence_level[grepl("Gamma_Dead_percentage_100",all_dead_long$Metric_detailed)] = "High"
+all_dead_long$Fluence_level[grepl("He_Dead_percentage_15",all_dead_long$Metric_detailed)] = "Low"
+all_dead_long$Fluence_level[grepl("He_Dead_percentage_50",all_dead_long$Metric_detailed)] = "High"
+all_dead_long$Fluence_level = factor(all_dead_long$Fluence_level, levels = c("None", "Low", "High")) ## ordering fluence levels so that they would not be in alphabetical order!
+
+all_dead_long$Dose[grepl("0",all_dead_long$Metric_detailed)] = "0"
+all_dead_long$Dose[grepl("Ar_Dead_percentage_1",all_dead_long$Metric_detailed)] = "18"
+all_dead_long$Dose[grepl("Ar_Dead_percentage_3",all_dead_long$Metric_detailed)] = "50"
+all_dead_long$Dose[grepl("Si_Dead_percentage_1",all_dead_long$Metric_detailed)] = "10"
+all_dead_long$Dose[grepl("Si_Dead_percentage_3",all_dead_long$Metric_detailed)] = "30"
+all_dead_long$Dose[grepl("Fe_Dead_percentage_1",all_dead_long$Metric_detailed)] = "30"
+all_dead_long$Dose[grepl("Fe_Dead_percentage_3",all_dead_long$Metric_detailed)] = "82"
+all_dead_long$Dose[grepl("Gamma_Dead_percentage_10",all_dead_long$Metric_detailed)] = "10"
+all_dead_long$Dose[grepl("Gamma_Dead_percentage_100",all_dead_long$Metric_detailed)] = "100"
+all_dead_long$Dose[grepl("He_Dead_percentage_15",all_dead_long$Metric_detailed)] = "15"
+all_dead_long$Dose[grepl("He_Dead_percentage_50",all_dead_long$Metric_detailed)] = "50"
+all_dead_long$Dose = factor(all_dead_long$Dose, levels = c("0", "10", "15", "18", "30", "50", "82", "100")) ## ordering doses so that they would not be 1, 10, 18, 100, 30, etc... 
+
+##Will add information about radiation type in the looong table
+all_dead_long$Radiation_quality = "tempo"
+all_dead_long$Radiation_quality[grepl("Gamma",all_dead_long$Metric_detailed)] = "Gamma"
+all_dead_long$Radiation_quality[grepl("He",all_dead_long$Metric_detailed)] = "He"
+all_dead_long$Radiation_quality[grepl("Ar",all_dead_long$Metric_detailed)] = "Ar"
+all_dead_long$Radiation_quality[grepl("Si",all_dead_long$Metric_detailed)] = "Si"
+all_dead_long$Radiation_quality[grepl("Fe",all_dead_long$Metric_detailed)] = "Fe"
+all_dead_long$Radiation_quality = factor(all_dead_long$Radiation_quality, levels = c("Gamma", "He", "Si", "Ar", "Fe")) ## ordering radiation types from lowest to highest LET
+
+all_dead_long_4h = all_dead_long[all_dead_long$Timepoint == "4h",]
+all_dead_long_24h = all_dead_long[all_dead_long$Timepoint == "24h",]
+```
+
+
+```{r}
+## plotting for cell death
+
+all_plot_box_dead = ggplot(all_dead_long, aes(x = Fluence_level, y = Percentage_dead, col = Gender)) + geom_boxplot() + ylab("Percentage dead PBMC") + ylim(0,75)
+facet(all_plot_box_dead, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_box_run_dead = ggplot(all_dead_long, aes(x = Fluence_level, y = Percentage_dead, col = Run)) + geom_boxplot() + ylab("Percentage dead PBMC") + ylim(0,75)
+facet(all_plot_box_run_dead, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_dots_dead = ggplot(all_dead_long, aes(x = Fluence_level, y = Percentage_dead, col = Gender)) + geom_point(size = 0.1, stroke = 0, shape = 16) + geom_jitter() + ylab("Percentage dead PBMC") + ylim(0,75)
+facet(all_plot_dots_dead, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_box_bmi_dead = ggplot(all_dead_long, aes(x = Fluence_level, y = Percentage_dead, col = BMI_group)) + geom_boxplot() + ylab("Percentage dead PBMC") + ylim(0,75)
+facet(all_plot_box_bmi_dead, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_age_dead = ggplot(all_dead_long, aes(x = Age, y = Percentage_dead, col = Fluence_level)) + ylab("Percentage dead PBMC") + ylim(0,30) + geom_smooth(method = "glm")
+facet(all_plot_age_dead, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_bmi_dead = ggplot(all_dead_long, aes(x = BMI, y = Percentage_dead, col = Fluence_level)) + ylab("Percentage dead PBMC") + ylim(0,30) + geom_smooth(method = "glm")
+facet(all_plot_bmi_dead, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_box_cmv_dead = ggplot(all_dead_long, aes(x = Fluence_level, y = Percentage_dead, col = CMV)) + geom_boxplot() + ylab("Percentage dead PBMC") + ylim(0,75)
+facet(all_plot_box_cmv_dead, facet.by = c('Timepoint', 'Radiation_quality'))
+
+
+```
+```{r}
+## Select individuals studied with the cytotoxicity assay
+Sample_ID_list = c(1589,1601,1613,1625,1637,1649,1661,1673,1591,1603,1615,1590,1602,1614,1626,1638,1650,1662,1674,1627,1639,1651,1663)
+
+Ar_cytotox = subset(all_dead_long,all_dead_long$Sample_ID %in% Sample_ID_list & all_dead_long$Radiation_quality == "Ar")
+
+Si_cytotox = subset(all_dead_long,all_dead_long$Sample_ID %in% Sample_ID_list & all_dead_long$Radiation_quality == "Si")
+
+Fe_cytotox = subset(all_dead_long,all_dead_long$Sample_ID %in% Sample_ID_list & all_dead_long$Radiation_quality == "Fe")
+
+plot_Ar = ggplot(Ar_cytotox, aes(x = Fluence_level, y = Percentage_dead)) + geom_boxplot() + ylab("Percentage dead PBMC") + ggtitle("Ar") 
+facet(plot_Ar, facet.by = 'Timepoint')
+
+plot_Si = ggplot(Si_cytotox, aes(x = Fluence_level, y = Percentage_dead)) + geom_boxplot() + ylab("Percentage dead PBMC") + ggtitle("Si") 
+facet(plot_Si, facet.by = 'Timepoint')
+
+plot_Fe = ggplot(Fe_cytotox, aes(x = Fluence_level, y = Percentage_dead)) + geom_boxplot() + ylab("Percentage dead PBMC") + ggtitle("Fe") 
+facet(plot_Fe, facet.by = 'Timepoint')
+
+Fe_cytotox$Timepoint = factor(Fe_cytotox$Timepoint, levels = c("24h", "4h")) 
+plot_Fe = ggplot(Fe_cytotox, aes(x = Fluence_level, y = Percentage_dead, group = Sample_ID)) + geom_point() + geom_line() + ylab("Percentage dead PBMC") 
+facet(plot_Fe, facet.by = 'Timepoint')
+
+Si_cytotox$Timepoint = factor(Si_cytotox$Timepoint, levels = c("24h", "4h")) 
+plot_Si = ggplot(Si_cytotox, aes(x = Fluence_level, y = Percentage_dead, group = Sample_ID)) + geom_point() + geom_line() + ylab("Percentage dead PBMC") 
+facet(plot_Si, facet.by = 'Timepoint')
+
+# Extract values at 0Gy
+col = c("Sample_ID","Percentage_dead")
+Fe_cytotox_0_4h <- Fe_cytotox[Fe_cytotox$Dose == "0" & Fe_cytotox$Timepoint == "4h",]
+Fe_cytotox_0_4h = Fe_cytotox_0_4h[,colnames(Fe_cytotox_0_4h) %in% col]
+write.csv(Fe_cytotox_0_4h,"Fe_cytotox_0_4h.csv")
+
+col = c("Sample_ID","Percentage_dead")
+Fe_cytotox_0_24h <- Fe_cytotox[Fe_cytotox$Dose == "0" & Fe_cytotox$Timepoint == "24h",]
+Fe_cytotox_0_24h = Fe_cytotox_0_24h[,colnames(Fe_cytotox_0_24h) %in% col]
+write.csv(Fe_cytotox_0_24h,"Fe_cytotox_0_24h.csv")
+
+col = c("Sample_ID","Percentage_dead")
+Si_cytotox_0_4h <- Si_cytotox[Si_cytotox$Dose == "0" & Si_cytotox$Timepoint == "4h",]
+Si_cytotox_0_4h = Si_cytotox_0_4h[,colnames(Si_cytotox_0_4h) %in% col]
+write.csv(Si_cytotox_0_4h,"Si_cytotox_0_4h.csv")
+
+col = c("Sample_ID","Percentage_dead")
+Si_cytotox_0_24h <- Si_cytotox[Si_cytotox$Dose == "0" & Si_cytotox$Timepoint == "24h",]
+Si_cytotox_0_24h = Si_cytotox_0_24h[,colnames(Si_cytotox_0_24h) %in% col]
+write.csv(Si_cytotox_0_24h,"Si_cytotox_0_24h.csv")
+
+# Calculate slopes
+Fe_cytotox_4h <- Fe_cytotox[Fe_cytotox$Timepoint == "4h",]
+Fe_cytotox_4h_slopes = dcast(Fe_cytotox_4h, Sample_ID ~ Fluence_level, value.var = "Percentage_dead")
+Fe_cytotox_4h_slopes$slope1_CD = (Fe_cytotox_4h_slopes$Low - Fe_cytotox_4h_slopes$None)/1.1
+Fe_cytotox_4h_slopes$slope2_CD = (Fe_cytotox_4h_slopes$High - Fe_cytotox_4h_slopes$Low)/1.9
+Fe_cytotox_4h_slopes$slope3_CD = (Fe_cytotox_4h_slopes$High - Fe_cytotox_4h_slopes$None)/3
+Fe_cytotox_4h_slopes$slope_ratio_CD = Fe_cytotox_4h_slopes$slope2 / Fe_cytotox_4h_slopes$slope1
+write.csv(Fe_cytotox_4h_slopes,"Fe_cytotox_4h_slopes.csv")
+
+Fe_cytotox_24h <- Fe_cytotox[Fe_cytotox$Timepoint == "24h",]
+Fe_cytotox_24h_slopes = dcast(Fe_cytotox_24h, Sample_ID ~ Fluence_level, value.var = "Percentage_dead")
+Fe_cytotox_24h_slopes$slope1_CD = (Fe_cytotox_24h_slopes$Low - Fe_cytotox_24h_slopes$None)/1.1
+Fe_cytotox_24h_slopes$slope2_CD = (Fe_cytotox_24h_slopes$High - Fe_cytotox_24h_slopes$Low)/1.9
+Fe_cytotox_24h_slopes$slope3_CD = (Fe_cytotox_24h_slopes$High - Fe_cytotox_24h_slopes$None)/3
+Fe_cytotox_24h_slopes$slope_ratio_CD = Fe_cytotox_24h_slopes$slope2 / Fe_cytotox_24h_slopes$slope1
+write.csv(Fe_cytotox_24h_slopes,"Fe_cytotox_24h_slopes.csv")
+
+Si_cytotox_4h <- Si_cytotox[Si_cytotox$Timepoint == "4h",]
+Si_cytotox_4h_slopes = dcast(Si_cytotox_4h, Sample_ID ~ Fluence_level, value.var = "Percentage_dead")
+Si_cytotox_4h_slopes$slope1_CD = (Si_cytotox_4h_slopes$Low - Si_cytotox_4h_slopes$None)/1.1
+Si_cytotox_4h_slopes$slope2_CD = (Si_cytotox_4h_slopes$High - Si_cytotox_4h_slopes$Low)/1.9
+Si_cytotox_4h_slopes$slope3_CD = (Si_cytotox_4h_slopes$High - Si_cytotox_4h_slopes$None)/3
+Si_cytotox_4h_slopes$slope_ratio_CD = Si_cytotox_4h_slopes$slope2 / Si_cytotox_4h_slopes$slope1
+write.csv(Si_cytotox_4h_slopes,"Si_cytotox_4h_slopes.csv")
+
+Si_cytotox_24h <- Si_cytotox[Si_cytotox$Timepoint == "24h",]
+Si_cytotox_24h_slopes = dcast(Si_cytotox_24h, Sample_ID ~ Fluence_level, value.var = "Percentage_dead")
+Si_cytotox_24h_slopes$slope1_CD = (Si_cytotox_24h_slopes$Low - Si_cytotox_24h_slopes$None)/1.1
+Si_cytotox_24h_slopes$slope2_CD = (Si_cytotox_24h_slopes$High - Si_cytotox_24h_slopes$Low)/1.9
+Si_cytotox_24h_slopes$slope3_CD = (Si_cytotox_24h_slopes$High - Si_cytotox_24h_slopes$None)/3
+Si_cytotox_24h_slopes$slope_ratio_CD = Si_cytotox_24h_slopes$slope2 / Si_cytotox_24h_slopes$slope1
+write.csv(Si_cytotox_24h_slopes,"Si_cytotox_24h_slopes.csv")
+
+# Correlations between slopes for flow versus cytotoxicity
+slopes_Fe_4h = read.csv('/Users/epariset/Desktop/R_Code-work/Fe_4h_slopes.csv', sep = ",", header = TRUE)
+res = cor(as.matrix(slopes_Fe_4h))
+p.mat <- cor.mtest(as.matrix(slopes_Fe_4h))$p
+corrplot(res, type = "upper", order = "original", number.font = 5, tl.col = "black", tl.srt = 45, p.mat=p.mat,insig = "p-value", sig.level=-1)
+
+slopes_Fe_24h = read.csv('/Users/epariset/Desktop/R_Code-work/Fe_24h_slopes.csv', sep = ",", header = TRUE)
+res = cor(as.matrix(slopes_Fe_24h))
+p.mat <- cor.mtest(as.matrix(slopes_Fe_24h))$p
+corrplot(res, type = "upper", order = "original", number.font = 5, tl.col = "black", tl.srt = 45, p.mat=p.mat,insig = "p-value", sig.level=-1)
+
+slopes_Si_4h = read.csv('/Users/epariset/Desktop/R_Code-work/Si_4h_slopes.csv', sep = ",", header = TRUE)
+res = cor(as.matrix(slopes_Si_4h))
+p.mat <- cor.mtest(as.matrix(slopes_Si_4h))$p
+corrplot(res, type = "upper", order = "original", number.font = 5, tl.col = "black", tl.srt = 45, p.mat=p.mat,insig = "p-value", sig.level=-1)
+
+slopes_Si_24h = read.csv('/Users/epariset/Desktop/R_Code-work/Si_24h_slopes.csv', sep = ",", header = TRUE)
+res = cor(as.matrix(slopes_Si_24h))
+p.mat <- cor.mtest(as.matrix(slopes_Si_24h))$p
+corrplot(res, type = "upper", order = "original", number.font = 5, tl.col = "black", tl.srt = 45, p.mat=p.mat,insig = "p-value", sig.level=-1)
+
+# Correlations between slopes and control level of cell death for flow and for cytotoxicity
+correlation_Fe_4h = merge(Fe_cytotox_4h_slopes,Fe_cytotox_0_4h, by = "Sample_ID")
+colnames(correlation_Fe_4h)[colnames(correlation_Fe_4h) == "Percentage_dead"] = "Control"
+col_to_remove = c("Sample_ID","None","Low","High")
+correlation_Fe_4h = correlation_Fe_4h[, !colnames(correlation_Fe_4h) %in% col_to_remove]
+colnames(correlation_Fe_4h)=paste(colnames(correlation_Fe_4h),"Flow",sep="_")
+write.csv(correlation_Fe_4h,"correlation_Fe_4h_flow.csv")
+
+correlation_Fe_4h_flow = read.csv('/Users/epariset/Desktop/R_Code-work/correlation_Fe_4h_flow.csv', sep = ",", header = TRUE)
+res = cor(as.matrix(correlation_Fe_4h_flow))
+p.mat <- cor.mtest(as.matrix(correlation_Fe_4h_flow))$p
+corrplot(res, type = "upper", order = "original", number.font = 5, tl.col = "black", tl.srt = 45, p.mat=p.mat,insig = "p-value", sig.level=-1)
+
+correlation_Fe_4h_cytotox = read.csv('/Users/epariset/Desktop/R_Code-work/correlation_Fe_4h_cytotox.csv', sep = ",", header = TRUE)
+res = cor(as.matrix(correlation_Fe_4h_cytotox))
+p.mat <- cor.mtest(as.matrix(correlation_Fe_4h_cytotox))$p
+corrplot(res, type = "upper", order = "original", number.font = 5, tl.col = "black", tl.srt = 45, p.mat=p.mat,insig = "p-value", sig.level=-1)
+
+correlation_Fe_24h = merge(Fe_cytotox_24h_slopes,Fe_cytotox_0_24h, by = "Sample_ID")
+colnames(correlation_Fe_24h)[colnames(correlation_Fe_24h) == "Percentage_dead"] = "Control"
+col_to_remove = c("Sample_ID","None","Low","High")
+correlation_Fe_24h = correlation_Fe_24h[, !colnames(correlation_Fe_24h) %in% col_to_remove]
+colnames(correlation_Fe_24h)=paste(colnames(correlation_Fe_24h),"Flow",sep="_")
+write.csv(correlation_Fe_24h,"correlation_Fe_24h_flow.csv")
+
+correlation_Fe_24h_flow = read.csv('/Users/epariset/Desktop/R_Code-work/correlation_Fe_24h_flow.csv', sep = ",", header = TRUE)
+res = cor(as.matrix(correlation_Fe_24h_flow))
+p.mat <- cor.mtest(as.matrix(correlation_Fe_24h_flow))$p
+corrplot(res, type = "upper", order = "original", number.font = 5, tl.col = "black", tl.srt = 45, p.mat=p.mat,insig = "p-value", sig.level=-1)
+
+correlation_Fe_24h_cytotox = read.csv('/Users/epariset/Desktop/R_Code-work/correlation_Fe_24h_cytotox.csv', sep = ",", header = TRUE)
+res = cor(as.matrix(correlation_Fe_24h_cytotox))
+p.mat <- cor.mtest(as.matrix(correlation_Fe_24h_cytotox))$p
+corrplot(res, type = "upper", order = "original", number.font = 5, tl.col = "black", tl.srt = 45, p.mat=p.mat,insig = "p-value", sig.level=-1)
+
+correlation_Si_4h = merge(Si_cytotox_4h_slopes,Si_cytotox_0_4h, by = "Sample_ID")
+colnames(correlation_Si_4h)[colnames(correlation_Si_4h) == "Percentage_dead"] = "Control"
+col_to_remove = c("Sample_ID","None","Low","High")
+correlation_Si_4h = correlation_Si_4h[, !colnames(correlation_Si_4h) %in% col_to_remove]
+colnames(correlation_Si_4h)=paste(colnames(correlation_Si_4h),"Flow",sep="_")
+write.csv(correlation_Si_4h,"correlation_Si_4h_flow.csv")
+
+correlation_Si_4h_flow = read.csv('/Users/epariset/Desktop/R_Code-work/correlation_Si_4h_flow.csv', sep = ",", header = TRUE)
+res = cor(as.matrix(correlation_Si_4h_flow))
+p.mat <- cor.mtest(as.matrix(correlation_Si_4h_flow))$p
+corrplot(res, type = "upper", order = "original", number.font = 5, tl.col = "black", tl.srt = 45, p.mat=p.mat,insig = "p-value", sig.level=-1)
+
+correlation_Si_4h_cytotox = read.csv('/Users/epariset/Desktop/R_Code-work/correlation_Si_4h_cytotox.csv', sep = ",", header = TRUE)
+res = cor(as.matrix(correlation_Si_4h_cytotox))
+p.mat <- cor.mtest(as.matrix(correlation_Si_4h_cytotox))$p
+corrplot(res, type = "upper", order = "original", number.font = 5, tl.col = "black", tl.srt = 45, p.mat=p.mat,insig = "p-value", sig.level=-1)
+
+correlation_Si_24h = merge(Si_cytotox_24h_slopes,Si_cytotox_0_24h, by = "Sample_ID")
+colnames(correlation_Si_24h)[colnames(correlation_Si_24h) == "Percentage_dead"] = "Control"
+col_to_remove = c("Sample_ID","None","Low","High")
+correlation_Si_24h = correlation_Si_24h[, !colnames(correlation_Si_24h) %in% col_to_remove]
+colnames(correlation_Si_24h)=paste(colnames(correlation_Si_24h),"Flow",sep="_")
+write.csv(correlation_Si_24h,"correlation_Si_24h_flow.csv")
+
+correlation_Si_24h_flow = read.csv('/Users/epariset/Desktop/R_Code-work/correlation_Si_24h_flow.csv', sep = ",", header = TRUE)
+res = cor(as.matrix(correlation_Si_24h_flow))
+p.mat <- cor.mtest(as.matrix(correlation_Si_24h_flow))$p
+corrplot(res, type = "upper", order = "original", number.font = 5, tl.col = "black", tl.srt = 45, p.mat=p.mat,insig = "p-value", sig.level=-1)
+
+correlation_Si_24h_cytotox = read.csv('/Users/epariset/Desktop/R_Code-work/correlation_Si_24h_cytotox.csv', sep = ",", header = TRUE)
+res = cor(as.matrix(correlation_Si_24h_cytotox))
+p.mat <- cor.mtest(as.matrix(correlation_Si_24h_cytotox))$p
+corrplot(res, type = "upper", order = "original", number.font = 5, tl.col = "black", tl.srt = 45, p.mat=p.mat,insig = "p-value", sig.level=-1)
+```
+
+```{r}
+## Then basically repeat the above for fold: make LOOOONG dataframes
+
+## First, for ROS
+
+all_cr_long_fold = melt(flow_all_filt_fold, id.vars = c("Sample_ID", "Gender", "Age", "BMI", "BMI_group", "CMV", "Timepoint", "Run", "Set", "Run_set"), measure.vars = colnames(flow_all_filt_fold)[grepl("_CR_fold", colnames(flow_all_filt_fold))], variable.name = "Metric_detailed", value.name = "CR_fold")
+all_cr_long_fold$BMI_group = factor(all_cr_long_fold$BMI_group, levels = c("Underweight", "Normal", "Overweight", "Obese")) ## ordering BMI levels
+all_cr_long_fold$Timepoint = factor(all_cr_long_fold$Timepoint, levels = c("4h", "24h")) ## ordering timepoints to go from 4h (first) to 24h
+
+##Will add information about dose and fluence in the looong table
+
+all_cr_long_fold$Fluence_level = "tempo"
+all_cr_long_fold$Dose = "tempo" 
+all_cr_long_fold$Fluence_level[grepl("low",all_cr_long_fold$Metric_detailed)] = "Low"
+all_cr_long_fold$Fluence_level[grepl("high",all_cr_long_fold$Metric_detailed)] = "High"
+all_cr_long_fold$Fluence_level = factor(all_cr_long_fold$Fluence_level, levels = c("None", "Low", "High")) ## ordering fluence levels so that they would not be in alphabetical order!
+
+##Will add information about radiation type in the looong table
+all_cr_long_fold$Radiation_quality = "tempo"
+all_cr_long_fold$Radiation_quality[grepl("Gamma",all_cr_long_fold$Metric_detailed)] = "Gamma"
+all_cr_long_fold$Radiation_quality[grepl("He",all_cr_long_fold$Metric_detailed)] = "He"
+all_cr_long_fold$Radiation_quality[grepl("Ar",all_cr_long_fold$Metric_detailed)] = "Ar"
+all_cr_long_fold$Radiation_quality[grepl("Si",all_cr_long_fold$Metric_detailed)] = "Si"
+all_cr_long_fold$Radiation_quality[grepl("Fe",all_cr_long_fold$Metric_detailed)] = "Fe"
+all_cr_long_fold$Radiation_quality = factor(all_cr_long_fold$Radiation_quality, levels = c("Gamma", "He", "Si", "Ar", "Fe")) ## ordering radiation types from lowest to highest LET
+
+all_cr_long_fold_4h = all_cr_long_fold[all_cr_long_fold$Timepoint == "4h",]
+all_cr_long_fold_24h = all_cr_long_fold[all_cr_long_fold$Timepoint == "24h",]
+
+```
+
+
+```{r}
+## plotting for CR, fold
+all_plot_box_cr_fold = ggplot(all_cr_long_fold, aes(x = Fluence_level, y = CR_fold, col = Gender)) + geom_boxplot() + ylab("Fold CR in live PBMCs") + ylim(0,6)
+facet(all_plot_box_cr_fold, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_box_run_cr_fold = ggplot(all_cr_long_fold, aes(x = Fluence_level, y = CR_fold, col = Run)) + geom_boxplot() + ylab("Fold CR in live PBMCs") + ylim(0,6)
+facet(all_plot_box_run_cr_fold, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_dots_cr_fold = ggplot(all_cr_long_fold, aes(x = Fluence_level, y = CR_fold, col = Gender)) + geom_point(size = 0.1, stroke = 0, shape = 16) + geom_jitter() + ylab("Fold CR in live PBMCs") + ylim(0,6)
+facet(all_plot_dots_cr_fold, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_box_bmi_cr_fold = ggplot(all_cr_long_fold, aes(x = Fluence_level, y = CR_fold, col = BMI_group)) + geom_boxplot() + ylab("Fold CR in live PBMCs") + ylim(0,6)
+facet(all_plot_box_bmi_cr_fold, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_age_cr_fold = ggplot(all_cr_long_fold, aes(x = Age, y = CR_fold, col = Fluence_level)) + ylab("Fold CR in live PBMCs") + geom_smooth(method = "glm")
+facet(all_plot_age_cr_fold, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_bmi_cr_fold = ggplot(all_cr_long_fold, aes(x = BMI, y = CR_fold, col = Fluence_level)) + ylab("Fold CR in live PBMCs") + geom_smooth(method = "glm")
+facet(all_plot_bmi_cr_fold, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_box_cmv_cr_fold = ggplot(all_cr_long_fold, aes(x = Fluence_level, y = CR_fold, col = CMV)) + geom_boxplot() + ylab("Fold CR in live PBMCs") + ylim(0,6)
+facet(all_plot_box_cmv_cr_fold, facet.by = c('Timepoint', 'Radiation_quality'))
+
+```
+
+
+```{r}
+## Next, the loooong dataframe for fold of cell death
+
+all_dead_long_fold = melt(flow_all_filt_fold, id.vars = c("Sample_ID", "Gender", "Age", "BMI", "BMI_group", "CMV", "Timepoint", "Run", "Set", "Run_set"), measure.vars = colnames(flow_all_filt_fold)[grepl("_Dead_fold", colnames(flow_all_filt_fold))], variable.name = "Metric_detailed", value.name = "Dead_fold")
+all_dead_long_fold$BMI_group = factor(all_dead_long_fold$BMI_group, levels = c("Underweight", "Normal", "Overweight", "Obese")) ## ordering BMI levels
+all_dead_long_fold$Timepoint = factor(all_dead_long_fold$Timepoint, levels = c("4h", "24h")) ## ordering timepoints to go from 4h (first) to 24h
+
+##Will add information about dose and fluence in the looong table
+
+all_dead_long_fold$Fluence_level = "tempo"
+all_dead_long_fold$Dose = "tempo" 
+all_dead_long_fold$Fluence_level[grepl("low",all_dead_long_fold$Metric_detailed)] = "Low"
+all_dead_long_fold$Fluence_level[grepl("high",all_dead_long_fold$Metric_detailed)] = "High"
+all_dead_long_fold$Fluence_level = factor(all_dead_long_fold$Fluence_level, levels = c("None", "Low", "High")) ## ordering fluence levels so that they would not be in alphabetical order!
+
+##Will add information about radiation type in the looong table
+all_dead_long_fold$Radiation_quality = "tempo"
+all_dead_long_fold$Radiation_quality[grepl("Gamma",all_dead_long_fold$Metric_detailed)] = "Gamma"
+all_dead_long_fold$Radiation_quality[grepl("He",all_dead_long_fold$Metric_detailed)] = "He"
+all_dead_long_fold$Radiation_quality[grepl("Ar",all_dead_long_fold$Metric_detailed)] = "Ar"
+all_dead_long_fold$Radiation_quality[grepl("Si",all_dead_long_fold$Metric_detailed)] = "Si"
+all_dead_long_fold$Radiation_quality[grepl("Fe",all_dead_long_fold$Metric_detailed)] = "Fe"
+all_dead_long_fold$Radiation_quality = factor(all_dead_long_fold$Radiation_quality, levels = c("Gamma", "He", "Si", "Ar", "Fe")) ## ordering radiation types from lowest to highest LET
+
+all_dead_long_fold_4h = all_dead_long_fold[all_dead_long_fold$Timepoint == "4h",]
+all_dead_long_fold_24h = all_dead_long_fold[all_dead_long_fold$Timepoint == "24h",]
+
+```
+
+
+```{r}
+## plotting for Dead, fold
+all_plot_box_dead_fold = ggplot(all_dead_long_fold, aes(x = Fluence_level, y = Dead_fold, col = Gender)) + geom_boxplot() + ylab("Fold of percentage of dead PBMCs") + ylim(0,6)
+facet(all_plot_box_dead_fold, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_box_run_dead_fold = ggplot(all_dead_long_fold, aes(x = Fluence_level, y = Dead_fold, col = Run)) + geom_boxplot() + ylab("Fold of percentage of dead PBMCs") + ylim(0,6)
+facet(all_plot_box_run_dead_fold, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_dots_dead_fold = ggplot(all_dead_long_fold, aes(x = Fluence_level, y = Dead_fold, col = Gender)) + geom_point(size = 0.1, stroke = 0, shape = 16) + geom_jitter() + ylab("Fold of percentage of dead PBMCs") + ylim(0,6)
+facet(all_plot_dots_dead_fold, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_box_bmi_dead_fold = ggplot(all_dead_long_fold, aes(x = Fluence_level, y = Dead_fold, col = BMI_group)) + geom_boxplot() + ylab("Fold of percentage of dead PBMCs") + ylim(0,6)
+facet(all_plot_box_bmi_dead_fold, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_bmi_dead_fold = ggplot(all_dead_long_fold, aes(x = BMI, y = Dead_fold, col = Fluence_level)) + ylab("Fold of percentage of dead PBMCs") + geom_smooth(method = "glm")
+facet(all_plot_bmi_dead_fold, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_age_dead_fold = ggplot(all_dead_long_fold, aes(x = Age, y = Dead_fold, col = Fluence_level)) + ylab("Fold of percentage of dead PBMCs") + geom_smooth(method = "glm")
+facet(all_plot_age_dead_fold, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_box_cmv_dead_fold = ggplot(all_dead_long_fold, aes(x = Fluence_level, y = Dead_fold, col = CMV)) + geom_boxplot() + ylab("Fold of percentage of dead PBMCs") + ylim(0,6)
+facet(all_plot_box_cmv_dead_fold, facet.by = c('Timepoint', 'Radiation_quality'))
+
+```
+
+
+```{r}
+## Now, comparing 24h and 4h data. Will call it the DECAY data. 
+
+flow_all_filt_decay = read.csv('/Users/ecekanav/Desktop/19C_flow_analysis/All_filtered_decay_differences.csv', sep = ",", header = TRUE)
+
+flow_all_filt_decay_fold = flow_all_filt_decay
+flow_all_filt_decay_fold$Ar_CR_fold_low = flow_all_filt_decay_fold$Ar_Live_CR_mean_1 / flow_all_filt_decay_fold$Ar_Live_CR_mean_0
+flow_all_filt_decay_fold$Ar_CR_fold_high = flow_all_filt_decay_fold$Ar_Live_CR_mean_3 / flow_all_filt_decay_fold$Ar_Live_CR_mean_0
+flow_all_filt_decay_fold$Si_CR_fold_low = flow_all_filt_decay_fold$Si_Live_CR_mean_1 / flow_all_filt_decay_fold$Si_Live_CR_mean_0
+flow_all_filt_decay_fold$Si_CR_fold_high = flow_all_filt_decay_fold$Si_Live_CR_mean_3 / flow_all_filt_decay_fold$Si_Live_CR_mean_0
+flow_all_filt_decay_fold$Fe_CR_fold_low = flow_all_filt_decay_fold$Fe_Live_CR_mean_1 / flow_all_filt_decay_fold$Fe_Live_CR_mean_0
+flow_all_filt_decay_fold$Fe_CR_fold_high = flow_all_filt_decay_fold$Fe_Live_CR_mean_3 / flow_all_filt_decay_fold$Fe_Live_CR_mean_0
+flow_all_filt_decay_fold$He_CR_fold_low = flow_all_filt_decay_fold$He_Live_CR_mean_15 / flow_all_filt_decay_fold$He_Live_CR_mean_0
+flow_all_filt_decay_fold$He_CR_fold_high = flow_all_filt_decay_fold$He_Live_CR_mean_50 / flow_all_filt_decay_fold$He_Live_CR_mean_0
+flow_all_filt_decay_fold$Gamma_CR_fold_low = flow_all_filt_decay_fold$Gamma_Live_CR_mean_10 / flow_all_filt_decay_fold$Gamma_Live_CR_mean_0
+flow_all_filt_decay_fold$Gamma_CR_fold_high = flow_all_filt_decay_fold$Gamma_Live_CR_mean_100 / flow_all_filt_decay_fold$Gamma_Live_CR_mean_0
+
+flow_all_filt_decay_fold$Ar_Dead_fold_low = flow_all_filt_decay_fold$Ar_Dead_percentage_1 / flow_all_filt_decay_fold$Ar_Dead_percentage_0
+flow_all_filt_decay_fold$Ar_Dead_fold_high = flow_all_filt_decay_fold$Ar_Dead_percentage_3 / flow_all_filt_decay_fold$Ar_Dead_percentage_0
+flow_all_filt_decay_fold$Si_Dead_fold_low = flow_all_filt_decay_fold$Si_Dead_percentage_1 / flow_all_filt_decay_fold$Si_Dead_percentage_0
+flow_all_filt_decay_fold$Si_Dead_fold_high = flow_all_filt_decay_fold$Si_Dead_percentage_3 / flow_all_filt_decay_fold$Si_Dead_percentage_0
+flow_all_filt_decay_fold$Fe_Dead_fold_low = flow_all_filt_decay_fold$Fe_Dead_percentage_1 / flow_all_filt_decay_fold$Fe_Dead_percentage_0
+flow_all_filt_decay_fold$Fe_Dead_fold_high = flow_all_filt_decay_fold$Fe_Dead_percentage_3 / flow_all_filt_decay_fold$Fe_Dead_percentage_0
+flow_all_filt_decay_fold$He_Dead_fold_low = flow_all_filt_decay_fold$He_Dead_percentage_15 / flow_all_filt_decay_fold$He_Dead_percentage_0
+flow_all_filt_decay_fold$He_Dead_fold_high = flow_all_filt_decay_fold$He_Dead_percentage_50 / flow_all_filt_decay_fold$He_Dead_percentage_0
+flow_all_filt_decay_fold$Gamma_Dead_fold_low = flow_all_filt_decay_fold$Gamma_Dead_percentage_10 / flow_all_filt_decay_fold$Gamma_Dead_percentage_0
+flow_all_filt_decay_fold$Gamma_Dead_fold_high = flow_all_filt_decay_fold$Gamma_Dead_percentage_100 / flow_all_filt_decay_fold$Gamma_Dead_percentage_0
+
+write.csv(flow_all_filt_decay_fold, file = "All_filtered_decay_fold_differences.csv", row.names = FALSE)
+
+```
+
+
+```{r}
+## Now will make a LOOONG table and analyze based on demographics. Focusing on ROS (CellROX), because clear that the cell death is incomplete - should use the number of "missing cells" from RIF calculations instead. 
+
+all_cr_long_decay = melt(flow_all_filt_decay, id.vars = c("Sample_ID", "Gender", "Age", "BMI", "BMI_group", "CMV", "Run", "Set", "Run_set"), measure.vars = colnames(flow_all_filt)[grepl("_CR_", colnames(flow_all_filt))], variable.name = "Metric_detailed", value.name = "Mean_CR")
+
+all_cr_long_decay$BMI_group = factor(all_cr_long_decay$BMI_group, levels = c("Underweight", "Normal", "Overweight", "Obese")) ## ordering BMI levels
+
+##Will add information about dose and fluence in the looong table
+
+all_cr_long_decay$Fluence_level = "tempo"
+all_cr_long_decay$Dose = "tempo" 
+
+all_cr_long_decay$Fluence_level[grepl("0",all_cr_long_decay$Metric_detailed)] = "None"
+all_cr_long_decay$Fluence_level[grepl("_1",all_cr_long_decay$Metric_detailed)] = "Low"
+all_cr_long_decay$Fluence_level[grepl("_3",all_cr_long_decay$Metric_detailed)] = "High"
+all_cr_long_decay$Fluence_level[grepl("Gamma_Live_CR_mean_10",all_cr_long_decay$Metric_detailed)] = "Low"
+all_cr_long_decay$Fluence_level[grepl("Gamma_Live_CR_mean_100",all_cr_long_decay$Metric_detailed)] = "High"
+all_cr_long_decay$Fluence_level[grepl("He_Live_CR_mean_15",all_cr_long_decay$Metric_detailed)] = "Low"
+all_cr_long_decay$Fluence_level[grepl("He_Live_CR_mean_50",all_cr_long_decay$Metric_detailed)] = "High"
+
+all_cr_long_decay$Fluence_level = factor(all_cr_long_decay$Fluence_level, levels = c("None", "Low", "High")) ## ordering fluence levels so that they would not be in alphabetical order!
+
+all_cr_long_decay$Dose[grepl("0",all_cr_long_decay$Metric_detailed)] = "0"
+all_cr_long_decay$Dose[grepl("Ar_Live_CR_mean_1",all_cr_long_decay$Metric_detailed)] = "18"
+all_cr_long_decay$Dose[grepl("Ar_Live_CR_mean_3",all_cr_long_decay$Metric_detailed)] = "50"
+all_cr_long_decay$Dose[grepl("Si_Live_CR_mean_1",all_cr_long_decay$Metric_detailed)] = "10"
+all_cr_long_decay$Dose[grepl("Si_Live_CR_mean_3",all_cr_long_decay$Metric_detailed)] = "30"
+all_cr_long_decay$Dose[grepl("Fe_Live_CR_mean_1",all_cr_long_decay$Metric_detailed)] = "30"
+all_cr_long_decay$Dose[grepl("Fe_Live_CR_mean_3",all_cr_long_decay$Metric_detailed)] = "82"
+all_cr_long_decay$Dose[grepl("Gamma_Live_CR_mean_10",all_cr_long_decay$Metric_detailed)] = "10"
+all_cr_long_decay$Dose[grepl("Gamma_Live_CR_mean_100",all_cr_long_decay$Metric_detailed)] = "100"
+all_cr_long_decay$Dose[grepl("He_Live_CR_mean_15",all_cr_long_decay$Metric_detailed)] = "15"
+all_cr_long_decay$Dose[grepl("He_Live_CR_mean_50",all_cr_long_decay$Metric_detailed)] = "50"
+all_cr_long_decay$Dose = factor(all_cr_long_decay$Dose, levels = c("0", "10", "15", "18", "30", "50", "82", "100")) ## ordering doses so that they would not be 1, 10, 18, 100, 30, etc... 
+
+##Will add information about radiation type in the looong table
+all_cr_long_decay$Radiation_quality = "tempo"
+all_cr_long_decay$Radiation_quality[grepl("Gamma",all_cr_long_decay$Metric_detailed)] = "Gamma"
+all_cr_long_decay$Radiation_quality[grepl("He",all_cr_long_decay$Metric_detailed)] = "He"
+all_cr_long_decay$Radiation_quality[grepl("Ar",all_cr_long_decay$Metric_detailed)] = "Ar"
+all_cr_long_decay$Radiation_quality[grepl("Si",all_cr_long_decay$Metric_detailed)] = "Si"
+all_cr_long_decay$Radiation_quality[grepl("Fe",all_cr_long_decay$Metric_detailed)] = "Fe"
+all_cr_long_decay$Radiation_quality = factor(all_cr_long_decay$Radiation_quality, levels = c("Gamma", "He", "Si", "Ar", "Fe")) ## ordering radiation types from lowest to highest LET
+
+```
+
+```{r}
+## plotting decay for CR, absolute values
+
+all_plot_decay_box_cr = ggplot(all_cr_long_decay, aes(x = Fluence_level, y = Mean_CR, col = Gender)) + geom_boxplot() + ylab("%CR 24h/4h in live PBMCs") + ylim(0,200)
+facet(all_plot_decay_box_cr, facet.by = 'Radiation_quality')
+
+all_plot_decay_bmi_box_cr = ggplot(all_cr_long_decay, aes(x = Fluence_level, y = Mean_CR, col = BMI_group)) + geom_boxplot() + ylab("%CR 24h/4h in live PBMCs") + ylim(0,200)
+facet(all_plot_decay_bmi_box_cr, facet.by = 'Radiation_quality')
+
+all_plot_decay_age_cr = ggplot(all_cr_long_decay, aes(x = Age, y = Mean_CR, col = Fluence_level)) + ylab("%CR 24h/4h in live PBMCs") + ylim(0,200) + geom_smooth(method = "glm")
+facet(all_plot_decay_age_cr, facet.by = 'Radiation_quality')
+
+all_plot_decay_bmi_cr = ggplot(all_cr_long_decay, aes(x = BMI, y = Mean_CR, col = Fluence_level)) + ylab("%CR 24h/4h in live PBMCs") + ylim(0,200) + geom_smooth(method = "glm")
+facet(all_plot_decay_bmi_cr, facet.by = 'Radiation_quality')
+
+all_plot_decay_cmv_box_cr = ggplot(all_cr_long_decay, aes(x = Fluence_level, y = Mean_CR, col = CMV)) + geom_boxplot() + ylab("%CR 24h/4h in live PBMCs") + ylim(0,200)
+facet(all_plot_decay_cmv_box_cr, facet.by = 'Radiation_quality')
+
+
+```
+
+
+```{r}
+## Now will repeat the above with the DECAY in cell death metric. 
+
+all_dead_long_decay = melt(flow_all_filt_decay, id.vars = c("Sample_ID", "Gender", "Age", "BMI", "BMI_group", "CMV", "Run", "Set", "Run_set"), measure.vars = colnames(flow_all_filt)[grepl("_Dead_", colnames(flow_all_filt))], variable.name = "Metric_detailed", value.name = "Percentage_dead")
+all_dead_long_decay$BMI_group = factor(all_dead_long_decay$BMI_group, levels = c("Underweight", "Normal", "Overweight", "Obese")) ## ordering BMI levels
+
+##Will add information about dose and fluence in the looong table
+
+all_dead_long_decay$Fluence_level = "tempo"
+all_dead_long_decay$Dose = "tempo" 
+
+all_dead_long_decay$Fluence_level[grepl("0",all_dead_long_decay$Metric_detailed)] = "None"
+all_dead_long_decay$Fluence_level[grepl("_1",all_dead_long_decay$Metric_detailed)] = "Low"
+all_dead_long_decay$Fluence_level[grepl("_3",all_dead_long_decay$Metric_detailed)] = "High"
+all_dead_long_decay$Fluence_level[grepl("Gamma_Dead_percentage_10",all_dead_long_decay$Metric_detailed)] = "Low"
+all_dead_long_decay$Fluence_level[grepl("Gamma_Dead_percentage_100",all_dead_long_decay$Metric_detailed)] = "High"
+all_dead_long_decay$Fluence_level[grepl("He_Dead_percentage_15",all_dead_long_decay$Metric_detailed)] = "Low"
+all_dead_long_decay$Fluence_level[grepl("He_Dead_percentage_50",all_dead_long_decay$Metric_detailed)] = "High"
+all_dead_long_decay$Fluence_level = factor(all_dead_long_decay$Fluence_level, levels = c("None", "Low", "High")) ## ordering fluence levels so that they would not be in alphabetical order!
+
+all_dead_long_decay$Dose[grepl("0",all_dead_long_decay$Metric_detailed)] = "0"
+all_dead_long_decay$Dose[grepl("Ar_Dead_percentage_1",all_dead_long_decay$Metric_detailed)] = "18"
+all_dead_long_decay$Dose[grepl("Ar_Dead_percentage_3",all_dead_long_decay$Metric_detailed)] = "50"
+all_dead_long_decay$Dose[grepl("Si_Dead_percentage_1",all_dead_long_decay$Metric_detailed)] = "10"
+all_dead_long_decay$Dose[grepl("Si_Dead_percentage_3",all_dead_long_decay$Metric_detailed)] = "30"
+all_dead_long_decay$Dose[grepl("Fe_Dead_percentage_1",all_dead_long_decay$Metric_detailed)] = "30"
+all_dead_long_decay$Dose[grepl("Fe_Dead_percentage_3",all_dead_long_decay$Metric_detailed)] = "82"
+all_dead_long_decay$Dose[grepl("Gamma_Dead_percentage_10",all_dead_long_decay$Metric_detailed)] = "10"
+all_dead_long_decay$Dose[grepl("Gamma_Dead_percentage_100",all_dead_long_decay$Metric_detailed)] = "100"
+all_dead_long_decay$Dose[grepl("He_Dead_percentage_15",all_dead_long_decay$Metric_detailed)] = "15"
+all_dead_long_decay$Dose[grepl("He_Dead_percentage_50",all_dead_long_decay$Metric_detailed)] = "50"
+all_dead_long_decay$Dose = factor(all_dead_long_decay$Dose, levels = c("0", "10", "15", "18", "30", "50", "82", "100")) ## ordering doses so that they would not be 1, 10, 18, 100, 30, etc... 
+
+##Will add information about radiation type in the looong table
+all_dead_long_decay$Radiation_quality = "tempo"
+all_dead_long_decay$Radiation_quality[grepl("Gamma",all_dead_long_decay$Metric_detailed)] = "Gamma"
+all_dead_long_decay$Radiation_quality[grepl("He",all_dead_long_decay$Metric_detailed)] = "He"
+all_dead_long_decay$Radiation_quality[grepl("Ar",all_dead_long_decay$Metric_detailed)] = "Ar"
+all_dead_long_decay$Radiation_quality[grepl("Si",all_dead_long_decay$Metric_detailed)] = "Si"
+all_dead_long_decay$Radiation_quality[grepl("Fe",all_dead_long_decay$Metric_detailed)] = "Fe"
+all_dead_long_decay$Radiation_quality = factor(all_dead_long_decay$Radiation_quality, levels = c("Gamma", "He", "Si", "Ar", "Fe")) ## ordering radiation types from lowest to highest LET
+```
+
+```{r}
+## plotting for DECAY cell death
+all_plot_box_dead_decay = ggplot(all_dead_long_decay, aes(x = Fluence_level, y = Percentage_dead, col = Gender)) + geom_boxplot() + ylab("% 24h/4h in Percentage dead PBMC") + ylim(0,1000)
+facet(all_plot_box_dead_decay, facet.by = 'Radiation_quality')
+
+all_plot_box_bmi_dead_decay = ggplot(all_dead_long_decay, aes(x = Fluence_level, y = Percentage_dead, col = BMI_group)) + geom_boxplot() + ylab("% 24h/4h in Percentage dead PBMC") + ylim(0,1000)
+facet(all_plot_box_bmi_dead_decay, facet.by = 'Radiation_quality')
+
+all_plot_age_dead_decay = ggplot(all_dead_long_decay, aes(x = Age, y = Percentage_dead, col = Fluence_level)) + ylab("% 24h/4h Percentage dead PBMC") + ylim(0,500) + geom_smooth(method = "glm")
+facet(all_plot_age_dead, facet.by = 'Radiation_quality')
+
+all_plot_bmi_dead_decay = ggplot(all_dead_long_decay, aes(x = BMI, y = Percentage_dead, col = Fluence_level)) + ylab("% 24h/4h in Percentage dead PBMC") + ylim(0,500) + geom_smooth(method = "glm")
+facet(all_plot_bmi_dead_decay, facet.by = 'Radiation_quality')
+
+all_plot_box_cmv_dead_decay = ggplot(all_dead_long_decay, aes(x = Fluence_level, y = Percentage_dead, col = CMV)) + geom_boxplot() + ylab("% 24h/4h in Percentage dead PBMC") + ylim(0,1000)
+facet(all_plot_box_cmv_dead_decay, facet.by = 'Radiation_quality')
+
+
+```
+
+```{r}
+## Now we want to plot the absolute cell death and oxidative stress at 4h per set for BNL19A and 19C
+cr_19A_Set1_4h = all_cr_long_4h[all_cr_long_4h$Run_set=="Run_19A_Set_1" & all_cr_long_4h$Radiation_quality != "He",]
+plot_cr_19A_Set1_4h = ggplot(cr_19A_Set1_4h, aes(x = Fluence_level, y = Mean_CR)) + geom_boxplot() + ylab("Mean CR in live PBMCs") + ylim(0,2000) + ggtitle("BNL19A Set1") 
+facet(plot_cr_19A_Set1_4h, facet.by = 'Radiation_quality') 
+
+cr_19A_Set2_4h = all_cr_long_4h[all_cr_long_4h$Run_set=="Run_19A_Set_2" & all_cr_long_4h$Radiation_quality != "He",]
+plot_cr_19A_Set2_4h = ggplot(cr_19A_Set2_4h, aes(x = Fluence_level, y = Mean_CR)) + geom_boxplot() + ylab("Mean CR in live PBMCs") + ylim(0,2000) + ggtitle("BNL19A Set2") 
+facet(plot_cr_19A_Set2_4h, facet.by = 'Radiation_quality') 
+
+cr_19A_Set3_4h = all_cr_long_4h[all_cr_long_4h$Run_set=="Run_19A_Set_3" & all_cr_long_4h$Radiation_quality != "He",]
+plot_cr_19A_Set3_4h = ggplot(cr_19A_Set3_4h, aes(x = Fluence_level, y = Mean_CR)) + geom_boxplot() + ylab("Mean CR in live PBMCs") + ylim(0,2000) + ggtitle("BNL19A Set3") 
+facet(plot_cr_19A_Set3_4h, facet.by = 'Radiation_quality') 
+
+cr_19A_Set4_4h = all_cr_long_4h[all_cr_long_4h$Run_set=="Run_19A_Set_4" & all_cr_long_4h$Radiation_quality != "He",]
+plot_cr_19A_Set4_4h = ggplot(cr_19A_Set4_4h, aes(x = Fluence_level, y = Mean_CR)) + geom_boxplot() + ylab("Mean CR in live PBMCs") + ylim(0,2000) + ggtitle("BNL19A Set4") 
+facet(plot_cr_19A_Set4_4h, facet.by = 'Radiation_quality') 
+
+cr_19C_Set1_4h = all_cr_long[all_cr_long_4h$Run_set=="Run_19C_Set_1" & all_cr_long_4h$Radiation_quality != "He",]
+plot_cr_19C_Set1_4h = ggplot(cr_19C_Set1_4h, aes(x = Fluence_level, y = Mean_CR)) + geom_boxplot() + ylab("Mean CR in live PBMCs") + ylim(0,2000) + ggtitle("BNL19C Set1") 
+facet(plot_cr_19C_Set1_4h, facet.by = 'Radiation_quality') 
+
+cr_19C_Set2_4h = all_cr_long[all_cr_long_4h$Run_set=="Run_19C_Set_2" & all_cr_long_4h$Radiation_quality != "He",]
+plot_cr_19C_Set2_4h = ggplot(cr_19C_Set2_4h, aes(x = Fluence_level, y = Mean_CR)) + geom_boxplot() + ylab("Mean CR in live PBMCs") + ylim(0,2000) + ggtitle("BNL19C Set2") 
+facet(plot_cr_19C_Set2_4h, facet.by = 'Radiation_quality')
+
+dead_19A_Set1_4h = all_dead_long_4h[all_dead_long_4h$Run_set=="Run_19A_Set_1" & all_dead_long_4h$Radiation_quality != "He",]
+plot_dead_19A_Set1_4h = ggplot(dead_19A_Set1_4h, aes(x = Fluence_level, y = Percentage_dead)) + geom_boxplot() + ylab("Percentage Dead PBMCs")  + ggtitle("BNL19A Set1") + ylim(0,50)
+facet(plot_dead_19A_Set1_4h, facet.by = 'Radiation_quality') 
+
+dead_19A_Set2_4h = all_dead_long_4h[all_dead_long_4h$Run_set=="Run_19A_Set_2" & all_dead_long_4h$Radiation_quality != "He",]
+plot_dead_19A_Set2_4h = ggplot(dead_19A_Set2_4h, aes(x = Fluence_level, y = Percentage_dead)) + geom_boxplot() + ylab("Percentage Dead PBMCs") + ggtitle("BNL19A Set2") + ylim(0,50)
+facet(plot_dead_19A_Set2_4h, facet.by = 'Radiation_quality') 
+
+dead_19A_Set3_4h = all_dead_long_4h[all_dead_long_4h$Run_set=="Run_19A_Set_3" & all_dead_long_4h$Radiation_quality != "He",]
+plot_dead_19A_Set3_4h = ggplot(dead_19A_Set3_4h, aes(x = Fluence_level, y = Percentage_dead)) + geom_boxplot() + ylab("Percentage Dead PBMCs")  + ggtitle("BNL19A Set3") + ylim(0,50)
+facet(plot_dead_19A_Set3_4h, facet.by = 'Radiation_quality') 
+
+dead_19A_Set4_4h = all_dead_long_4h[all_dead_long_4h$Run_set=="Run_19A_Set_4" & all_dead_long_4h$Radiation_quality != "He",]
+plot_dead_19A_Set4_4h = ggplot(dead_19A_Set4_4h, aes(x = Fluence_level, y = Percentage_dead)) + geom_boxplot() + ylab("Percentage Dead PBMCs")  + ggtitle("BNL19A Set4") + ylim(0,50)
+facet(plot_dead_19A_Set4_4h, facet.by = 'Radiation_quality') 
+
+dead_19C_Set1_4h = all_dead_long[all_dead_long_4h$Run_set=="Run_19C_Set_1" & all_dead_long_4h$Radiation_quality != "He",]
+plot_dead_19C_Set1_4h = ggplot(dead_19C_Set1_4h, aes(x = Fluence_level, y = Percentage_dead)) + geom_boxplot() + ylab("Percentage Dead PBMCs")  + ggtitle("BNL19C Set1") + ylim(0,50)
+facet(plot_dead_19C_Set1_4h, facet.by = 'Radiation_quality') 
+
+dead_19C_Set2_4h = all_dead_long[all_dead_long_4h$Run_set=="Run_19C_Set_2" & all_dead_long_4h$Radiation_quality != "He",]
+plot_dead_19C_Set2_4h = ggplot(dead_19C_Set2_4h, aes(x = Fluence_level, y = Percentage_dead)) + geom_boxplot() + ylab("Percentage Dead PBMCs")  + ggtitle("BNL19C Set2") + ylim(0,50)
+facet(plot_dead_19C_Set2_4h, facet.by = 'Radiation_quality')
+```
+
+## Generating tables for plotting on Prism
+```{r}
+flow_all_filt_fold_decay_4h = flow_all_filt_fold[flow_all_filt_fold$Timepoint == "4h",]
+flow_all_filt_fold_decay_24h = flow_all_filt_fold_decay[flow_all_filt_fold_decay$Timepoint == "24h",]
+
+cols_gamma = c('Gamma_Dead_fold_low','Gamma_Dead_fold_high')
+flow_dead_gamma_4h = flow_all_filt_fold_decay_4h[, colnames(flow_all_filt_fold_decay_4h) %in% cols_gamma]
+flow_dead_gamma_24h = flow_all_filt_fold_decay_24h[, colnames(flow_all_filt_fold_decay_24h) %in% cols_gamma]
+write.csv(flow_dead_gamma_4h,"flow_dead_gamma_4h.csv")
+write.csv(flow_dead_gamma_24h,"flow_dead_gamma_24h.csv")
+
+cols_si = c('Si_Dead_fold_low','Si_Dead_fold_high')
+flow_dead_si_4h = flow_all_filt_fold_decay_4h[, colnames(flow_all_filt_fold_decay_4h) %in% cols_si]
+flow_dead_si_24h = flow_all_filt_fold_decay_24h[, colnames(flow_all_filt_fold_decay_24h) %in% cols_si]
+write.csv(flow_dead_si_4h,"flow_dead_si_4h.csv")
+write.csv(flow_dead_si_24h,"flow_dead_si_24h.csv")
+
+cols_ar = c('Ar_Dead_fold_low','Ar_Dead_fold_high')
+flow_dead_ar_4h = flow_all_filt_fold_decay_4h[, colnames(flow_all_filt_fold_decay_4h) %in% cols_ar]
+flow_dead_ar_24h = flow_all_filt_fold_decay_24h[, colnames(flow_all_filt_fold_decay_24h) %in% cols_ar]
+write.csv(flow_dead_ar_4h,"flow_dead_ar_4h.csv")
+write.csv(flow_dead_ar_24h,"flow_dead_ar_24h.csv")
+
+cols_fe = c('Fe_Dead_fold_low','Fe_Dead_fold_high')
+flow_dead_fe_4h = flow_all_filt_fold_decay_4h[, colnames(flow_all_filt_fold_decay_4h) %in% cols_fe]
+flow_dead_fe_24h = flow_all_filt_fold_decay_24h[, colnames(flow_all_filt_fold_decay_24h) %in% cols_fe]
+write.csv(flow_dead_fe_4h,"flow_dead_fe_4h.csv")
+write.csv(flow_dead_fe_24h,"flow_dead_fe_24h.csv")
+
+cols_he = c('He_Dead_fold_low','He_Dead_fold_high')
+flow_dead_he_4h = flow_all_filt_fold_decay_4h[, colnames(flow_all_filt_fold_decay_4h) %in% cols_he]
+flow_dead_he_24h = flow_all_filt_fold_decay_24h[, colnames(flow_all_filt_fold_decay_24h) %in% cols_he]
+write.csv(flow_dead_he_4h,"flow_dead_he_4h.csv")
+write.csv(flow_dead_he_24h,"flow_dead_he_24h.csv")
+
+cols_gamma = c('Gamma_Dead_fold_decay_low','Gamma_Dead_fold_decay_high')
+flow_dead_gamma_decay_24h = flow_all_filt_fold_decay_24h[, colnames(flow_all_filt_fold_decay_24h) %in% cols_gamma]
+write.csv(flow_dead_gamma_decay_24h,"flow_gamma_decay.csv")
+
+cols_si = c('Si_Dead_fold_decay_low','Si_Dead_fold_decay_high')
+flow_dead_si_decay_24h = flow_all_filt_fold_decay_24h[, colnames(flow_all_filt_fold_decay_24h) %in% cols_si]
+write.csv(flow_dead_si_decay_24h,"flow_si_decay.csv")
+
+cols_ar = c('Ar_Dead_fold_decay_low','Ar_Dead_fold_decay_high')
+flow_dead_ar_decay_24h = flow_all_filt_fold_decay_24h[, colnames(flow_all_filt_fold_decay_24h) %in% cols_ar]
+write.csv(flow_dead_ar_decay_24h,"flow_ar_decay.csv")
+
+cols_fe = c('Fe_Dead_fold_decay_low','Fe_Dead_fold_decay_high')
+flow_dead_fe_decay_24h = flow_all_filt_fold_decay_24h[, colnames(flow_all_filt_fold_decay_24h) %in% cols_fe]
+write.csv(flow_dead_fe_decay_24h,"flow_fe_decay.csv")
+
+cols_he = c('He_Dead_fold_decay_low','He_Dead_fold_decay_high')
+flow_dead_he_decay_24h = flow_all_filt_fold_decay_24h[, colnames(flow_all_filt_fold_decay_24h) %in% cols_he]
+write.csv(flow_dead_he_decay_24h,"flow_he_decay.csv")
+
+cols_gamma = c('Gamma_CR_fold_low','Gamma_CR_fold_high')
+flow_CR_gamma_4h = flow_all_filt_fold_decay_4h[, colnames(flow_all_filt_fold_decay_4h) %in% cols_gamma]
+flow_CR_gamma_24h = flow_all_filt_fold_decay_24h[, colnames(flow_all_filt_fold_decay_24h) %in% cols_gamma]
+write.csv(flow_CR_gamma_4h,"flow_CR_gamma_4h.csv")
+write.csv(flow_CR_gamma_24h,"flow_CR_gamma_24h.csv")
+
+cols_si = c('Si_CR_fold_low','Si_CR_fold_high')
+flow_CR_si_4h = flow_all_filt_fold_decay_4h[, colnames(flow_all_filt_fold_decay_4h) %in% cols_si]
+flow_CR_si_24h = flow_all_filt_fold_decay_24h[, colnames(flow_all_filt_fold_decay_24h) %in% cols_si]
+write.csv(flow_CR_si_4h,"flow_CR_si_4h.csv")
+write.csv(flow_CR_si_24h,"flow_CR_si_24h.csv")
+
+cols_ar = c('Ar_CR_fold_low','Ar_CR_fold_high')
+flow_CR_ar_4h = flow_all_filt_fold_decay_4h[, colnames(flow_all_filt_fold_decay_4h) %in% cols_ar]
+flow_CR_ar_24h = flow_all_filt_fold_decay_24h[, colnames(flow_all_filt_fold_decay_24h) %in% cols_ar]
+write.csv(flow_CR_ar_4h,"flow_CR_ar_4h.csv")
+write.csv(flow_CR_ar_24h,"flow_CR_ar_24h.csv")
+
+cols_fe = c('Fe_CR_fold_low','Fe_CR_fold_high')
+flow_CR_fe_4h = flow_all_filt_fold_decay_4h[, colnames(flow_all_filt_fold_decay_4h) %in% cols_fe]
+flow_CR_fe_24h = flow_all_filt_fold_decay_24h[, colnames(flow_all_filt_fold_decay_24h) %in% cols_fe]
+write.csv(flow_CR_fe_4h,"flow_CR_fe_4h.csv")
+write.csv(flow_CR_fe_24h,"flow_CR_fe_24h.csv")
+
+cols_he = c('He_CR_fold_low','He_CR_fold_high')
+flow_CR_he_4h = flow_all_filt_fold_decay_4h[, colnames(flow_all_filt_fold_decay_4h) %in% cols_he]
+flow_CR_he_24h = flow_all_filt_fold_decay_24h[, colnames(flow_all_filt_fold_decay_24h) %in% cols_he]
+write.csv(flow_CR_he_4h,"flow_CR_he_4h.csv")
+write.csv(flow_CR_he_24h,"flow_CR_he_24h.csv")
+
+cols_gamma = c('Gamma_CR_fold_decay_low','Gamma_CR_fold_decay_high')
+flow_CR_gamma_decay_24h = flow_all_filt_fold_decay_24h[, colnames(flow_all_filt_fold_decay_24h) %in% cols_gamma]
+write.csv(flow_CR_gamma_decay_24h,"flow_CR_gamma_decay.csv")
+
+cols_si = c('Si_CR_fold_decay_low','Si_CR_fold_decay_high')
+flow_CR_si_decay_24h = flow_all_filt_fold_decay_24h[, colnames(flow_all_filt_fold_decay_24h) %in% cols_si]
+write.csv(flow_CR_si_decay_24h,"flow_CR_si_decay.csv")
+
+cols_ar = c('Ar_CR_fold_decay_low','Ar_CR_fold_decay_high')
+flow_CR_ar_decay_24h = flow_all_filt_fold_decay_24h[, colnames(flow_all_filt_fold_decay_24h) %in% cols_ar]
+write.csv(flow_CR_ar_decay_24h,"flow_CR_ar_decay.csv")
+
+cols_fe = c('Fe_CR_fold_decay_low','Fe_CR_fold_decay_high')
+flow_CR_fe_decay_24h = flow_all_filt_fold_decay_24h[, colnames(flow_all_filt_fold_decay_24h) %in% cols_fe]
+write.csv(flow_CR_fe_decay_24h,"flow_CR_fe_decay.csv")
+
+cols_he = c('He_CR_fold_decay_low','He_CR_fold_decay_high')
+flow_CR_he_decay_24h = flow_all_filt_fold_decay_24h[, colnames(flow_all_filt_fold_decay_24h) %in% cols_he]
+write.csv(flow_CR_he_decay_24h,"flow_CR_he_decay.csv")
+
+N_extreme = 10
+
+cols_gamma = c('Sample_ID','Gamma_CR_fold_low','Gamma_CR_fold_high')
+flow_all_filt_fold_decay_4h = flow_all_filt_fold_decay_4h[, colnames(flow_all_filt_fold_decay_4h) %in% cols_gamma]
+flow_all_filt_fold_decay_24h = flow_all_filt_fold_decay_24h[, colnames(flow_all_filt_fold_decay_24h) %in% cols_gamma]
+CR_gamma_4h = na.omit(merge(flow_all_filt_fold_decay_4h,baseline,by.x = 'Sample_ID',by.y = 'Sample_ID',all=FALSE))
+CR_gamma_baseline_order_min_4h <- CR_gamma_4h[order(CR_gamma_4h$baseline_avg_nfoci),]
+CR_gamma_baseline_order_max_4h <- CR_gamma_4h[order(CR_gamma_4h$baseline_avg_nfoci, decreasing = TRUE),]
+CR_gamma_baseline_low_4h <- CR_gamma_baseline_order_min_4h[1:N_extreme,]
+CR_gamma_baseline_high_4h <- CR_gamma_baseline_order_max_4h[1:N_extreme,]
+write.csv(CR_gamma_baseline_low_4h,"CR_gamma_baseline_low_4h.csv")
+write.csv(CR_gamma_baseline_high_4h,"CR_gamma_baseline_high_4h.csv")
+CR_gamma_24h = na.omit(merge(flow_all_filt_fold_decay_24h,baseline,by.x = 'Sample_ID',by.y = 'Sample_ID',all=FALSE))
+CR_gamma_baseline_order_min_24h <- CR_gamma_24h[order(CR_gamma_24h$baseline_avg_nfoci),]
+CR_gamma_baseline_order_max_24h <- CR_gamma_24h[order(CR_gamma_24h$baseline_avg_nfoci, decreasing = TRUE),]
+CR_gamma_baseline_low_24h <- CR_gamma_baseline_order_min_24h[1:N_extreme,]
+CR_gamma_baseline_high_24h <- CR_gamma_baseline_order_max_24h[1:N_extreme,]
+write.csv(CR_gamma_baseline_low_24h,"CR_gamma_baseline_low_24h.csv")
+write.csv(CR_gamma_baseline_high_24h,"CR_gamma_baseline_high_24h.csv")
+
+flow_all_filt_fold_decay_4h = flow_all_filt_fold_decay[flow_all_filt_fold_decay$Timepoint == "4h",]
+flow_all_filt_fold_decay_24h = flow_all_filt_fold_decay[flow_all_filt_fold_decay$Timepoint == "24h",]
+
+cols_si = c('Sample_ID','Si_CR_fold_low','Si_CR_fold_high')
+flow_all_filt_fold_decay_4h = flow_all_filt_fold_decay_4h[, colnames(flow_all_filt_fold_decay_4h) %in% cols_si]
+flow_all_filt_fold_decay_24h = flow_all_filt_fold_decay_24h[, colnames(flow_all_filt_fold_decay_24h) %in% cols_si]
+CR_si_4h = na.omit(merge(flow_all_filt_fold_decay_4h,baseline,by.x = 'Sample_ID',by.y = 'Sample_ID',all=FALSE))
+CR_si_baseline_order_min_4h <- CR_si_4h[order(CR_si_4h$baseline_avg_nfoci),]
+CR_si_baseline_order_max_4h <- CR_si_4h[order(CR_si_4h$baseline_avg_nfoci, decreasing = TRUE),]
+CR_si_baseline_low_4h <- CR_si_baseline_order_min_4h[1:N_extreme,]
+CR_si_baseline_high_4h <- CR_si_baseline_order_max_4h[1:N_extreme,]
+write.csv(CR_si_baseline_low_4h,"CR_si_baseline_low_4h.csv")
+write.csv(CR_si_baseline_high_4h,"CR_si_baseline_high_4h.csv")
+CR_si_24h = na.omit(merge(flow_all_filt_fold_decay_24h,baseline,by.x = 'Sample_ID',by.y = 'Sample_ID',all=FALSE))
+CR_si_baseline_order_min_24h <- CR_si_24h[order(CR_si_24h$baseline_avg_nfoci),]
+CR_si_baseline_order_max_24h <- CR_si_24h[order(CR_si_24h$baseline_avg_nfoci, decreasing = TRUE),]
+CR_si_baseline_low_24h <- CR_si_baseline_order_min_24h[1:N_extreme,]
+CR_si_baseline_high_24h <- CR_si_baseline_order_max_24h[1:N_extreme,]
+write.csv(CR_si_baseline_low_24h,"CR_si_baseline_low_24h.csv")
+write.csv(CR_si_baseline_high_24h,"CR_si_baseline_high_24h.csv")
+
+flow_all_filt_fold_decay_4h = flow_all_filt_fold_decay[flow_all_filt_fold_decay$Timepoint == "4h",]
+flow_all_filt_fold_decay_24h = flow_all_filt_fold_decay[flow_all_filt_fold_decay$Timepoint == "24h",]
+
+cols_ar = c('Sample_ID','Ar_CR_fold_low','Ar_CR_fold_high')
+flow_all_filt_fold_decay_4h = flow_all_filt_fold_decay_4h[, colnames(flow_all_filt_fold_decay_4h) %in% cols_ar]
+flow_all_filt_fold_decay_24h = flow_all_filt_fold_decay_24h[, colnames(flow_all_filt_fold_decay_24h) %in% cols_ar]
+CR_ar_4h = na.omit(merge(flow_all_filt_fold_decay_4h,baseline,by.x = 'Sample_ID',by.y = 'Sample_ID',all=FALSE))
+CR_ar_baseline_order_min_4h <- CR_ar_4h[order(CR_ar_4h$baseline_avg_nfoci),]
+CR_ar_baseline_order_max_4h <- CR_ar_4h[order(CR_ar_4h$baseline_avg_nfoci, decreasing = TRUE),]
+CR_ar_baseline_low_4h <- CR_ar_baseline_order_min_4h[1:N_extreme,]
+CR_ar_baseline_high_4h <- CR_ar_baseline_order_max_4h[1:N_extreme,]
+write.csv(CR_ar_baseline_low_4h,"CR_ar_baseline_low_4h.csv")
+write.csv(CR_ar_baseline_high_4h,"CR_ar_baseline_high_4h.csv")
+CR_ar_24h = na.omit(merge(flow_all_filt_fold_decay_24h,baseline,by.x = 'Sample_ID',by.y = 'Sample_ID',all=FALSE))
+CR_ar_baseline_order_min_24h <- CR_ar_24h[order(CR_ar_24h$baseline_avg_nfoci),]
+CR_ar_baseline_order_max_24h <- CR_ar_24h[order(CR_ar_24h$baseline_avg_nfoci, decreasing = TRUE),]
+CR_ar_baseline_low_24h <- CR_ar_baseline_order_min_24h[1:N_extreme,]
+CR_ar_baseline_high_24h <- CR_ar_baseline_order_max_24h[1:N_extreme,]
+write.csv(CR_ar_baseline_low_24h,"CR_ar_baseline_low_24h.csv")
+write.csv(CR_ar_baseline_high_24h,"CR_ar_baseline_high_24h.csv")
+
+flow_all_filt_fold_decay_4h = flow_all_filt_fold_decay[flow_all_filt_fold_decay$Timepoint == "4h",]
+flow_all_filt_fold_decay_24h = flow_all_filt_fold_decay[flow_all_filt_fold_decay$Timepoint == "24h",]
+
+cols_fe = c('Sample_ID','Fe_CR_fold_low','Fe_CR_fold_high')
+flow_all_filt_fold_decay_4h = flow_all_filt_fold_decay_4h[, colnames(flow_all_filt_fold_decay_4h) %in% cols_fe]
+flow_all_filt_fold_decay_24h = flow_all_filt_fold_decay_24h[, colnames(flow_all_filt_fold_decay_24h) %in% cols_fe]
+CR_fe_4h = na.omit(merge(flow_all_filt_fold_decay_4h,baseline,by.x = 'Sample_ID',by.y = 'Sample_ID',all=FALSE))
+CR_fe_baseline_order_min_4h <- CR_fe_4h[order(CR_fe_4h$baseline_avg_nfoci),]
+CR_fe_baseline_order_max_4h <- CR_fe_4h[order(CR_fe_4h$baseline_avg_nfoci, decreasing = TRUE),]
+CR_fe_baseline_low_4h <- CR_fe_baseline_order_min_4h[1:N_extreme,]
+CR_fe_baseline_high_4h <- CR_fe_baseline_order_max_4h[1:N_extreme,]
+write.csv(CR_fe_baseline_low_4h,"CR_fe_baseline_low_4h.csv")
+write.csv(CR_fe_baseline_high_4h,"CR_fe_baseline_high_4h.csv")
+CR_fe_24h = na.omit(merge(flow_all_filt_fold_decay_24h,baseline,by.x = 'Sample_ID',by.y = 'Sample_ID',all=FALSE))
+CR_fe_baseline_order_min_24h <- CR_fe_24h[order(CR_fe_24h$baseline_avg_nfoci),]
+CR_fe_baseline_order_max_24h <- CR_fe_24h[order(CR_fe_24h$baseline_avg_nfoci, decreasing = TRUE),]
+CR_fe_baseline_low_24h <- CR_fe_baseline_order_min_24h[1:N_extreme,]
+CR_fe_baseline_high_24h <- CR_fe_baseline_order_max_24h[1:N_extreme,]
+write.csv(CR_fe_baseline_low_24h,"CR_fe_baseline_low_24h.csv")
+write.csv(CR_fe_baseline_high_24h,"CR_fe_baseline_high_24h.csv")
+
+flow_all_filt_fold_decay_4h = flow_all_filt_fold_decay[flow_all_filt_fold_decay$Timepoint == "4h",]
+flow_all_filt_fold_decay_24h = flow_all_filt_fold_decay[flow_all_filt_fold_decay$Timepoint == "24h",]
+
+cols_he = c('Sample_ID','He_CR_fold_low','He_CR_fold_high')
+flow_all_filt_fold_decay_4h = flow_all_filt_fold_decay_4h[, colnames(flow_all_filt_fold_decay_4h) %in% cols_he]
+flow_all_filt_fold_decay_24h = flow_all_filt_fold_decay_24h[, colnames(flow_all_filt_fold_decay_24h) %in% cols_he]
+CR_he_4h = na.omit(merge(flow_all_filt_fold_decay_4h,baseline,by.x = 'Sample_ID',by.y = 'Sample_ID',all=FALSE))
+CR_he_baseline_order_min_4h <- CR_he_4h[order(CR_he_4h$baseline_avg_nfoci),]
+CR_he_baseline_order_max_4h <- CR_he_4h[order(CR_he_4h$baseline_avg_nfoci, decreasing = TRUE),]
+CR_he_baseline_low_4h <- CR_he_baseline_order_min_4h[1:N_extreme,]
+CR_he_baseline_high_4h <- CR_he_baseline_order_max_4h[1:N_extreme,]
+write.csv(CR_he_baseline_low_4h,"CR_he_baseline_low_4h.csv")
+write.csv(CR_he_baseline_high_4h,"CR_he_baseline_high_4h.csv")
+CR_he_24h = na.omit(merge(flow_all_filt_fold_decay_24h,baseline,by.x = 'Sample_ID',by.y = 'Sample_ID',all=FALSE))
+CR_he_baseline_order_min_24h <- CR_he_24h[order(CR_he_24h$baseline_avg_nfoci),]
+CR_he_baseline_order_max_24h <- CR_he_24h[order(CR_he_24h$baseline_avg_nfoci, decreasing = TRUE),]
+CR_he_baseline_low_24h <- CR_he_baseline_order_min_24h[1:N_extreme,]
+CR_he_baseline_high_24h <- CR_he_baseline_order_max_24h[1:N_extreme,]
+write.csv(CR_he_baseline_low_24h,"CR_he_baseline_low_24h.csv")
+write.csv(CR_he_baseline_high_24h,"CR_he_baseline_high_24h.csv")
+
+flow_all_4h = flow_all_filt_fold[flow_all_filt_fold$Timepoint == "4h",]
+flow_all_24h = flow_all_filt_fold[flow_all_filt_fold$Timepoint == "24h",]
+write.csv(flow_all_4h,"flow_all_4h.csv")
+write.csv(flow_all_24h,"flow_all_24h.csv")
+```
