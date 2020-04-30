@@ -1,11 +1,10 @@
 ## Analysing DNA damage/repair in response to different doses and types of radiation.
 ## In human samples. 
 ## Eloise Pariset, USRA/NASA Ames, January 2020
-## BNL18B: Fe OK, excluded bad plates / Ar and Si only for fold difference, need to be re-imaged for absolute values
+## BNL18B: Fe OK, excluded bad plates / Ar and Si need to be added
 ## BNL19A: Only Sets A here, all OK
 
 ## To be expanded (in the same file) by adding revised data on BNL18B + BNL19A sets B + all BNL19C
-## To be expanded (in a separate file) by adding data on cell death, CellROX intensity and cell number
 
 
 ```{r}
@@ -21,18 +20,18 @@ require('stringr')
 ```
 
 ```{r}
-setwd("/Users/epariset/Desktop/R_Code-work") ## Change as necessary: this is the main directory
+setwd(getwd()) ## Change as necessary: this is the main directory
 theme_set(theme_bw(base_size = 12)) ## For prettier graphs
 theme_update(plot.title = element_text(hjust = 0.5))
 ```
 
 ```{r}
 ## BNL18B:
-ar_plate_nums_18B = c(seq(379,402))
+ar_plate_nums_18B = c(381,382,383,386,387,390,391,394,395,396,399,400,402)
 ar_plate_count_18B = length(ar_plate_nums_18B)
-si_plate_nums_18B = c(seq(331,354))
+si_plate_nums_18B = c(333,337,341,345,349,353)
 si_plate_count_18B = length(si_plate_nums_18B)
-fe_plate_nums_18B = c(seq(355,362),365,366,seq(368,371),374,seq(376,378))
+fe_plate_nums_18B = c(355,356,357,358,359,360,361,362,363,364,365,366,367,368,369,370,372,373,374,375,376,377,378)
 fe_plate_count_18B = length(fe_plate_nums_18B)
 si_fe_ar_plate_nums_18B = c(si_plate_nums_18B, fe_plate_nums_18B, ar_plate_nums_18B)
 si_fe_ar_plate_count_18B = length(si_fe_ar_plate_nums_18B)
@@ -52,11 +51,11 @@ gamma_si_fe_ar_plate_count_19A = length(gamma_si_fe_ar_plate_nums_19A)
 
 ```{r}
 ## Read all metadata
-subject_meta = read.csv('/Users/epariset/Desktop/R_Code-work/Sample_metadata.csv', sep = ",", header = TRUE)
+subject_meta = read.csv('Sample_metadata.csv', sep = ",", header = TRUE)
 colnames(subject_meta)[colnames(subject_meta)=="ï..Sample_ID"]<-"Sample_ID"
 subject_ids = unique(subject_meta$Sample_ID)
 num_subj = length(subject_ids)
-plate_meta = read.csv('/Users/epariset/Desktop/R_Code-work/Plate_metadata.csv', sep = ",", header = TRUE)
+plate_meta = read.csv('Plate_metadata.csv', sep = ",", header = TRUE)
 plate_ids = unique(plate_meta$Plate_number)
 num_plate = length(plate_ids)
 ```
@@ -65,32 +64,32 @@ num_plate = length(plate_ids)
 ## Read first file
 
 ## BNL18B:
-foci_si_first_18B = data.frame(Plate = si_plate_nums_18B[1], Plate_well = paste(si_plate_nums_18B[1], read.table(paste("/Users/epariset/Desktop/Processed-all/BNL18B-ProcessedFile/Si-BNL_18B/average_well_P", si_plate_nums_18B[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("/Users/epariset/Desktop/Processed-all/BNL18B-ProcessedFile/Si-BNL_18B/average_well_P", si_plate_nums_18B[1],'.txt', sep=""), sep="\t", header = TRUE))
+foci_si_first_18B = data.frame(Plate = si_plate_nums_18B[1], Plate_well = paste(si_plate_nums_18B[1], read.table(paste("average_well/BNL18B/average_well_P", si_plate_nums_18B[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("average_well/BNL18B/average_well_P", si_plate_nums_18B[1],'.txt', sep=""), sep="\t", header = TRUE))
 
 si_table_18B=foci_si_first_18B
 
-foci_ar_first_18B = data.frame(Plate = ar_plate_nums_18B[1], Plate_well = paste(ar_plate_nums_18B[1], read.table(paste("/Users/epariset/Desktop/Processed-all/BNL18B-ProcessedFile/Ar-BNL_18B/average_well_P", ar_plate_nums_18B[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("/Users/epariset/Desktop/Processed-all/BNL18B-ProcessedFile/Ar-BNL_18B/average_well_P", ar_plate_nums_18B[1],'.txt', sep=""), sep="\t", header = TRUE))
+foci_ar_first_18B = data.frame(Plate = ar_plate_nums_18B[1], Plate_well = paste(ar_plate_nums_18B[1], read.table(paste("average_well/BNL18B/average_well_P", ar_plate_nums_18B[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("average_well/BNL18B/average_well_P", ar_plate_nums_18B[1],'.txt', sep=""), sep="\t", header = TRUE))
 
 ar_table_18B=foci_ar_first_18B
 
-foci_fe_first_18B = data.frame(Plate = fe_plate_nums_18B[1], Plate_well = paste(fe_plate_nums_18B[1], read.table(paste("/Users/epariset/Desktop/Processed-all/BNL18B-ProcessedFile/Fe-BNL_18B/average_well_P", fe_plate_nums_18B[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("/Users/epariset/Desktop/Processed-all/BNL18B-ProcessedFile/Fe-BNL_18B/average_well_P", fe_plate_nums_18B[1],'.txt', sep=""), sep="\t", header = TRUE))
+foci_fe_first_18B = data.frame(Plate = fe_plate_nums_18B[1], Plate_well = paste(fe_plate_nums_18B[1], read.table(paste("average_well/BNL18B/average_well_P", fe_plate_nums_18B[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("average_well/BNL18B/average_well_P", fe_plate_nums_18B[1],'.txt', sep=""), sep="\t", header = TRUE))
 
 fe_table_18B=foci_fe_first_18B
 
 ## BNL19A:
-foci_gamma_first_19A = data.frame(Plate = gamma_plate_nums_19A[1], Plate_well = paste(gamma_plate_nums_19A[1], read.table(paste("/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P", gamma_plate_nums_19A[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P", gamma_plate_nums_19A[1],'.txt', sep=""), sep="\t", header = TRUE))
+foci_gamma_first_19A = data.frame(Plate = gamma_plate_nums_19A[1], Plate_well = paste(gamma_plate_nums_19A[1], read.table(paste("average_well/BNL19A/average_well_P", gamma_plate_nums_19A[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("average_well/BNL19A/average_well_P", gamma_plate_nums_19A[1],'.txt', sep=""), sep="\t", header = TRUE))
 
 gamma_table_19A=foci_gamma_first_19A
 
-foci_si_first_19A = data.frame(Plate = si_plate_nums_19A[1], Plate_well = paste(si_plate_nums_19A[1], read.table(paste("/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P", si_plate_nums_19A[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P", si_plate_nums_19A[1],'.txt', sep=""), sep="\t", header = TRUE))
+foci_si_first_19A = data.frame(Plate = si_plate_nums_19A[1], Plate_well = paste(si_plate_nums_19A[1], read.table(paste("average_well/BNL19A/average_well_P", si_plate_nums_19A[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("average_well/BNL19A/average_well_P", si_plate_nums_19A[1],'.txt', sep=""), sep="\t", header = TRUE))
 
 si_table_19A=foci_si_first_19A
 
-foci_ar_first_19A = data.frame(Plate = ar_plate_nums_19A[1], Plate_well = paste(ar_plate_nums_19A[1], read.table(paste("/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P", ar_plate_nums_19A[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P", ar_plate_nums_19A[1],'.txt', sep=""), sep="\t", header = TRUE))
+foci_ar_first_19A = data.frame(Plate = ar_plate_nums_19A[1], Plate_well = paste(ar_plate_nums_19A[1], read.table(paste("average_well/BNL19A/average_well_P", ar_plate_nums_19A[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("average_well/BNL19A/average_well_P", ar_plate_nums_19A[1],'.txt', sep=""), sep="\t", header = TRUE))
 
 ar_table_19A=foci_ar_first_19A
 
-foci_fe_first_19A = data.frame(Plate = fe_plate_nums_19A[1], Plate_well = paste(fe_plate_nums_19A[1], read.table(paste("/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P", fe_plate_nums_19A[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P", fe_plate_nums_19A[1],'.txt', sep=""), sep="\t", header = TRUE))
+foci_fe_first_19A = data.frame(Plate = fe_plate_nums_19A[1], Plate_well = paste(fe_plate_nums_19A[1], read.table(paste("average_well/BNL19A/average_well_P", fe_plate_nums_19A[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("average_well/BNL19A/average_well_P", fe_plate_nums_19A[1],'.txt', sep=""), sep="\t", header = TRUE))
 
 fe_table_19A=foci_fe_first_19A
 ```
@@ -100,45 +99,45 @@ fe_table_19A=foci_fe_first_19A
 
 ## BNL18B:
 for(ii in 2:si_plate_count_18B){
-  temp_si_filename = paste('/Users/epariset/Desktop/Processed-all/BNL18B-ProcessedFile/Si-BNL_18B/average_well_P', si_plate_nums_18B[ii],'.txt', sep="")
-  temp_si_table_18B = data.frame(Plate = si_plate_nums_18B[ii], Plate_well = paste(si_plate_nums_18B[ii], read.table(paste('/Users/epariset/Desktop/Processed-all/BNL18B-ProcessedFile/Si-BNL_18B/average_well_P', si_plate_nums_18B[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('/Users/epariset/Desktop/Processed-all/BNL18B-ProcessedFile/Si-BNL_18B/average_well_P', si_plate_nums_18B[ii],'.txt', sep=""), sep="\t", header = TRUE))
+  temp_si_filename = paste('average_well/BNL18B/average_well_P', si_plate_nums_18B[ii],'.txt', sep="")
+  temp_si_table_18B = data.frame(Plate = si_plate_nums_18B[ii], Plate_well = paste(si_plate_nums_18B[ii], read.table(paste('average_well/BNL18B/average_well_P', si_plate_nums_18B[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('average_well/BNL18B/average_well_P', si_plate_nums_18B[ii],'.txt', sep=""), sep="\t", header = TRUE))
   si_table_18B = rbind(si_table_18B, temp_si_table_18B)
 }
 
 for(ii in 2:ar_plate_count_18B){
-  temp_ar_filename = paste('/Users/epariset/Desktop/Processed-all/BNL18B-ProcessedFile/Ar-BNL_18B/average_well_P', ar_plate_nums_18B[ii],'.txt', sep="")
-  temp_ar_table_18B = data.frame(Plate = ar_plate_nums_18B[ii], Plate_well = paste(ar_plate_nums_18B[ii], read.table(paste('/Users/epariset/Desktop/Processed-all/BNL18B-ProcessedFile/Ar-BNL_18B/average_well_P', ar_plate_nums_18B[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('/Users/epariset/Desktop/Processed-all/BNL18B-ProcessedFile/Ar-BNL_18B/average_well_P', ar_plate_nums_18B[ii],'.txt', sep=""), sep="\t", header = TRUE))
+  temp_ar_filename = paste('average_well/BNL18B/average_well_P', ar_plate_nums_18B[ii],'.txt', sep="")
+  temp_ar_table_18B = data.frame(Plate = ar_plate_nums_18B[ii], Plate_well = paste(ar_plate_nums_18B[ii], read.table(paste('average_well/BNL18B/average_well_P', ar_plate_nums_18B[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('average_well/BNL18B/average_well_P', ar_plate_nums_18B[ii],'.txt', sep=""), sep="\t", header = TRUE))
   ar_table_18B = rbind(ar_table_18B, temp_ar_table_18B)
   }
 
 for(ii in 2:fe_plate_count_18B){
-  temp_fe_filename = paste('/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P', fe_plate_nums_18B[ii],'.txt', sep="")
-  temp_fe_table_18B = data.frame(Plate = fe_plate_nums_18B[ii], Plate_well = paste(fe_plate_nums_18B[ii], read.table(paste('/Users/epariset/Desktop/Processed-all/BNL18B-ProcessedFile/Fe-BNL_18B/average_well_P', fe_plate_nums_18B[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('/Users/epariset/Desktop/Processed-all/BNL18B-ProcessedFile/Fe-BNL_18B/average_well_P', fe_plate_nums_18B[ii],'.txt', sep=""), sep="\t", header = TRUE))
+  temp_fe_filename = paste('average_well/BNL18B/average_well_P', fe_plate_nums_18B[ii],'.txt', sep="")
+  temp_fe_table_18B = data.frame(Plate = fe_plate_nums_18B[ii], Plate_well = paste(fe_plate_nums_18B[ii], read.table(paste('average_well/BNL18B/average_well_P', fe_plate_nums_18B[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('average_well/BNL18B/average_well_P', fe_plate_nums_18B[ii],'.txt', sep=""), sep="\t", header = TRUE))
   fe_table_18B = rbind(fe_table_18B, temp_fe_table_18B)
   }
 
 ## BNL19A:
 for(ii in 2:gamma_plate_count_19A){
-  temp_gamma_filename = paste('/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P', gamma_plate_nums_19A[ii],'.txt', sep="")
-  temp_gamma_table_19A = data.frame(Plate = gamma_plate_nums_19A[ii], Plate_well = paste(gamma_plate_nums_19A[ii], read.table(paste('/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P', gamma_plate_nums_19A[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P', gamma_plate_nums_19A[ii],'.txt', sep=""), sep="\t", header = TRUE))
+  temp_gamma_filename = paste('average_well/BNL19A/average_well_P', gamma_plate_nums_19A[ii],'.txt', sep="")
+  temp_gamma_table_19A = data.frame(Plate = gamma_plate_nums_19A[ii], Plate_well = paste(gamma_plate_nums_19A[ii], read.table(paste('average_well/BNL19A/average_well_P', gamma_plate_nums_19A[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('average_well/BNL19A/average_well_P', gamma_plate_nums_19A[ii],'.txt', sep=""), sep="\t", header = TRUE))
   gamma_table_19A = rbind(gamma_table_19A, temp_gamma_table_19A)
 }
 
 for(ii in 2:si_plate_count_19A){
-  temp_si_filename = paste('/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P', si_plate_nums_19A[ii],'.txt', sep="")
-  temp_si_table_19A = data.frame(Plate = si_plate_nums_19A[ii], Plate_well = paste(si_plate_nums_19A[ii], read.table(paste('/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P', si_plate_nums_19A[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P', si_plate_nums_19A[ii],'.txt', sep=""), sep="\t", header = TRUE))
+  temp_si_filename = paste('average_well/BNL19A/average_well_P', si_plate_nums_19A[ii],'.txt', sep="")
+  temp_si_table_19A = data.frame(Plate = si_plate_nums_19A[ii], Plate_well = paste(si_plate_nums_19A[ii], read.table(paste('average_well/BNL19A/average_well_P', si_plate_nums_19A[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('average_well/BNL19A/average_well_P', si_plate_nums_19A[ii],'.txt', sep=""), sep="\t", header = TRUE))
   si_table_19A = rbind(si_table_19A, temp_si_table_19A)
 }
 
 for(ii in 2:ar_plate_count_19A){
-  temp_ar_filename = paste('/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P', ar_plate_nums_19A[ii],'.txt', sep="")
-  temp_ar_table_19A = data.frame(Plate = ar_plate_nums_19A[ii], Plate_well = paste(ar_plate_nums_19A[ii], read.table(paste('/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P', ar_plate_nums_19A[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P', ar_plate_nums_19A[ii],'.txt', sep=""), sep="\t", header = TRUE))
+  temp_ar_filename = paste('average_well/BNL19A/average_well_P', ar_plate_nums_19A[ii],'.txt', sep="")
+  temp_ar_table_19A = data.frame(Plate = ar_plate_nums_19A[ii], Plate_well = paste(ar_plate_nums_19A[ii], read.table(paste('average_well/BNL19A/average_well_P', ar_plate_nums_19A[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('average_well/BNL19A/average_well_P', ar_plate_nums_19A[ii],'.txt', sep=""), sep="\t", header = TRUE))
   ar_table_19A = rbind(ar_table_19A, temp_ar_table_19A)
   }
 
 for(ii in 2:fe_plate_count_19A){
-  temp_fe_filename = paste('/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P', fe_plate_nums_19A[ii],'.txt', sep="")
-  temp_fe_table_19A = data.frame(Plate = fe_plate_nums_19A[ii], Plate_well = paste(fe_plate_nums_19A[ii], read.table(paste('/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P', fe_plate_nums_19A[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('/Users/epariset/Desktop/Processed-all/BNL19A-ProcessedFiles-Threshold3000/average_well_P', fe_plate_nums_19A[ii],'.txt', sep=""), sep="\t", header = TRUE))
+  temp_fe_filename = paste('average_well/BNL19A/average_well_P', fe_plate_nums_19A[ii],'.txt', sep="")
+  temp_fe_table_19A = data.frame(Plate = fe_plate_nums_19A[ii], Plate_well = paste(fe_plate_nums_19A[ii], read.table(paste('average_well/BNL19A/average_well_P', fe_plate_nums_19A[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('average_well/BNL19A/average_well_P', fe_plate_nums_19A[ii],'.txt', sep=""), sep="\t", header = TRUE))
   fe_table_19A = rbind(fe_table_19A, temp_fe_table_19A)
   }
 ```
