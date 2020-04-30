@@ -1,6 +1,7 @@
 ## Analysing CellROX intensity and cell death in response to different doses and types of radiation.
 ## In human samples. 
 ## Egle Cekanaviciute, USRA/NASA Ames, January 2020
+## Modified by E. Pariset in January 2020
 ## For all BNL runs on this project: 19C (Fall 2019), 19A (Spring 2019) and 18B (Summer 2018).
 
 ## To be expanded (in a separate file) by adding data on DNA damage/repair foci, this is JUST THE FLOW.
@@ -18,13 +19,13 @@ require('cowplot')
 ```
 
 ```{r}
-setwd("/Users/epariset/Desktop/R_Code-work") ## Change as necessary: this is the working directory
+setwd(getwd()) ## Change as necessary: this is the working directory
 theme_set(theme_bw(base_size = 12)) ## For prettier graphs
 ```
 
 ```{r}
 ## Read all flow data, which in this case includes metadata of CellROX intensity and cell death percentage in WIDE format
-flow_all_filt = read.csv('/Users/epariset/Desktop/R_Code-work/All_flow_w_metadata_filtered_20200108_no_He_Set2_0cGy.csv', sep = ",", header = TRUE)
+flow_all_filt = read.csv('All_flow_w_metadata_filtered_20200108_no_He_Set2_0cGy.csv', sep = ",", header = TRUE)
 colnames(flow_all_filt)[colnames(flow_all_filt) == "ï..Sample_ID"] = "Sample_ID"
 ```
 
