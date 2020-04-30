@@ -1,0 +1,183 @@
+## Analysing DNA damage/repair in baselines.
+## In human samples. 
+## Eloise Pariset, USRA/NASA Ames, January 2020
+## All baselines
+
+## To be expanded (in a separate file) by adding data on cell death, CellROX intensity and cell number
+
+```{r}
+require('lattice')
+require('ggalt')
+require('ggplot2')
+require('polynom')
+require('corrplot')
+require('ggpubr')
+require('plyr')
+require('reshape2')
+require('cowplot')
+require('stringr')
+require('ggforce')
+require('dplyr')
+```
+
+```{r}
+setwd("/Users/epariset/Desktop/Processed-all/Baselines-CD7-Threshold3000") ## Change as necessary: this is the main directory
+theme_set(theme_bw(base_size = 12)) ## For prettier graphs
+theme_update(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+baseline_plate_nums = c(319,320,321,322,323,324,428, 429, 430, 431, 432, 625, 626, 627, 628, 629, 630)
+baseline_plate_count = length(baseline_plate_nums)
+```
+
+```{r}
+## Read all metadata
+subject_meta = read.csv('/Users/epariset/Desktop/R_Code-work/Baseline_metadata.csv', sep = ",", header = TRUE)
+subject_ids = unique(subject_meta$Sample_ID)
+num_subj = length(subject_ids)
+plate_meta = read.csv('/Users/epariset/Desktop/R_Code-work/Baseline_plate_metadata.csv', sep = ",", header = TRUE)
+plate_ids = unique(plate_meta$Plate_number)
+num_plate = length(plate_ids)
+```
+
+```{r}
+## Read first file
+foci_baseline_first = data.frame(Plate = baseline_plate_nums[1], Plate_well = paste(baseline_plate_nums[1], read.table(paste("/Users/epariset/Desktop/Processed-all/Baselines-all/average_well_P", baseline_plate_nums[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("/Users/epariset/Desktop/Processed-all/Baselines-all/average_well_P", baseline_plate_nums[1],'.txt', sep=""), sep="\t", header = TRUE))
+
+baseline_table=foci_baseline_first
+```
+
+```{r}
+## Read all other files
+for(ii in 2:baseline_plate_count){
+  temp_baseline_filename = paste('/Users/epariset/Desktop/Processed-all/Baselines-all/average_well_P', baseline_plate_nums[ii],'.txt', sep="")
+  temp_baseline_table = data.frame(Plate = baseline_plate_nums[ii], Plate_well = paste(baseline_plate_nums[ii], read.table(paste('/Users/epariset/Desktop/Processed-all/Baselines-all/average_well_P', baseline_plate_nums[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('/Users/epariset/Desktop/Processed-all/Baselines-all/average_well_P', baseline_plate_nums[ii],'.txt', sep=""), sep="\t", header = TRUE))
+  baseline_table = rbind(baseline_table, temp_baseline_table)
+}
+```
+
+```{r}
+## Set low bar. This is arbitrary! We will ask for at least 50 imaged nuclei per well to consider that well. 
+low_bar = 50
+baseline_filt = baseline_table[baseline_table$num_nuc > (low_bar-1),]
+
+print("How many wells are left after filtering?")
+print(c(nrow(baseline_filt),"out of", nrow(baseline_filt), "which is", (nrow(baseline_table)/nrow(baseline_table))*100,"%"))
+```
+
+```{r}
+## Remove baselines with 0 foci:
+baseline_filt_2 = baseline_filt[baseline_filt$avg_nfoci != 0,]
+
+print("How many wells are left after filtering?")
+print(c(nrow(baseline_filt_2),"out of", nrow(baseline_filt), "which is", (nrow(baseline_filt_2)/nrow(baseline_filt))*100,"%"))
+```
+
+```{r}
+## We average both sets: 
+baseline_w_meta = merge(baseline_filt_2, subject_meta, by.x = 'Plate_well', by.y = 'Plate_Well')
+baseline_avgfoci_temp <- baseline_w_meta %>% group_by(Sample_ID) %>% summarize(avg_nfoci_mean = mean(avg_nfoci))
+colnames(baseline_avgfoci_temp)[colnames(baseline_avgfoci_temp)=="avg_nfoci_mean"]<-"baseline_avg_nfoci"
+```
+
+```{r}
+## Now we will add subject metadata
+baseline_avgfoci = distinct(merge(baseline_avgfoci_temp, subject_meta, by.x = 'Sample_ID', by.y = 'Sample_ID'))
+```
+
+## Extreme baselines (among all baselines)?
+```{r}
+## From calculation of 25% and 75% percentiles of baseline avg_nfoci distribution:
+extreme_baselines_low = baseline_avgfoci[baseline_avgfoci$avg_nfoci < 0.3000,]
+print("How many individuals have low baselines?")
+print(c(nrow(extreme_baselines_low),"low baselines"))
+
+extreme_baselines_high = baseline_avgfoci[baseline_avgfoci$avg_nfoci > 0.8725,]
+print("How many individuals have high baselines?")
+print(c(nrow(extreme_baselines_high),"high baselines"))
+
+low_baselines = merge(extreme_baselines_low,all_RIF,by.x='Sample_ID',by.y='Sample_ID')
+high_baselines = merge(extreme_baselines_high,all_RIF,by.x='Sample_ID',by.y='Sample_ID')
+
+low_baselines_4h = low_baselines[low_baselines$Timepoint == '4h',]
+low_baselines_24h = low_baselines[low_baselines$Timepoint == '24h',]
+high_baselines_4h = high_baselines[high_baselines$Timepoint == '4h',]
+high_baselines_24h = high_baselines[high_baselines$Timepoint == '24h',]
+```
+
+## Extreme baselines (among baselines we do have radiation responses for)?
+```{r}
+## From calculation of 25% and 75% percentiles of baseline avg_nfoci distribution:
+extreme_baselines_low = baseline_avgfoci[baseline_avgfoci$avg_nfoci < 0.2338,]
+print("How many individuals have low baselines?")
+print(c(nrow(extreme_baselines_low),"low baselines"))
+
+extreme_baselines_high = baseline_avgfoci[baseline_avgfoci$avg_nfoci > 0.6000,]
+print("How many individuals have high baselines?")
+print(c(nrow(extreme_baselines_high),"high baselines"))
+
+low_baselines = merge(extreme_baselines_low,all_RIF,by.x='Sample_ID',by.y='Sample_ID')
+high_baselines = merge(extreme_baselines_high,all_RIF,by.x='Sample_ID',by.y='Sample_ID')
+
+low_baselines_4h = low_baselines[low_baselines$Timepoint == '4h',]
+low_baselines_24h = low_baselines[low_baselines$Timepoint == '24h',]
+high_baselines_4h = high_baselines[high_baselines$Timepoint == '4h',]
+high_baselines_24h = high_baselines[high_baselines$Timepoint == '24h',]
+```
+
+## Plotting data
+
+```{r}
+# Influence of gender?
+all_plot_avg_Gender = ggplot(baseline_avgfoci, aes(x = Gender, y = avg_nfoci)) + geom_boxplot()
+all_plot_avg_Gender
+```
+
+```{r}
+# Influence of BMI?
+all_plot_avg_BMI = ggplot(baseline_avgfoci, aes(x = reorder(BMI_group, avg_nfoci, FUN = median), y = avg_nfoci)) + 
+  geom_boxplot()
+all_plot_avg_BMI + xlab("BMI Group")
+
+# Let's look at BMI sub-groups:
+baseline_avgfoci$BMI_interval1 <- findInterval(baseline_avgfoci$BMI, c(15,20,25,30,35,40,45,50,55), rightmost.closed = TRUE)
+baseline_avgfoci$BMI_interval <- ifelse(baseline_avgfoci$BMI_interval1==1,"15-20",ifelse(baseline_avgfoci$BMI_interval1==2,"20-25",ifelse(baseline_avgfoci$BMI_interval1==3,"25-30",ifelse(baseline_avgfoci$BMI_interval1==4,"30-35",ifelse(baseline_avgfoci$BMI_interval1==5,"35-40",ifelse(baseline_avgfoci$BMI_interval1==6,"40-45",ifelse(baseline_avgfoci$BMI_interval1==7,"45-50","50-55")))))))
+all_plot_BMI = ggplot(baseline_avgfoci, aes(x=BMI_interval, y=avg_nfoci)) + geom_boxplot(aes(group = BMI_interval))+ geom_sina(aes(group = BMI_interval, color = BMI_interval))
+all_plot_BMI
+```
+
+```{r}
+# Influence of age?
+all_plot_avg_Age = ggplot(baseline_avgfoci, aes(x = Age, y = avg_nfoci)) + geom_point() + geom_smooth(method = "lm")
+all_plot_avg_Age
+```
+
+## Extract data of interest to combine with all other phenotypes
+
+```{r}
+cols_to_keep = c('Sample_ID', 'avg_nfoci')
+baseline = baseline_avgfoci[, colnames(baseline_avgfoci) %in% cols_to_keep]
+colnames(baseline)[colnames(baseline) == "avg_nfoci"] = "baseline_avg_nfoci"
+```
+
+## Generating tables for plotting on Prism
+```{r}
+baseline_avg_nfoci = baseline_avgfoci[baseline_avgfoci$Gender == "F",]
+baseline_female = baseline_avgfoci[baseline_avgfoci$Gender == "F",]
+baseline_male = baseline_avgfoci[baseline_avgfoci$Gender == "M",]
+write.csv(baseline_female,"baseline_female.csv")
+write.csv(baseline_male,"baseline_male.csv")
+
+write.csv(baseline_avgfoci,"baseline_avgfoci.csv")
+
+baseline_CMV_P = baseline_avgfoci[baseline_avgfoci$CMV == "P",]
+baseline_CMV_N = baseline_avgfoci[baseline_avgfoci$CMV == "N",]
+write.csv(baseline_CMV_P,"baseline_CMV_P.csv")
+write.csv(baseline_CMV_N,"baseline_CMV_N.csv")
+
+write.csv(low_baselines_4h,"low_baselines_4h.csv")
+write.csv(low_baselines_24h,"low_baselines_24h.csv")
+write.csv(high_baselines_4h,"high_baselines_4h.csv")
+write.csv(high_baselines_24h,"high_baselines_24h.csv")
+```
