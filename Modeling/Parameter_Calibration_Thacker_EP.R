@@ -8,11 +8,13 @@
 require('nlme')
 require('lattice')
 require('ggplot2')
-source("read_C_simulation_Ianik.R")
 require(raster)  
 
+setwd(getwd())
+source("Modeling/read_C_simulation_Ianik.R")
+
 # Read Thacker data from 1977 manuscript on human and hamster cells.
-Thack_data =  read.csv('/Users/epariset/Desktop/Sylvain/Thacker-1977_fit.csv',header = TRUE)
+Thack_data =  read.csv('Modeling/Thacker-1977_fit.csv',header = TRUE)
 # Ianik calibration dose points are more numerous for X-ray (8 instead of 4)
 # Select cell line
 cell_line = 'HF19' # Either HF19 (human) or V79 (hamster)
@@ -74,16 +76,16 @@ for (i_dom in 1:num_dom){ # index of domain size being tested to store result in
     # Read all simulation for one complete dose response for a given energy of Carbon (or X-ray)
     for (i_D in 1:n_dose) {
       if (Thack_data[i_E,'Z']==0) { # Photon simulation
-        file_path = paste('/Users/epariset/Desktop/Sylvain/data/Photon/RIFSize/Size ',dom_size,' microns/RIFs_Photon_0.1_MeV_',D_ar_X[i_D],'_Gy.dat',sep="")
+        file_path = paste('Modeling/data/Photon/RIFSize/Size ',dom_size,' microns/RIFs_Photon_0.1_MeV_',D_ar_X[i_D],'_Gy.dat',sep="")
       }
       if (Thack_data[i_E,'Z']==2 & Thack_data[i_E,'LET..keV.um.'] < 50) { # Helium simulation and low LET
-        file_path = paste('/Users/epariset/Desktop/Sylvain/data/RIFSize_He/Size ',dom_size,' microns/RIFs_He_',Thack_data[i_E,4],'_MeV_',D_ar_lowLET[i_D],'_Gy.dat',sep="")
+        file_path = paste('Modeling/data/RIFSize_He/Size ',dom_size,' microns/RIFs_He_',Thack_data[i_E,4],'_MeV_',D_ar_lowLET[i_D],'_Gy.dat',sep="")
       }
       if (Thack_data[i_E,'Z']==2 & Thack_data[i_E,'LET..keV.um.'] >= 50) { # Helium simulation and high LET
-        file_path = paste('/Users/epariset/Desktop/Sylvain/data/RIFSize_He/Size ',dom_size,' microns/RIFs_He_',Thack_data[i_E,4],'_MeV_',D_ar_highLET[i_D],'_Gy.dat',sep="")
+        file_path = paste('Modeling/data/RIFSize_He/Size ',dom_size,' microns/RIFs_He_',Thack_data[i_E,4],'_MeV_',D_ar_highLET[i_D],'_Gy.dat',sep="")
       }
       if (Thack_data[i_E,'Z']==5) { # Boron simulation
-        file_path = paste('/Users/epariset/Desktop/Sylvain/data/RIFSize_B/Size ',dom_size,' microns/RIFs_B_',Thack_data[i_E,4],'_MeV_',D_ar_highLET[i_D],'_Gy.dat',sep="")
+        file_path = paste('Modeling/data/RIFSize_B/Size ',dom_size,' microns/RIFs_B_',Thack_data[i_E,4],'_MeV_',D_ar_highLET[i_D],'_Gy.dat',sep="")
       }      
       tmp=read_C_simulation_Ianik(file_path)
       dsb_ar[,i_D] = tmp$dsb
@@ -136,7 +138,7 @@ for (i_dom in 1:num_dom){ # index of domain size being tested to store result in
 }
 
 
-# Plot fits for all possible domains with best gam1 and gam2
+# Plot fits for all possible domain sizes with best gam1 and gam2 for each domain size
 
 if(optim_index == 1){
   i_g1 = best_index[1]
