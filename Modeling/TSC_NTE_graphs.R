@@ -4,8 +4,10 @@ require('lattice')
 require('ggplot2')
 require('ggpubr')
 require('tidyr')
-source("LET_Z_E_Beth.R")
-source("read_simulation.R")
+
+setwd(getwd())
+source("Modeling/LET_Z_E_Beth.R")
+source("Modeling/read_simulation.R")
 
 
 Z_ar = c(1,6,8,10,14,18,22,26) # 8 tested Z values
