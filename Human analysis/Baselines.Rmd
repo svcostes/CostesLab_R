@@ -3,8 +3,6 @@
 ## Eloise Pariset, USRA/NASA Ames, January 2020
 ## All baselines
 
-## To be expanded (in a separate file) by adding data on cell death, CellROX intensity and cell number
-
 ```{r}
 require('lattice')
 require('ggalt')
@@ -21,7 +19,7 @@ require('dplyr')
 ```
 
 ```{r}
-setwd("/Users/epariset/Desktop/Processed-all/Baselines-CD7-Threshold3000") ## Change as necessary: this is the main directory
+setwd(getwd()) ## Change as necessary: this is the main directory
 theme_set(theme_bw(base_size = 12)) ## For prettier graphs
 theme_update(plot.title = element_text(hjust = 0.5))
 ```
@@ -33,17 +31,17 @@ baseline_plate_count = length(baseline_plate_nums)
 
 ```{r}
 ## Read all metadata
-subject_meta = read.csv('/Users/epariset/Desktop/R_Code-work/Baseline_metadata.csv', sep = ",", header = TRUE)
+subject_meta = read.csv('Baseline_metadata.csv', sep = ",", header = TRUE)
 subject_ids = unique(subject_meta$Sample_ID)
 num_subj = length(subject_ids)
-plate_meta = read.csv('/Users/epariset/Desktop/R_Code-work/Baseline_plate_metadata.csv', sep = ",", header = TRUE)
+plate_meta = read.csv('Baseline_plate_metadata.csv', sep = ",", header = TRUE)
 plate_ids = unique(plate_meta$Plate_number)
 num_plate = length(plate_ids)
 ```
 
 ```{r}
 ## Read first file
-foci_baseline_first = data.frame(Plate = baseline_plate_nums[1], Plate_well = paste(baseline_plate_nums[1], read.table(paste("/Users/epariset/Desktop/Processed-all/Baselines-all/average_well_P", baseline_plate_nums[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("/Users/epariset/Desktop/Processed-all/Baselines-all/average_well_P", baseline_plate_nums[1],'.txt', sep=""), sep="\t", header = TRUE))
+foci_baseline_first = data.frame(Plate = baseline_plate_nums[1], Plate_well = paste(baseline_plate_nums[1], read.table(paste("average_well/Baselines/average_well_P", baseline_plate_nums[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("average_well/Baselines/average_well_P", baseline_plate_nums[1],'.txt', sep=""), sep="\t", header = TRUE))
 
 baseline_table=foci_baseline_first
 ```
@@ -51,8 +49,8 @@ baseline_table=foci_baseline_first
 ```{r}
 ## Read all other files
 for(ii in 2:baseline_plate_count){
-  temp_baseline_filename = paste('/Users/epariset/Desktop/Processed-all/Baselines-all/average_well_P', baseline_plate_nums[ii],'.txt', sep="")
-  temp_baseline_table = data.frame(Plate = baseline_plate_nums[ii], Plate_well = paste(baseline_plate_nums[ii], read.table(paste('/Users/epariset/Desktop/Processed-all/Baselines-all/average_well_P', baseline_plate_nums[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('/Users/epariset/Desktop/Processed-all/Baselines-all/average_well_P', baseline_plate_nums[ii],'.txt', sep=""), sep="\t", header = TRUE))
+  temp_baseline_filename = paste('average_well/Baselines/average_well_P', baseline_plate_nums[ii],'.txt', sep="")
+  temp_baseline_table = data.frame(Plate = baseline_plate_nums[ii], Plate_well = paste(baseline_plate_nums[ii], read.table(paste('average_well/Baselines/average_well_P', baseline_plate_nums[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('average_well/Baselines/average_well_P', baseline_plate_nums[ii],'.txt', sep=""), sep="\t", header = TRUE))
   baseline_table = rbind(baseline_table, temp_baseline_table)
 }
 ```
