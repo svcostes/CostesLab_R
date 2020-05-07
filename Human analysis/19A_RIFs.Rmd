@@ -649,39 +649,39 @@ ar_avg_4h_norm <- dcast(ar_avg_4h, Sample_ID ~ Fluence, value.var = 'avg_nfoci')
 ar_avg_24h_norm <- dcast(ar_avg_24h, Sample_ID ~ Fluence, value.var = 'avg_nfoci') #reshape the table ar_avg_24h
 si_avg_4h_norm <- dcast(si_avg_4h, Sample_ID ~ Fluence, value.var = 'avg_nfoci') #reshape the table si_avg_4h
 si_avg_24h_norm <- dcast(si_avg_24h, Sample_ID ~ Fluence, value.var = 'avg_nfoci') #reshape the table si_avg_24h
-gamma_avg_4h_norm <- dcast(gamma_avg_4h, Sample_ID ~ Fluence, value.var = 'avg_nfoci') #reshape the table gamma_avg_4h
-gamma_avg_24h_norm <- dcast(gamma_avg_24h, Sample_ID ~ Fluence, value.var = 'avg_nfoci') #reshape the table gamma_avg_24h
+gamma_avg_4h_norm <- dcast(gamma_avg_4h, Sample_ID ~ Dose, value.var = 'avg_nfoci') #reshape the table gamma_avg_4h
+gamma_avg_24h_norm <- dcast(gamma_avg_24h, Sample_ID ~ Dose, value.var = 'avg_nfoci') #reshape the table gamma_avg_24h
 ```
 
 ```{r}
 # # We choose to keep only the data for which avg_nfoci at dose 1 and dose 2 >= avg_nfoci at dose 0
-# fe_avg_4h_norm = fe_avg_4h_norm[fe_avg_4h_norm$'1.1' >= fe_avg_4h_norm$'0',]
-# fe_avg_4h_norm = fe_avg_4h_norm[fe_avg_4h_norm$'3' >= fe_avg_4h_norm$'0',]
-# fe_avg_4h_norm <- na.omit(fe_avg_4h_norm)
-# fe_avg_24h_norm = fe_avg_24h_norm[fe_avg_24h_norm$'1.1' >= fe_avg_24h_norm$'0',]
-# fe_avg_24h_norm = fe_avg_24h_norm[fe_avg_24h_norm$'3' >= fe_avg_24h_norm$'0',]
-# fe_avg_24h_norm <- na.omit(fe_avg_24h_norm)
-# 
-# ar_avg_4h_norm = ar_avg_4h_norm[ar_avg_4h_norm$'1.1' >= ar_avg_4h_norm$'0',]
-# ar_avg_4h_norm = ar_avg_4h_norm[ar_avg_4h_norm$'3' >= ar_avg_4h_norm$'0',]
-# ar_avg_4h_norm <- na.omit(ar_avg_4h_norm)
-# ar_avg_24h_norm = ar_avg_24h_norm[ar_avg_24h_norm$'1.1' >= ar_avg_24h_norm$'0',]
-# ar_avg_24h_norm = ar_avg_24h_norm[ar_avg_24h_norm$'3' >= ar_avg_24h_norm$'0',]
-# ar_avg_24h_norm <- na.omit(ar_avg_24h_norm)
-# 
-# si_avg_4h_norm = si_avg_4h_norm[si_avg_4h_norm$'1.1' >= si_avg_4h_norm$'0',]
-# si_avg_4h_norm = si_avg_4h_norm[si_avg_4h_norm$'3' >= si_avg_4h_norm$'0',]
-# si_avg_4h_norm <- na.omit(si_avg_4h_norm)
-# si_avg_24h_norm = si_avg_24h_norm[si_avg_24h_norm$'1.1' >= si_avg_24h_norm$'0',]
-# si_avg_24h_norm = si_avg_24h_norm[si_avg_24h_norm$'3' >= si_avg_24h_norm$'0',]
-# si_avg_24h_norm <- na.omit(si_avg_24h_norm)
-# 
-# gamma_avg_4h_norm = gamma_avg_4h_norm[gamma_avg_4h_norm$'0.1' >= gamma_avg_4h_norm$'0',]
-# gamma_avg_4h_norm = gamma_avg_4h_norm[gamma_avg_4h_norm$'1' >= gamma_avg_4h_norm$'0',]
-# gamma_avg_4h_norm <- na.omit(gamma_avg_4h_norm)
-# gamma_avg_24h_norm = gamma_avg_24h_norm[gamma_avg_24h_norm$'0.1' >= gamma_avg_24h_norm$'0',]
-# gamma_avg_24h_norm = gamma_avg_24h_norm[gamma_avg_24h_norm$'1' >= gamma_avg_24h_norm$'0',]
-# gamma_avg_24h_norm <- na.omit(gamma_avg_24h_norm)
+fe_avg_4h_norm = fe_avg_4h_norm[fe_avg_4h_norm$'1.1' >= fe_avg_4h_norm$'0',]
+fe_avg_4h_norm = fe_avg_4h_norm[fe_avg_4h_norm$'3' >= fe_avg_4h_norm$'0',]
+fe_avg_4h_norm <- na.omit(fe_avg_4h_norm)
+fe_avg_24h_norm = fe_avg_24h_norm[fe_avg_24h_norm$'1.1' >= fe_avg_24h_norm$'0',]
+fe_avg_24h_norm = fe_avg_24h_norm[fe_avg_24h_norm$'3' >= fe_avg_24h_norm$'0',]
+fe_avg_24h_norm <- na.omit(fe_avg_24h_norm)
+
+ar_avg_4h_norm = ar_avg_4h_norm[ar_avg_4h_norm$'1.1' >= ar_avg_4h_norm$'0',]
+ar_avg_4h_norm = ar_avg_4h_norm[ar_avg_4h_norm$'3' >= ar_avg_4h_norm$'0',]
+ar_avg_4h_norm <- na.omit(ar_avg_4h_norm)
+ar_avg_24h_norm = ar_avg_24h_norm[ar_avg_24h_norm$'1.1' >= ar_avg_24h_norm$'0',]
+ar_avg_24h_norm = ar_avg_24h_norm[ar_avg_24h_norm$'3' >= ar_avg_24h_norm$'0',]
+ar_avg_24h_norm <- na.omit(ar_avg_24h_norm)
+
+si_avg_4h_norm = si_avg_4h_norm[si_avg_4h_norm$'1.1' >= si_avg_4h_norm$'0',]
+si_avg_4h_norm = si_avg_4h_norm[si_avg_4h_norm$'3' >= si_avg_4h_norm$'0',]
+si_avg_4h_norm <- na.omit(si_avg_4h_norm)
+si_avg_24h_norm = si_avg_24h_norm[si_avg_24h_norm$'1.1' >= si_avg_24h_norm$'0',]
+si_avg_24h_norm = si_avg_24h_norm[si_avg_24h_norm$'3' >= si_avg_24h_norm$'0',]
+si_avg_24h_norm <- na.omit(si_avg_24h_norm)
+
+gamma_avg_4h_norm = gamma_avg_4h_norm[gamma_avg_4h_norm$'0.1' >= gamma_avg_4h_norm$'0',]
+gamma_avg_4h_norm = gamma_avg_4h_norm[gamma_avg_4h_norm$'1' >= gamma_avg_4h_norm$'0',]
+gamma_avg_4h_norm <- na.omit(gamma_avg_4h_norm)
+gamma_avg_24h_norm = gamma_avg_24h_norm[gamma_avg_24h_norm$'0.1' >= gamma_avg_24h_norm$'0',]
+gamma_avg_24h_norm = gamma_avg_24h_norm[gamma_avg_24h_norm$'1' >= gamma_avg_24h_norm$'0',]
+gamma_avg_24h_norm <- na.omit(gamma_avg_24h_norm)
 ```
 
 ```{r}
