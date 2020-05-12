@@ -1,0 +1,496 @@
+## Analysing CellROX intensity and cell death in response to different doses and types of radiation.
+## In human samples. 
+## Egle Cekanaviciute, USRA/NASA Ames, January 2020
+## For all BNL runs on this project: 19C (Fall 2019), 19A (Spring 2019) and 18B (Summer 2018).
+
+## To be expanded (in a separate file) by adding data on DNA damage/repair foci, this is JUST THE FLOW.
+
+
+```{r}
+require('lattice')
+require('ggplot2')
+require('polynom')
+require('corrplot')
+require('ggpubr')
+require('plyr')
+require('reshape2')
+require('cowplot')
+```
+
+```{r}
+setwd("~/Desktop/19C_flow_analysis") ## Change as necessary: this is the working directory
+theme_set(theme_bw(base_size = 12)) ## For prettier graphs
+```
+
+```{r}
+## Read all flow data, which in this case includes metadata of CellROX intensity and cell death percentage in WIDE format
+#flow_19c = read.csv('/Users/ecekanav/Desktop/BNL_19C_sample_metadata_w_flow_for_combination_20200106.csv', sep = ",", header = TRUE)
+#flow_18b = read.csv('/Users/ecekanav/Desktop/BNL_18B_sample_metadata_w_flow_for_combination_20200106.csv', sep = ",", header = TRUE)
+#flow_19a = read.csv('/Users/ecekanav/Desktop/BNL_19A_sample_metadata_w_flow_for_combination_20200106.csv', sep = ",", header = TRUE)
+#flow_all = read.csv('/Users/ecekanav/Desktop/All_flow_w_metadata_20200106.csv', sep = ",", header = TRUE)
+#flow_all_filt = read.csv('/Users/ecekanav/Desktop/19C_flow_analysis/All_flow_w_metadata_filtered_19A_Sets1_2_Ar_removed_20200107.csv', sep = ",", header = TRUE) ## removing all samples with <100 PBMCs ##note that BNL19A Ar Sets 1 and 2 are removed completely due to issues with cytometer for the 0 and the 1 particles in both sets. 
+
+flow_all_filt = read.csv('/Users/ecekanav/Desktop/19C_flow_analysis/All_flow_w_metadata_filtered_20200108_no_He_Set2_0cGy.csv', sep = ",", header = TRUE)
+## removing all samples with <100 PBMCs
+## AND removing all He samples from 19C 0cGy Set 2 because the plate got shaken, so very little sample was left, so worked poorly. 
+```
+
+```{r}
+## Getting ready to establish metrics (starting with fold change at different fluences), top highest and top lowest people. 
+## First, make columns for fold, for both CR and dead
+flow_all_filt_fold = flow_all_filt
+flow_all_filt_fold$Ar_CR_fold_low = flow_all_filt_fold$Ar_Live_CR_mean_1 / flow_all_filt_fold$Ar_Live_CR_mean_0
+flow_all_filt_fold$Ar_CR_fold_high = flow_all_filt_fold$Ar_Live_CR_mean_3 / flow_all_filt_fold$Ar_Live_CR_mean_0
+flow_all_filt_fold$Si_CR_fold_low = flow_all_filt_fold$Si_Live_CR_mean_1 / flow_all_filt_fold$Si_Live_CR_mean_0
+flow_all_filt_fold$Si_CR_fold_high = flow_all_filt_fold$Si_Live_CR_mean_3 / flow_all_filt_fold$Si_Live_CR_mean_0
+flow_all_filt_fold$Fe_CR_fold_low = flow_all_filt_fold$Fe_Live_CR_mean_1 / flow_all_filt_fold$Fe_Live_CR_mean_0
+flow_all_filt_fold$Fe_CR_fold_high = flow_all_filt_fold$Fe_Live_CR_mean_3 / flow_all_filt_fold$Fe_Live_CR_mean_0
+flow_all_filt_fold$He_CR_fold_low = flow_all_filt_fold$He_Live_CR_mean_15 / flow_all_filt_fold$He_Live_CR_mean_0
+flow_all_filt_fold$He_CR_fold_high = flow_all_filt_fold$He_Live_CR_mean_50 / flow_all_filt_fold$He_Live_CR_mean_0
+flow_all_filt_fold$Gamma_CR_fold_low = flow_all_filt_fold$Gamma_Live_CR_mean_10 / flow_all_filt_fold$Gamma_Live_CR_mean_0
+flow_all_filt_fold$Gamma_CR_fold_high = flow_all_filt_fold$Gamma_Live_CR_mean_100 / flow_all_filt_fold$Gamma_Live_CR_mean_0
+
+flow_all_filt_fold$Ar_Dead_fold_low = flow_all_filt_fold$Ar_Dead_percentage_1 / flow_all_filt_fold$Ar_Dead_percentage_0
+flow_all_filt_fold$Ar_Dead_fold_high = flow_all_filt_fold$Ar_Dead_percentage_3 / flow_all_filt_fold$Ar_Dead_percentage_0
+flow_all_filt_fold$Si_Dead_fold_low = flow_all_filt_fold$Si_Dead_percentage_1 / flow_all_filt_fold$Si_Dead_percentage_0
+flow_all_filt_fold$Si_Dead_fold_high = flow_all_filt_fold$Si_Dead_percentage_3 / flow_all_filt_fold$Si_Dead_percentage_0
+flow_all_filt_fold$Fe_Dead_fold_low = flow_all_filt_fold$Fe_Dead_percentage_1 / flow_all_filt_fold$Fe_Dead_percentage_0
+flow_all_filt_fold$Fe_Dead_fold_high = flow_all_filt_fold$Fe_Dead_percentage_3 / flow_all_filt_fold$Fe_Dead_percentage_0
+flow_all_filt_fold$He_Dead_fold_low = flow_all_filt_fold$He_Dead_percentage_15 / flow_all_filt_fold$He_Dead_percentage_0
+flow_all_filt_fold$He_Dead_fold_high = flow_all_filt_fold$He_Dead_percentage_50 / flow_all_filt_fold$He_Dead_percentage_0
+flow_all_filt_fold$Gamma_Dead_fold_low = flow_all_filt_fold$Gamma_Dead_percentage_10 / flow_all_filt_fold$Gamma_Dead_percentage_0
+flow_all_filt_fold$Gamma_Dead_fold_high = flow_all_filt_fold$Gamma_Dead_percentage_100 / flow_all_filt_fold$Gamma_Dead_percentage_0
+
+write.csv(flow_all_filt_fold, file = "All_filtered_fold_differences.csv", row.names = FALSE)
+```
+
+
+```{r}
+
+## Now will make a LOOONG table and analyze based on demographics. Focusing on ROS (CellROX), because clear that the cell death is incomplete - should use the number of "missing cells" from RIF calculations instead. 
+
+all_cr_long = melt(flow_all_filt, id.vars = c("Sample_ID", "Gender", "Age", "BMI", "BMI_group", "CMV", "Timepoint", "Run", "Set", "Run_set"), measure.vars = colnames(flow_all_filt)[grepl("_CR_", colnames(flow_all_filt))], variable.name = "Metric_detailed", value.name = "Mean_CR")
+
+all_cr_long$BMI_group = factor(all_cr_long$BMI_group, levels = c("Underweight", "Normal", "Overweight", "Obese")) ## ordering BMI levels
+all_cr_long$Timepoint = factor(all_cr_long$Timepoint, levels = c("4h", "24h")) ## ordering timepoints to go from 4h (first) to 24h
+
+##Will add information about dose and fluence in the looong table
+
+all_cr_long$Fluence_level = "tempo"
+all_cr_long$Dose = "tempo" 
+
+all_cr_long$Fluence_level[grepl("0",all_cr_long$Metric_detailed)] = "None"
+all_cr_long$Fluence_level[grepl("_1",all_cr_long$Metric_detailed)] = "Low"
+all_cr_long$Fluence_level[grepl("_3",all_cr_long$Metric_detailed)] = "High"
+all_cr_long$Fluence_level[grepl("Gamma_Live_CR_mean_10",all_cr_long$Metric_detailed)] = "Low"
+all_cr_long$Fluence_level[grepl("Gamma_Live_CR_mean_100",all_cr_long$Metric_detailed)] = "High"
+all_cr_long$Fluence_level[grepl("He_Live_CR_mean_15",all_cr_long$Metric_detailed)] = "Low"
+all_cr_long$Fluence_level[grepl("He_Live_CR_mean_50",all_cr_long$Metric_detailed)] = "High"
+
+all_cr_long$Fluence_level = factor(all_cr_long$Fluence_level, levels = c("None", "Low", "High")) ## ordering fluence levels so that they would not be in alphabetical order!
+
+all_cr_long$Dose[grepl("0",all_cr_long$Metric_detailed)] = "0"
+all_cr_long$Dose[grepl("Ar_Live_CR_mean_1",all_cr_long$Metric_detailed)] = "18"
+all_cr_long$Dose[grepl("Ar_Live_CR_mean_3",all_cr_long$Metric_detailed)] = "50"
+all_cr_long$Dose[grepl("Si_Live_CR_mean_1",all_cr_long$Metric_detailed)] = "10"
+all_cr_long$Dose[grepl("Si_Live_CR_mean_3",all_cr_long$Metric_detailed)] = "30"
+all_cr_long$Dose[grepl("Fe_Live_CR_mean_1",all_cr_long$Metric_detailed)] = "30"
+all_cr_long$Dose[grepl("Fe_Live_CR_mean_3",all_cr_long$Metric_detailed)] = "82"
+all_cr_long$Dose[grepl("Gamma_Live_CR_mean_10",all_cr_long$Metric_detailed)] = "10"
+all_cr_long$Dose[grepl("Gamma_Live_CR_mean_100",all_cr_long$Metric_detailed)] = "100"
+all_cr_long$Dose[grepl("He_Live_CR_mean_15",all_cr_long$Metric_detailed)] = "15"
+all_cr_long$Dose[grepl("He_Live_CR_mean_50",all_cr_long$Metric_detailed)] = "50"
+all_cr_long$Dose = factor(all_cr_long$Dose, levels = c("0", "10", "15", "18", "30", "50", "82", "100")) ## ordering doses so that they would not be 1, 10, 18, 100, 30, etc... 
+
+##Will add information about radiation type in the looong table
+all_cr_long$Radiation_quality = "tempo"
+all_cr_long$Radiation_quality[grepl("Gamma",all_cr_long$Metric_detailed)] = "Gamma"
+all_cr_long$Radiation_quality[grepl("He",all_cr_long$Metric_detailed)] = "He"
+all_cr_long$Radiation_quality[grepl("Ar",all_cr_long$Metric_detailed)] = "Ar"
+all_cr_long$Radiation_quality[grepl("Si",all_cr_long$Metric_detailed)] = "Si"
+all_cr_long$Radiation_quality[grepl("Fe",all_cr_long$Metric_detailed)] = "Fe"
+all_cr_long$Radiation_quality = factor(all_cr_long$Radiation_quality, levels = c("Gamma", "He", "Si", "Ar", "Fe")) ## ordering radiation types from lowest to highest LET
+
+all_cr_long_4h = all_cr_long[all_cr_long$Timepoint == "4h",]
+all_cr_long_24h = all_cr_long[all_cr_long$Timepoint == "24h",]
+```
+
+```{r} 
+## plotting for CR, absolute values
+all_plot_box_cr = ggplot(all_cr_long, aes(x = Fluence_level, y = Mean_CR, col = Gender)) + geom_boxplot() + ylab("Mean CR in live PBMCs") + ylim(0,2000)
+facet(all_plot_box_cr, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_run_box_cr = ggplot(all_cr_long, aes(x = Fluence_level, y = Mean_CR, col = Run)) + geom_boxplot() + ylab("Mean CR in live PBMCs") + ylim(0,2000)
+facet(all_plot_run_box_cr, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_dots_cr = ggplot(all_cr_long, aes(x = Fluence_level, y = Mean_CR, col = Gender)) + geom_point(size = 0.1, stroke = 0, shape = 16) + geom_jitter() + ylab("Mean CR in live PBMCs") + ylim(0,2000)
+facet(all_plot_dots_cr, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_bmi_box_cr = ggplot(all_cr_long, aes(x = Fluence_level, y = Mean_CR, col = BMI_group)) + geom_boxplot() + ylab("Mean CR in live PBMCs") + ylim(0,2000)
+facet(all_plot_bmi_box_cr, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_age_cr = ggplot(all_cr_long, aes(x = Age, y = Mean_CR, col = Fluence_level)) + ylab("Mean CR in live PBMCs") + ylim(0,750) + geom_smooth(method = "glm")
+facet(all_plot_age_cr, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_bmi_cr = ggplot(all_cr_long, aes(x = BMI, y = Mean_CR, col = Fluence_level)) + ylab("Mean CR in live PBMCs") + ylim(0,750) + geom_smooth(method = "glm")
+facet(all_plot_bmi_cr, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_cmv_box_cr = ggplot(all_cr_long, aes(x = Fluence_level, y = Mean_CR, col = CMV)) + geom_boxplot() + ylab("Mean CR in live PBMCs") + ylim(0,2000)
+facet(all_plot_cmv_box_cr, facet.by = c('Timepoint', 'Radiation_quality'))
+
+```
+
+
+```{r}
+## Now will repeat the above with the cell death metric. 
+
+all_dead_long = melt(flow_all_filt, id.vars = c("Sample_ID", "Gender", "Age", "BMI", "BMI_group", "CMV", "Timepoint", "Run", "Set", "Run_set"), measure.vars = colnames(flow_all_filt)[grepl("_Dead_", colnames(flow_all_filt))], variable.name = "Metric_detailed", value.name = "Percentage_dead")
+all_dead_long$BMI_group = factor(all_dead_long$BMI_group, levels = c("Underweight", "Normal", "Overweight", "Obese")) ## ordering BMI levels
+all_dead_long$Timepoint = factor(all_dead_long$Timepoint, levels = c("4h", "24h")) ## ordering timepoints to go from 4h (first) to 24h
+
+##Will add information about dose and fluence in the looong table
+
+all_dead_long$Fluence_level = "tempo"
+all_dead_long$Dose = "tempo" 
+
+all_dead_long$Fluence_level[grepl("0",all_dead_long$Metric_detailed)] = "None"
+all_dead_long$Fluence_level[grepl("_1",all_dead_long$Metric_detailed)] = "Low"
+all_dead_long$Fluence_level[grepl("_3",all_dead_long$Metric_detailed)] = "High"
+all_dead_long$Fluence_level[grepl("Gamma_Dead_percentage_10",all_dead_long$Metric_detailed)] = "Low"
+all_dead_long$Fluence_level[grepl("Gamma_Dead_percentage_100",all_dead_long$Metric_detailed)] = "High"
+all_dead_long$Fluence_level[grepl("He_Dead_percentage_15",all_dead_long$Metric_detailed)] = "Low"
+all_dead_long$Fluence_level[grepl("He_Dead_percentage_50",all_dead_long$Metric_detailed)] = "High"
+all_dead_long$Fluence_level = factor(all_dead_long$Fluence_level, levels = c("None", "Low", "High")) ## ordering fluence levels so that they would not be in alphabetical order!
+
+all_dead_long$Dose[grepl("0",all_dead_long$Metric_detailed)] = "0"
+all_dead_long$Dose[grepl("Ar_Dead_percentage_1",all_dead_long$Metric_detailed)] = "18"
+all_dead_long$Dose[grepl("Ar_Dead_percentage_3",all_dead_long$Metric_detailed)] = "50"
+all_dead_long$Dose[grepl("Si_Dead_percentage_1",all_dead_long$Metric_detailed)] = "10"
+all_dead_long$Dose[grepl("Si_Dead_percentage_3",all_dead_long$Metric_detailed)] = "30"
+all_dead_long$Dose[grepl("Fe_Dead_percentage_1",all_dead_long$Metric_detailed)] = "30"
+all_dead_long$Dose[grepl("Fe_Dead_percentage_3",all_dead_long$Metric_detailed)] = "82"
+all_dead_long$Dose[grepl("Gamma_Dead_percentage_10",all_dead_long$Metric_detailed)] = "10"
+all_dead_long$Dose[grepl("Gamma_Dead_percentage_100",all_dead_long$Metric_detailed)] = "100"
+all_dead_long$Dose[grepl("He_Dead_percentage_15",all_dead_long$Metric_detailed)] = "15"
+all_dead_long$Dose[grepl("He_Dead_percentage_50",all_dead_long$Metric_detailed)] = "50"
+all_dead_long$Dose = factor(all_dead_long$Dose, levels = c("0", "10", "15", "18", "30", "50", "82", "100")) ## ordering doses so that they would not be 1, 10, 18, 100, 30, etc... 
+
+##Will add information about radiation type in the looong table
+all_dead_long$Radiation_quality = "tempo"
+all_dead_long$Radiation_quality[grepl("Gamma",all_dead_long$Metric_detailed)] = "Gamma"
+all_dead_long$Radiation_quality[grepl("He",all_dead_long$Metric_detailed)] = "He"
+all_dead_long$Radiation_quality[grepl("Ar",all_dead_long$Metric_detailed)] = "Ar"
+all_dead_long$Radiation_quality[grepl("Si",all_dead_long$Metric_detailed)] = "Si"
+all_dead_long$Radiation_quality[grepl("Fe",all_dead_long$Metric_detailed)] = "Fe"
+all_dead_long$Radiation_quality = factor(all_dead_long$Radiation_quality, levels = c("Gamma", "He", "Si", "Ar", "Fe")) ## ordering radiation types from lowest to highest LET
+
+```
+
+
+```{r}
+## plotting for cell death
+all_dead_long_4h = all_dead_long[all_dead_long$Timepoint == "4h",]
+all_dead_long_24h = all_dead_long[all_dead_long$Timepoint == "24h",]
+
+all_plot_box_dead = ggplot(all_dead_long, aes(x = Fluence_level, y = Percentage_dead, col = Gender)) + geom_boxplot() + ylab("Percentage dead PBMC") + ylim(0,75)
+facet(all_plot_box_dead, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_box_run_dead = ggplot(all_dead_long, aes(x = Fluence_level, y = Percentage_dead, col = Run)) + geom_boxplot() + ylab("Percentage dead PBMC") + ylim(0,75)
+facet(all_plot_box_run_dead, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_dots_dead = ggplot(all_dead_long, aes(x = Fluence_level, y = Percentage_dead, col = Gender)) + geom_point(size = 0.1, stroke = 0, shape = 16) + geom_jitter() + ylab("Percentage dead PBMC") + ylim(0,75)
+facet(all_plot_dots_dead, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_box_bmi_dead = ggplot(all_dead_long, aes(x = Fluence_level, y = Percentage_dead, col = BMI_group)) + geom_boxplot() + ylab("Percentage dead PBMC") + ylim(0,75)
+facet(all_plot_box_bmi_dead, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_age_dead = ggplot(all_dead_long, aes(x = Age, y = Percentage_dead, col = Fluence_level)) + ylab("Percentage dead PBMC") + ylim(0,30) + geom_smooth(method = "glm")
+facet(all_plot_age_dead, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_bmi_dead = ggplot(all_dead_long, aes(x = BMI, y = Percentage_dead, col = Fluence_level)) + ylab("Percentage dead PBMC") + ylim(0,30) + geom_smooth(method = "glm")
+facet(all_plot_bmi_dead, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_box_cmv_dead = ggplot(all_dead_long, aes(x = Fluence_level, y = Percentage_dead, col = CMV)) + geom_boxplot() + ylab("Percentage dead PBMC") + ylim(0,75)
+facet(all_plot_box_cmv_dead, facet.by = c('Timepoint', 'Radiation_quality'))
+
+
+```
+
+```{r}
+## Then basically repeat the above for fold: make LOOOONG dataframes
+
+## First, for ROS
+
+all_cr_long_fold = melt(flow_all_filt_fold, id.vars = c("Sample_ID", "Gender", "Age", "BMI", "BMI_group", "CMV", "Timepoint", "Run", "Set", "Run_set"), measure.vars = colnames(flow_all_filt_fold)[grepl("_CR_fold", colnames(flow_all_filt_fold))], variable.name = "Metric_detailed", value.name = "CR_fold")
+all_cr_long_fold$BMI_group = factor(all_cr_long_fold$BMI_group, levels = c("Underweight", "Normal", "Overweight", "Obese")) ## ordering BMI levels
+all_cr_long_fold$Timepoint = factor(all_cr_long_fold$Timepoint, levels = c("4h", "24h")) ## ordering timepoints to go from 4h (first) to 24h
+
+##Will add information about dose and fluence in the looong table
+
+all_cr_long_fold$Fluence_level = "tempo"
+all_cr_long_fold$Dose = "tempo" 
+all_cr_long_fold$Fluence_level[grepl("low",all_cr_long_fold$Metric_detailed)] = "Low"
+all_cr_long_fold$Fluence_level[grepl("high",all_cr_long_fold$Metric_detailed)] = "High"
+all_cr_long_fold$Fluence_level = factor(all_cr_long_fold$Fluence_level, levels = c("None", "Low", "High")) ## ordering fluence levels so that they would not be in alphabetical order!
+
+##Will add information about radiation type in the looong table
+all_cr_long_fold$Radiation_quality = "tempo"
+all_cr_long_fold$Radiation_quality[grepl("Gamma",all_cr_long_fold$Metric_detailed)] = "Gamma"
+all_cr_long_fold$Radiation_quality[grepl("He",all_cr_long_fold$Metric_detailed)] = "He"
+all_cr_long_fold$Radiation_quality[grepl("Ar",all_cr_long_fold$Metric_detailed)] = "Ar"
+all_cr_long_fold$Radiation_quality[grepl("Si",all_cr_long_fold$Metric_detailed)] = "Si"
+all_cr_long_fold$Radiation_quality[grepl("Fe",all_cr_long_fold$Metric_detailed)] = "Fe"
+all_cr_long_fold$Radiation_quality = factor(all_cr_long_fold$Radiation_quality, levels = c("Gamma", "He", "Si", "Ar", "Fe")) ## ordering radiation types from lowest to highest LET
+
+all_cr_long_fold_4h = all_cr_long_fold[all_cr_long_fold$Timepoint == "4h",]
+all_cr_long_fold_24h = all_cr_long_fold[all_cr_long_fold$Timepoint == "24h",]
+
+```
+
+
+```{r}
+## plotting for CR, fold
+all_plot_box_cr_fold = ggplot(all_cr_long_fold, aes(x = Fluence_level, y = CR_fold, col = Gender)) + geom_boxplot() + ylab("Fold CR in live PBMCs") + ylim(0,6)
+facet(all_plot_box_cr_fold, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_box_run_cr_fold = ggplot(all_cr_long_fold, aes(x = Fluence_level, y = CR_fold, col = Run)) + geom_boxplot() + ylab("Fold CR in live PBMCs") + ylim(0,6)
+facet(all_plot_box_run_cr_fold, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_dots_cr_fold = ggplot(all_cr_long_fold, aes(x = Fluence_level, y = CR_fold, col = Gender)) + geom_point(size = 0.1, stroke = 0, shape = 16) + geom_jitter() + ylab("Fold CR in live PBMCs") + ylim(0,6)
+facet(all_plot_dots_cr_fold, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_box_bmi_cr_fold = ggplot(all_cr_long_fold, aes(x = Fluence_level, y = CR_fold, col = BMI_group)) + geom_boxplot() + ylab("Fold CR in live PBMCs") + ylim(0,6)
+facet(all_plot_box_bmi_cr_fold, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_age_cr_fold = ggplot(all_cr_long_fold, aes(x = Age, y = CR_fold, col = Fluence_level)) + ylab("Fold CR in live PBMCs") + geom_smooth(method = "glm")
+facet(all_plot_age_cr_fold, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_bmi_cr_fold = ggplot(all_cr_long_fold, aes(x = BMI, y = CR_fold, col = Fluence_level)) + ylab("Fold CR in live PBMCs") + geom_smooth(method = "glm")
+facet(all_plot_bmi_cr_fold, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_box_cmv_cr_fold = ggplot(all_cr_long_fold, aes(x = Fluence_level, y = CR_fold, col = CMV)) + geom_boxplot() + ylab("Fold CR in live PBMCs") + ylim(0,6)
+facet(all_plot_box_cmv_cr_fold, facet.by = c('Timepoint', 'Radiation_quality'))
+
+```
+
+
+```{r}
+## Next, the loooong dataframe for fold of cell death
+
+all_dead_long_fold = melt(flow_all_filt_fold, id.vars = c("Sample_ID", "Gender", "Age", "BMI", "BMI_group", "CMV", "Timepoint", "Run", "Set", "Run_set"), measure.vars = colnames(flow_all_filt_fold)[grepl("_Dead_fold", colnames(flow_all_filt_fold))], variable.name = "Metric_detailed", value.name = "Dead_fold")
+all_dead_long_fold$BMI_group = factor(all_dead_long_fold$BMI_group, levels = c("Underweight", "Normal", "Overweight", "Obese")) ## ordering BMI levels
+all_dead_long_fold$Timepoint = factor(all_dead_long_fold$Timepoint, levels = c("4h", "24h")) ## ordering timepoints to go from 4h (first) to 24h
+
+##Will add information about dose and fluence in the looong table
+
+all_dead_long_fold$Fluence_level = "tempo"
+all_dead_long_fold$Dose = "tempo" 
+all_dead_long_fold$Fluence_level[grepl("low",all_dead_long_fold$Metric_detailed)] = "Low"
+all_dead_long_fold$Fluence_level[grepl("high",all_dead_long_fold$Metric_detailed)] = "High"
+all_dead_long_fold$Fluence_level = factor(all_dead_long_fold$Fluence_level, levels = c("None", "Low", "High")) ## ordering fluence levels so that they would not be in alphabetical order!
+
+##Will add information about radiation type in the looong table
+all_dead_long_fold$Radiation_quality = "tempo"
+all_dead_long_fold$Radiation_quality[grepl("Gamma",all_dead_long_fold$Metric_detailed)] = "Gamma"
+all_dead_long_fold$Radiation_quality[grepl("He",all_dead_long_fold$Metric_detailed)] = "He"
+all_dead_long_fold$Radiation_quality[grepl("Ar",all_dead_long_fold$Metric_detailed)] = "Ar"
+all_dead_long_fold$Radiation_quality[grepl("Si",all_dead_long_fold$Metric_detailed)] = "Si"
+all_dead_long_fold$Radiation_quality[grepl("Fe",all_dead_long_fold$Metric_detailed)] = "Fe"
+all_dead_long_fold$Radiation_quality = factor(all_dead_long_fold$Radiation_quality, levels = c("Gamma", "He", "Si", "Ar", "Fe")) ## ordering radiation types from lowest to highest LET
+
+all_dead_long_fold_4h = all_dead_long_fold[all_dead_long_fold$Timepoint == "4h",]
+all_dead_long_fold_24h = all_dead_long_fold[all_dead_long_fold$Timepoint == "24h",]
+
+```
+
+
+```{r}
+## plotting for Dead, fold
+all_plot_box_dead_fold = ggplot(all_dead_long_fold, aes(x = Fluence_level, y = Dead_fold, col = Gender)) + geom_boxplot() + ylab("Fold of percentage of dead PBMCs") + ylim(0,6)
+facet(all_plot_box_dead_fold, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_box_run_dead_fold = ggplot(all_dead_long_fold, aes(x = Fluence_level, y = Dead_fold, col = Run)) + geom_boxplot() + ylab("Fold of percentage of dead PBMCs") + ylim(0,6)
+facet(all_plot_box_run_dead_fold, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_dots_dead_fold = ggplot(all_dead_long_fold, aes(x = Fluence_level, y = Dead_fold, col = Gender)) + geom_point(size = 0.1, stroke = 0, shape = 16) + geom_jitter() + ylab("Fold of percentage of dead PBMCs") + ylim(0,6)
+facet(all_plot_dots_dead_fold, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_box_bmi_dead_fold = ggplot(all_dead_long_fold, aes(x = Fluence_level, y = Dead_fold, col = BMI_group)) + geom_boxplot() + ylab("Fold of percentage of dead PBMCs") + ylim(0,6)
+facet(all_plot_box_bmi_dead_fold, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_bmi_dead_fold = ggplot(all_dead_long_fold, aes(x = BMI, y = Dead_fold, col = Fluence_level)) + ylab("Fold of percentage of dead PBMCs") + geom_smooth(method = "glm")
+facet(all_plot_bmi_dead_fold, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_age_dead_fold = ggplot(all_dead_long_fold, aes(x = Age, y = Dead_fold, col = Fluence_level)) + ylab("Fold of percentage of dead PBMCs") + geom_smooth(method = "glm")
+facet(all_plot_age_dead_fold, facet.by = c('Timepoint', 'Radiation_quality'))
+
+all_plot_box_cmv_dead_fold = ggplot(all_dead_long_fold, aes(x = Fluence_level, y = Dead_fold, col = CMV)) + geom_boxplot() + ylab("Fold of percentage of dead PBMCs") + ylim(0,6)
+facet(all_plot_box_cmv_dead_fold, facet.by = c('Timepoint', 'Radiation_quality'))
+
+```
+
+
+```{r}
+## Now, comparing 24h and 4h data. Will call it the DECAY data. 
+
+flow_all_filt_decay = read.csv('/Users/ecekanav/Desktop/19C_flow_analysis/All_filtered_decay_differences.csv', sep = ",", header = TRUE)
+
+flow_all_filt_decay_fold = flow_all_filt_decay
+flow_all_filt_decay_fold$Ar_CR_fold_low = flow_all_filt_decay_fold$Ar_Live_CR_mean_1 / flow_all_filt_decay_fold$Ar_Live_CR_mean_0
+flow_all_filt_decay_fold$Ar_CR_fold_high = flow_all_filt_decay_fold$Ar_Live_CR_mean_3 / flow_all_filt_decay_fold$Ar_Live_CR_mean_0
+flow_all_filt_decay_fold$Si_CR_fold_low = flow_all_filt_decay_fold$Si_Live_CR_mean_1 / flow_all_filt_decay_fold$Si_Live_CR_mean_0
+flow_all_filt_decay_fold$Si_CR_fold_high = flow_all_filt_decay_fold$Si_Live_CR_mean_3 / flow_all_filt_decay_fold$Si_Live_CR_mean_0
+flow_all_filt_decay_fold$Fe_CR_fold_low = flow_all_filt_decay_fold$Fe_Live_CR_mean_1 / flow_all_filt_decay_fold$Fe_Live_CR_mean_0
+flow_all_filt_decay_fold$Fe_CR_fold_high = flow_all_filt_decay_fold$Fe_Live_CR_mean_3 / flow_all_filt_decay_fold$Fe_Live_CR_mean_0
+flow_all_filt_decay_fold$He_CR_fold_low = flow_all_filt_decay_fold$He_Live_CR_mean_15 / flow_all_filt_decay_fold$He_Live_CR_mean_0
+flow_all_filt_decay_fold$He_CR_fold_high = flow_all_filt_decay_fold$He_Live_CR_mean_50 / flow_all_filt_decay_fold$He_Live_CR_mean_0
+flow_all_filt_decay_fold$Gamma_CR_fold_low = flow_all_filt_decay_fold$Gamma_Live_CR_mean_10 / flow_all_filt_decay_fold$Gamma_Live_CR_mean_0
+flow_all_filt_decay_fold$Gamma_CR_fold_high = flow_all_filt_decay_fold$Gamma_Live_CR_mean_100 / flow_all_filt_decay_fold$Gamma_Live_CR_mean_0
+
+flow_all_filt_decay_fold$Ar_Dead_fold_low = flow_all_filt_decay_fold$Ar_Dead_percentage_1 / flow_all_filt_decay_fold$Ar_Dead_percentage_0
+flow_all_filt_decay_fold$Ar_Dead_fold_high = flow_all_filt_decay_fold$Ar_Dead_percentage_3 / flow_all_filt_decay_fold$Ar_Dead_percentage_0
+flow_all_filt_decay_fold$Si_Dead_fold_low = flow_all_filt_decay_fold$Si_Dead_percentage_1 / flow_all_filt_decay_fold$Si_Dead_percentage_0
+flow_all_filt_decay_fold$Si_Dead_fold_high = flow_all_filt_decay_fold$Si_Dead_percentage_3 / flow_all_filt_decay_fold$Si_Dead_percentage_0
+flow_all_filt_decay_fold$Fe_Dead_fold_low = flow_all_filt_decay_fold$Fe_Dead_percentage_1 / flow_all_filt_decay_fold$Fe_Dead_percentage_0
+flow_all_filt_decay_fold$Fe_Dead_fold_high = flow_all_filt_decay_fold$Fe_Dead_percentage_3 / flow_all_filt_decay_fold$Fe_Dead_percentage_0
+flow_all_filt_decay_fold$He_Dead_fold_low = flow_all_filt_decay_fold$He_Dead_percentage_15 / flow_all_filt_decay_fold$He_Dead_percentage_0
+flow_all_filt_decay_fold$He_Dead_fold_high = flow_all_filt_decay_fold$He_Dead_percentage_50 / flow_all_filt_decay_fold$He_Dead_percentage_0
+flow_all_filt_decay_fold$Gamma_Dead_fold_low = flow_all_filt_decay_fold$Gamma_Dead_percentage_10 / flow_all_filt_decay_fold$Gamma_Dead_percentage_0
+flow_all_filt_decay_fold$Gamma_Dead_fold_high = flow_all_filt_decay_fold$Gamma_Dead_percentage_100 / flow_all_filt_decay_fold$Gamma_Dead_percentage_0
+
+write.csv(flow_all_filt_decay_fold, file = "All_filtered_decay_fold_differences.csv", row.names = FALSE)
+
+```
+
+
+```{r}
+## Now will make a LOOONG table and analyze based on demographics. Focusing on ROS (CellROX), because clear that the cell death is incomplete - should use the number of "missing cells" from RIF calculations instead. 
+
+all_cr_long_decay = melt(flow_all_filt_decay, id.vars = c("Sample_ID", "Gender", "Age", "BMI", "BMI_group", "CMV", "Run", "Set", "Run_set"), measure.vars = colnames(flow_all_filt)[grepl("_CR_", colnames(flow_all_filt))], variable.name = "Metric_detailed", value.name = "Mean_CR")
+
+all_cr_long_decay$BMI_group = factor(all_cr_long_decay$BMI_group, levels = c("Underweight", "Normal", "Overweight", "Obese")) ## ordering BMI levels
+
+##Will add information about dose and fluence in the looong table
+
+all_cr_long_decay$Fluence_level = "tempo"
+all_cr_long_decay$Dose = "tempo" 
+
+all_cr_long_decay$Fluence_level[grepl("0",all_cr_long_decay$Metric_detailed)] = "None"
+all_cr_long_decay$Fluence_level[grepl("_1",all_cr_long_decay$Metric_detailed)] = "Low"
+all_cr_long_decay$Fluence_level[grepl("_3",all_cr_long_decay$Metric_detailed)] = "High"
+all_cr_long_decay$Fluence_level[grepl("Gamma_Live_CR_mean_10",all_cr_long_decay$Metric_detailed)] = "Low"
+all_cr_long_decay$Fluence_level[grepl("Gamma_Live_CR_mean_100",all_cr_long_decay$Metric_detailed)] = "High"
+all_cr_long_decay$Fluence_level[grepl("He_Live_CR_mean_15",all_cr_long_decay$Metric_detailed)] = "Low"
+all_cr_long_decay$Fluence_level[grepl("He_Live_CR_mean_50",all_cr_long_decay$Metric_detailed)] = "High"
+
+all_cr_long_decay$Fluence_level = factor(all_cr_long_decay$Fluence_level, levels = c("None", "Low", "High")) ## ordering fluence levels so that they would not be in alphabetical order!
+
+all_cr_long_decay$Dose[grepl("0",all_cr_long_decay$Metric_detailed)] = "0"
+all_cr_long_decay$Dose[grepl("Ar_Live_CR_mean_1",all_cr_long_decay$Metric_detailed)] = "18"
+all_cr_long_decay$Dose[grepl("Ar_Live_CR_mean_3",all_cr_long_decay$Metric_detailed)] = "50"
+all_cr_long_decay$Dose[grepl("Si_Live_CR_mean_1",all_cr_long_decay$Metric_detailed)] = "10"
+all_cr_long_decay$Dose[grepl("Si_Live_CR_mean_3",all_cr_long_decay$Metric_detailed)] = "30"
+all_cr_long_decay$Dose[grepl("Fe_Live_CR_mean_1",all_cr_long_decay$Metric_detailed)] = "30"
+all_cr_long_decay$Dose[grepl("Fe_Live_CR_mean_3",all_cr_long_decay$Metric_detailed)] = "82"
+all_cr_long_decay$Dose[grepl("Gamma_Live_CR_mean_10",all_cr_long_decay$Metric_detailed)] = "10"
+all_cr_long_decay$Dose[grepl("Gamma_Live_CR_mean_100",all_cr_long_decay$Metric_detailed)] = "100"
+all_cr_long_decay$Dose[grepl("He_Live_CR_mean_15",all_cr_long_decay$Metric_detailed)] = "15"
+all_cr_long_decay$Dose[grepl("He_Live_CR_mean_50",all_cr_long_decay$Metric_detailed)] = "50"
+all_cr_long_decay$Dose = factor(all_cr_long_decay$Dose, levels = c("0", "10", "15", "18", "30", "50", "82", "100")) ## ordering doses so that they would not be 1, 10, 18, 100, 30, etc... 
+
+##Will add information about radiation type in the looong table
+all_cr_long_decay$Radiation_quality = "tempo"
+all_cr_long_decay$Radiation_quality[grepl("Gamma",all_cr_long_decay$Metric_detailed)] = "Gamma"
+all_cr_long_decay$Radiation_quality[grepl("He",all_cr_long_decay$Metric_detailed)] = "He"
+all_cr_long_decay$Radiation_quality[grepl("Ar",all_cr_long_decay$Metric_detailed)] = "Ar"
+all_cr_long_decay$Radiation_quality[grepl("Si",all_cr_long_decay$Metric_detailed)] = "Si"
+all_cr_long_decay$Radiation_quality[grepl("Fe",all_cr_long_decay$Metric_detailed)] = "Fe"
+all_cr_long_decay$Radiation_quality = factor(all_cr_long_decay$Radiation_quality, levels = c("Gamma", "He", "Si", "Ar", "Fe")) ## ordering radiation types from lowest to highest LET
+
+```
+
+```{r}
+## plotting decay for CR, absolute values
+
+all_plot_decay_box_cr = ggplot(all_cr_long_decay, aes(x = Fluence_level, y = Mean_CR, col = Gender)) + geom_boxplot() + ylab("%CR 24h/4h in live PBMCs") + ylim(0,200)
+facet(all_plot_decay_box_cr, facet.by = 'Radiation_quality')
+
+all_plot_decay_bmi_box_cr = ggplot(all_cr_long_decay, aes(x = Fluence_level, y = Mean_CR, col = BMI_group)) + geom_boxplot() + ylab("%CR 24h/4h in live PBMCs") + ylim(0,200)
+facet(all_plot_decay_bmi_box_cr, facet.by = 'Radiation_quality')
+
+all_plot_decay_age_cr = ggplot(all_cr_long_decay, aes(x = Age, y = Mean_CR, col = Fluence_level)) + ylab("%CR 24h/4h in live PBMCs") + ylim(0,200) + geom_smooth(method = "glm")
+facet(all_plot_decay_age_cr, facet.by = 'Radiation_quality')
+
+all_plot_decay_bmi_cr = ggplot(all_cr_long_decay, aes(x = BMI, y = Mean_CR, col = Fluence_level)) + ylab("%CR 24h/4h in live PBMCs") + ylim(0,200) + geom_smooth(method = "glm")
+facet(all_plot_decay_bmi_cr, facet.by = 'Radiation_quality')
+
+all_plot_decay_cmv_box_cr = ggplot(all_cr_long_decay, aes(x = Fluence_level, y = Mean_CR, col = CMV)) + geom_boxplot() + ylab("%CR 24h/4h in live PBMCs") + ylim(0,200)
+facet(all_plot_decay_cmv_box_cr, facet.by = 'Radiation_quality')
+
+
+```
+
+
+```{r}
+## Now will repeat the above with the DECAY in cell death metric. 
+
+all_dead_long_decay = melt(flow_all_filt_decay, id.vars = c("Sample_ID", "Gender", "Age", "BMI", "BMI_group", "CMV", "Run", "Set", "Run_set"), measure.vars = colnames(flow_all_filt)[grepl("_Dead_", colnames(flow_all_filt))], variable.name = "Metric_detailed", value.name = "Percentage_dead")
+all_dead_long_decay$BMI_group = factor(all_dead_long_decay$BMI_group, levels = c("Underweight", "Normal", "Overweight", "Obese")) ## ordering BMI levels
+
+##Will add information about dose and fluence in the looong table
+
+all_dead_long_decay$Fluence_level = "tempo"
+all_dead_long_decay$Dose = "tempo" 
+
+all_dead_long_decay$Fluence_level[grepl("0",all_dead_long_decay$Metric_detailed)] = "None"
+all_dead_long_decay$Fluence_level[grepl("_1",all_dead_long_decay$Metric_detailed)] = "Low"
+all_dead_long_decay$Fluence_level[grepl("_3",all_dead_long_decay$Metric_detailed)] = "High"
+all_dead_long_decay$Fluence_level[grepl("Gamma_Dead_percentage_10",all_dead_long_decay$Metric_detailed)] = "Low"
+all_dead_long_decay$Fluence_level[grepl("Gamma_Dead_percentage_100",all_dead_long_decay$Metric_detailed)] = "High"
+all_dead_long_decay$Fluence_level[grepl("He_Dead_percentage_15",all_dead_long_decay$Metric_detailed)] = "Low"
+all_dead_long_decay$Fluence_level[grepl("He_Dead_percentage_50",all_dead_long_decay$Metric_detailed)] = "High"
+all_dead_long_decay$Fluence_level = factor(all_dead_long_decay$Fluence_level, levels = c("None", "Low", "High")) ## ordering fluence levels so that they would not be in alphabetical order!
+
+all_dead_long_decay$Dose[grepl("0",all_dead_long_decay$Metric_detailed)] = "0"
+all_dead_long_decay$Dose[grepl("Ar_Dead_percentage_1",all_dead_long_decay$Metric_detailed)] = "18"
+all_dead_long_decay$Dose[grepl("Ar_Dead_percentage_3",all_dead_long_decay$Metric_detailed)] = "50"
+all_dead_long_decay$Dose[grepl("Si_Dead_percentage_1",all_dead_long_decay$Metric_detailed)] = "10"
+all_dead_long_decay$Dose[grepl("Si_Dead_percentage_3",all_dead_long_decay$Metric_detailed)] = "30"
+all_dead_long_decay$Dose[grepl("Fe_Dead_percentage_1",all_dead_long_decay$Metric_detailed)] = "30"
+all_dead_long_decay$Dose[grepl("Fe_Dead_percentage_3",all_dead_long_decay$Metric_detailed)] = "82"
+all_dead_long_decay$Dose[grepl("Gamma_Dead_percentage_10",all_dead_long_decay$Metric_detailed)] = "10"
+all_dead_long_decay$Dose[grepl("Gamma_Dead_percentage_100",all_dead_long_decay$Metric_detailed)] = "100"
+all_dead_long_decay$Dose[grepl("He_Dead_percentage_15",all_dead_long_decay$Metric_detailed)] = "15"
+all_dead_long_decay$Dose[grepl("He_Dead_percentage_50",all_dead_long_decay$Metric_detailed)] = "50"
+all_dead_long_decay$Dose = factor(all_dead_long_decay$Dose, levels = c("0", "10", "15", "18", "30", "50", "82", "100")) ## ordering doses so that they would not be 1, 10, 18, 100, 30, etc... 
+
+##Will add information about radiation type in the looong table
+all_dead_long_decay$Radiation_quality = "tempo"
+all_dead_long_decay$Radiation_quality[grepl("Gamma",all_dead_long_decay$Metric_detailed)] = "Gamma"
+all_dead_long_decay$Radiation_quality[grepl("He",all_dead_long_decay$Metric_detailed)] = "He"
+all_dead_long_decay$Radiation_quality[grepl("Ar",all_dead_long_decay$Metric_detailed)] = "Ar"
+all_dead_long_decay$Radiation_quality[grepl("Si",all_dead_long_decay$Metric_detailed)] = "Si"
+all_dead_long_decay$Radiation_quality[grepl("Fe",all_dead_long_decay$Metric_detailed)] = "Fe"
+all_dead_long_decay$Radiation_quality = factor(all_dead_long_decay$Radiation_quality, levels = c("Gamma", "He", "Si", "Ar", "Fe")) ## ordering radiation types from lowest to highest LET
+```
+
+```{r}
+## plotting for DECAY cell death
+all_plot_box_dead_decay = ggplot(all_dead_long_decay, aes(x = Fluence_level, y = Percentage_dead, col = Gender)) + geom_boxplot() + ylab("% 24h/4h in Percentage dead PBMC") + ylim(0,1000)
+facet(all_plot_box_dead_decay, facet.by = 'Radiation_quality')
+
+all_plot_box_bmi_dead_decay = ggplot(all_dead_long_decay, aes(x = Fluence_level, y = Percentage_dead, col = BMI_group)) + geom_boxplot() + ylab("% 24h/4h in Percentage dead PBMC") + ylim(0,1000)
+facet(all_plot_box_bmi_dead_decay, facet.by = 'Radiation_quality')
+
+all_plot_age_dead_decay = ggplot(all_dead_long_decay, aes(x = Age, y = Percentage_dead, col = Fluence_level)) + ylab("% 24h/4h Percentage dead PBMC") + ylim(0,500) + geom_smooth(method = "glm")
+facet(all_plot_age_dead, facet.by = 'Radiation_quality')
+
+all_plot_bmi_dead_decay = ggplot(all_dead_long_decay, aes(x = BMI, y = Percentage_dead, col = Fluence_level)) + ylab("% 24h/4h in Percentage dead PBMC") + ylim(0,500) + geom_smooth(method = "glm")
+facet(all_plot_bmi_dead_decay, facet.by = 'Radiation_quality')
+
+all_plot_box_cmv_dead_decay = ggplot(all_dead_long_decay, aes(x = Fluence_level, y = Percentage_dead, col = CMV)) + geom_boxplot() + ylab("% 24h/4h in Percentage dead PBMC") + ylim(0,1000)
+facet(all_plot_box_cmv_dead_decay, facet.by = 'Radiation_quality')
+
+
+```
+
