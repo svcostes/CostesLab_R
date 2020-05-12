@@ -1,0 +1,99 @@
+---
+title: "Shayoni_mouse_merge_MegaMuga"
+output: html_document
+---
+
+## Merging Shayoni's files from MegaMuga sequencing database
+## Illumina files: SNP_Map and FinalReport
+## To make a "wide" file of SNPs in rows, mice in columns, that can be used by Sasha Langley
+## Based on The Internets: FWD strand is the same as ref strand! So is the relevant SNP nucleotide. 
+
+## Egle Cekanaviciute, 2019-06-04
+
+## Adding extra files on CC mice genotyped using set #37: 2019-07-02
+
+```{r}
+setwd("~/Desktop/Projects and collaborations/Shayoni_mouse_files")
+
+## Standard requirements:
+require('lattice')
+require('ggplot2')
+require('polynom')
+require('corrplot')
+require('ggpubr')
+require('plyr')
+require('reshape2')
+require('cowplot')
+```
+
+```{r}
+snp_map = read.csv("SNP_Map.csv", header = TRUE, sep = ",")
+snp_map_for_merging = data.frame(snp_map$Name, snp_map$Chromosome, snp_map$Position)
+
+snps_0405 = read.table("Lawrence_Berkeley_MURGIGV01_20170405_FinalReport.txt", header = TRUE, sep = "\t")
+snps_0405_fwd_only = data.frame(snps_0405$Sample.ID, snps_0405$SNP.Name, snps_0405$Allele1...Forward, snps_0405$Allele2...Forward)
+colnames(snps_0405_fwd_only) = c("Sample_ID", "SNP_name", "Allele_1", "Allele_2")
+
+snps_0420 = read.table("Lawrence_Berkeley_MURGIGV01_20170420_FinalReport.txt", header = TRUE, sep = "\t")
+snps_0420_fwd_only = data.frame(snps_0420$Sample.ID, snps_0420$SNP.Name, snps_0420$Allele1...Forward, snps_0420$Allele2...Forward)
+colnames(snps_0420_fwd_only) = c("Sample_ID", "SNP_name", "Allele_1", "Allele_2")
+
+snps_comb = rbind(snps_0405_fwd_only, snps_0420_fwd_only)
+
+snps_wide_allele_1 = dcast(snps_comb, SNP_name ~ Sample_ID, value.var = "Allele_1")
+snps_wide_allele_2 = dcast(snps_comb, SNP_name ~ Sample_ID, value.var = "Allele_2")
+
+colnames(snps_wide_allele_1)[2:ncol(snps_wide_allele_1)] = paste(colnames(snps_wide_allele_1)[2:ncol(snps_wide_allele_1)], "_Allele_1", sep = "")
+colnames(snps_wide_allele_2)[2:ncol(snps_wide_allele_2)] = paste(colnames(snps_wide_allele_2)[2:ncol(snps_wide_allele_2)], "_Allele_2", sep = "")
+
+snps_wide_all = merge(snps_wide_allele_1, snps_wide_allele_2, by.x = "SNP_name", by.y = "SNP_name")
+
+snps_wide_w_desc = merge(snp_map_for_merging, snps_wide_all, by.x = "snp_map.Name", by.y = "SNP_name")
+colnames(snps_wide_w_desc)[1:3] = c("SNP_name", "Chromosome", "Position")
+
+write.table(snps_wide_w_desc, "LBNL_sequenced_mice_20190604.txt", sep = "\t", quote = FALSE)
+
+## And now instead of including both alleles, we will include only homozygous alleles and call heterozygous alleles as "H"
+
+snps_comb$Het = "Hom"
+snps_comb$Het[(snps_comb$Allele_1 != snps_comb$Allele_2)] = "Het"
+snps_comb$Allele_w_het = as.character(snps_comb$Allele_1)
+snps_comb$Allele_w_het[(snps_comb$Het == "Het")] = "H"
+snps_comb$Allele_w_het = as.factor(snps_comb$Allele_w_het)
+snps_wide_w_het = dcast(snps_comb, SNP_name ~ Sample_ID, value.var = "Allele_w_het")
+
+snps_wide_w_desc_w_het = merge(snp_map_for_merging, snps_wide_w_het, by.x = "snp_map.Name", by.y = "SNP_name")
+colnames(snps_wide_w_desc_w_het)[1:3] = c("SNP_name", "Chromosome", "Position")
+
+write.table(snps_wide_w_desc_w_het, "LBNL_sequenced_mice_w_het_20190604.txt", sep = "\t", quote = FALSE)
+```
+
+```{r}
+## Now we need to load the other CC files
+snps_cc_37 = read.table("CC_GENO_META_SNP_ID_SL.txt", header = TRUE, sep = "\t")
+snps_in_cc_37 = snps_cc_37$SNP_ID
+snps_in_comb = snps_wide_w_desc_w_het$SNP_name
+snps_in_both_37 = snps_in_cc_37[(snps_in_cc_37 %in% snps_in_comb) == TRUE]
+length(snps_in_both_37)/length(snps_in_cc_37) ## percentage of SNPs kept from CC - 37 set 0.86
+length(snps_in_both_37)/length(snps_in_comb) ## percentage of SNPs kept from our previous combo set 0.47
+
+snps_cc_38 = read.table("CC_SEQgenotypes_17strains.txt", header = TRUE, sep = "\t")
+snps_in_cc_38 = snps_cc_38$marker
+snps_in_both_38 = snps_in_cc_38[(snps_in_cc_38 %in% snps_in_comb) == TRUE]
+length(snps_in_both_38)/length(snps_in_cc_38) ## percentage of SNPs kept from CC - 38 set 1
+length(snps_in_both_38)/length(snps_in_comb) ## percentage of SNPs kept from our previous combo set 0.94
+
+## Clearly # 38 sequencing, so now just need to merge!
+
+snps_comb_for_merging = snps_wide_w_desc_w_het[(snps_wide_w_desc_w_het$SNP_name %in% snps_in_both_38),]
+snps_merged = merge(snps_comb_for_merging, snps_cc_38, by.x = "SNP_name", by.y = "marker", all = TRUE)
+
+## "Chromosome' and 'Position' overlap mostly, but not completely. Leaving both! 
+
+colnames(snps_merged)[colnames(snps_merged) =="Chromosome"] = "Chromosome_LBNL_sequenced_set"
+colnames(snps_merged)[colnames(snps_merged) =="chromosome"] = "Chromosome_CC_S38_set"
+colnames(snps_merged)[colnames(snps_merged) =="Position"] = "Position_LBNL_sequenced_set"
+colnames(snps_merged)[colnames(snps_merged) =="position.b38."] = "Position_CC_S38_set"
+
+write.table(snps_merged, "LBNL_sequenced_mice_merged_with_CC_20190702.txt", sep = "\t", quote = FALSE)
+```
