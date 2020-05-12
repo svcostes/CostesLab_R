@@ -1,0 +1,129 @@
+
+require('lattice')
+require('ggplot2')
+require('polynom')
+require('corrplot')
+require('plyr')
+require('reshape2')
+require('stringr')
+
+library(IDPmisc)
+
+
+## EC notes: it is very important to keep the same SampleID + metadata + data by sample. So what I did is basically always keep the Sample ID somewhere: either as a row name or as a separate column
+## I would strongly recommend not doing sub-selections based on column numbers (e.g. [1,2,3]), because a different user may have the same columns in a different order! So you need to sub-select based on column names instead.
+## You need data and metadata separately: data to log and plot, metadata to color. So I separated it. But then again you need to make sure the same Sample IDs are in data and in metadata
+## I have no idea why your **original file** (CellDeath_normalized_data.csv) had a repeated row: SampleID 1658 was there twice! Can you please check where that came from?
+## Then, when you log-transform, you get "-Inf", which needs to be removed again before plotting.
+## And then it works! 
+
+#setwd('/Users/margauxpetay/Desktop/Stage/Scoring_function/cluster/data') ## Change as necessary: this is the main directory
+theme_set(theme_bw(base_size = 12)) ## For prettier graphs
+theme_update(plot.title = element_text(hjust = 0.5))
+
+CellDeath <- read.csv('CellDeath_normalized_data.csv', header = TRUE, sep = ",", quote = "\"", dec = ".")
+#OxidativeStress <- read.csv('/Users/margauxpetay/Desktop/Stage/Scoring_function/cluster/data/OxidativeStress_normalized_data.csv', header = TRUE, sep = ",", quote = "\"", dec = ".")
+#DNAdamage <- read.csv('/Users/margauxpetay/Desktop/Stage/Scoring_function/cluster/data/DNAdamage_normalized_data.csv', header = TRUE, sep = ",", quote = "\"", dec = ".")
+
+#indiquer les colonnes que l'on traite (les différentes doses et types de radiations)
+# log transformation on continsous variable are recommended 
+
+cd <- CellDeath[,c(6,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24)]
+cd_4 <- CellDeath[,c(6,9,11,12,13,14,15,16)]
+cd_24 <- CellDeath[,c(6,17,18,19,20,21,22,23,24)]
+
+# EC: I don't think this is a good way to separate columns, because it is impossible to know which columns you are including where; also in this way you have just excluded Ar 4h high for some reason from the 4h set...
+# EC: here goes my method
+
+colnames_metadata = colnames(CellDeath)[grep("fold", colnames(CellDeath), invert = TRUE)]
+metadata = CellDeath[,grep("fold", colnames(CellDeath), invert = TRUE)]
+
+colnames_cd_data_4 = colnames(CellDeath)[grep("_4h", colnames(CellDeath))]
+cd_data_4 = CellDeath[,grep("_4h", colnames(CellDeath))]
+cd_data_4_w_ID = cbind(Sample_ID = CellDeath$Sample_ID, cd_data_4)
+
+colnames_cd_data_24 = colnames(CellDeath)[grep("_24h", colnames(CellDeath))]
+cd_data_24 = CellDeath[,grep("_24h", colnames(CellDeath))]
+cd_data_24_w_ID = cbind(Sample_ID = CellDeath$Sample_ID, cd_data_24)
+
+
+# entries with na are removed
+cd_na <- NaRV.omit(cd)
+cd_4_na <- NaRV.omit(cd_4)
+cd_24_na <- NaRV.omit(cd_24)
+
+# EC: OK, I will now remove the NA entries too, and separate metadata for 4h and 24h
+cd_data_4_no_na = NaRV.omit(cd_data_4_w_ID) 
+cd_data_24_no_na = NaRV.omit(cd_data_24_w_ID)
+
+#remove Gender to apply log function
+cd_na_2 <- cd_na[,2:17] 
+cd_4_na_2 <- cd_4_na[,2:8]
+cd_24_na_2 <- cd_24_na[,2:8]
+
+
+#apply log function on data 
+log.cd <- log(cd_na_2)
+log.cd_4 <- log(cd_4_na_2)
+log.cd_24 <- log(cd_24_na_2)
+
+# EC: OK, now will apply log function on data
+log_cd_data_4 = log(cd_data_4_no_na[2:ncol(cd_data_4_no_na)])
+row.names(log_cd_data_4) = cd_data_4_no_na$Sample_ID
+## Note: some of your values were 0, which for log became "-Inf", which obviously could not be mapped so I got rid of them.
+log_cd_data_4_no_na = NaRV.omit(log_cd_data_4)
+
+log_cd_data_24 = log(cd_data_24_no_na[2:ncol(cd_data_24_no_na)])
+row.names(log_cd_data_24) = cd_data_24_no_na$Sample_ID
+log_cd_data_24_no_na = NaRV.omit(log_cd_data_24)
+
+cd_metadata_4 = metadata[metadata$Sample_ID %in% row.names(log_cd_data_4_no_na),]
+cd_metadata_24 = metadata[metadata$Sample_ID %in% row.names(log_cd_data_24_no_na),]
+
+#PCA 
+cd_pca <- prcomp(log.cd, center = TRUE, scale. = TRUE)
+cd_4_pca <- prcomp(log.cd_4, center = TRUE, scale. = TRUE)
+cd_24_pca <- prcomp(log.cd_24, center = TRUE, scale. = TRUE)
+
+
+# EC: OK, now will try to calculate PCA:
+cd_data_4_pca = prcomp(log_cd_data_4_no_na, center = TRUE, scale. = TRUE)
+cd_data_24_pca = prcomp(log_cd_data_24_no_na, center = TRUE, scale. = TRUE) ## works fine
+
+
+library(devtools)
+install_github("vqv/ggbiplot")
+library(ggbiplot)
+
+#EC: OK, I will now graph!
+cd_4_graph_ec <- ggbiplot(cd_data_4_pca, obs.scale = 1, var.scale = 1, groups = cd_metadata_4$Gender, ellipse = FALSE, circle = TRUE)
+cd_4_graph_ec_plot <- cd_4_graph_ec + theme(legend.direction = 'horizontal', legend.position = 'top')
+print(cd_4_graph_ec_plot)
+
+cd_24_graph_ec <- ggbiplot(cd_data_24_pca, obs.scale = 1, var.scale = 1, groups = cd_metadata_24$Gender, ellipse = FALSE, circle = TRUE)
+cd_24_graph_ec_plot <- cd_24_graph_ec + theme(legend.direction = 'horizontal', legend.position = 'top')
+print(cd_24_graph_ec_plot)
+
+##EC: and works fine! :D
+
+
+
+
+
+# PCA projection on graph 
+cd_graph <- ggbiplot(cd_pca, obs.scale = 1, var.scale = 1, groups = cd_na$BMI_group, ellipse = FALSE, circle = TRUE)
+cd_graph <- cd_graph + theme(legend.direction = 'horizontal', legend.position = 'top')
+cd_graph <- cd_graph + scale_color_manual(breaks = c("Normal", "Obese", "Overweight", "Underweight"), values=c("red", "blue", "green", "Black"))
+print(cd_graph)
+
+cd_4_graph <- ggbiplot(cd_4_pca, obs.scale = 1, var.scale = 1, groups = cd_4_na$Gender, ellipse = FALSE, circle = TRUE)
+cd_4_graph <- cd_4_graph + theme(legend.direction = 'horizontal', legend.position = 'top')
+print(cd_4_graph)
+
+cd_24_graph <- ggbiplot(cd_24_pca, obs.scale = 1, var.scale = 1, groups = cd_24_na$Gender, ellipse = FALSE, circle = TRUE)
+cd_24_graph <- cd_24_graph + theme(legend.direction = 'horizontal', legend.position = 'top')
+print(cd_24_graph)
+
+#write.csv(cd_24_na_2,"cd_24_na.csv")
+#write.csv(cd_4_na_2,"cd_4_na.csv")
+

@@ -1,0 +1,33 @@
+---
+title: "Rev_compl.Rmd"
+author: "Egle"
+date: "12/11/2019"
+output: html_document
+---
+
+## This program does reverse complements on a full data frame of DNA sequences. 
+
+```{r}
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager") ## when answering questions during installation, type in "a" and then "Yes"
+
+BiocManager::install("Biostrings")
+require(Biostrings)
+```
+
+```{r}
+i5_orig = read.csv("i5_original_ids.csv", sep = ",", header = TRUE, stringsAsFactors = FALSE)
+i5_compl_df = i5_orig
+for (ii in 1:ncol(i5_orig)) {
+  i5_seq = i5_orig[,ii]
+  i5_DNAstring = DNAStringSet(i5_seq)
+  i5_revcompl = reverseComplement(i5_DNAstring)
+  i5_revcompl_char = as.character(i5_revcompl)
+  i5_compl_df[,ii] = i5_revcompl_char
+  col_name = paste(colnames(i5_orig)[ii],"_","REV")
+  colnames(i5_compl_df)[ii] = col_name
+}
+
+write.csv(i5_compl_df, file = "i5_reverse_complements.csv", row.names = FALSE)
+
+```
