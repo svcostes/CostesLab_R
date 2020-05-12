@@ -1,0 +1,1585 @@
+## Analysing radiation sensitivity based on 53BP1+ DNA repair foci formation in response to different qualities and doses of ionizing radiation
+## In human samples! 
+## Egle Cekanaviciute, USRA/NASA Ames, August 2019
+## For run 19A: Set 1
+
+## To be done: add Sets 2-4, compare with Run 18B, compare with baselines
+
+```{r}
+require('lattice')
+require('ggplot2')
+require('polynom')
+require('corrplot')
+require('ggpubr')
+require('plyr')
+require('reshape2')
+require('cowplot')
+```
+
+```{r}
+setwd("~/Desktop/Radiation_genomics/BNL_19A_DNA_damage") ## Change as necessary: this is the main directory
+theme_set(theme_bw(base_size = 12)) ## For prettier graphs
+
+## Get plate list for 19A
+plate_list_19a = read.csv("19A_plate_list.csv", sep = ",", header = TRUE)
+
+## All plate numbers for Si, Fe and Ar - specifically for this Set 1A from 19A!! Obviously change these as we include more Sets
+
+ar_plate_nums = plate_list_19a$Plate_number[plate_list_19a$Rad_type == "Ar" & plate_list_19a$Sample_sets == "Set_1" & plate_list_19a$Duplicates == "A"]
+ar_plate_count = length(ar_plate_nums)
+si_plate_nums = plate_list_19a$Plate_number[plate_list_19a$Rad_type == "Si" & plate_list_19a$Sample_sets == "Set_1" & plate_list_19a$Duplicates == "A"]
+si_plate_count = length(si_plate_nums)
+fe_plate_nums = plate_list_19a$Plate_number[plate_list_19a$Rad_type == "Fe" & plate_list_19a$Sample_sets == "Set_1" & plate_list_19a$Duplicates == "A"]
+fe_plate_count = length(fe_plate_nums)
+gamma_plate_nums = plate_list_19a$Plate_number[plate_list_19a$Rad_type == "Gamma" & plate_list_19a$Sample_sets == "Set_1" & plate_list_19a$Duplicates == "A"]
+gamma_plate_count = length(gamma_plate_nums)
+
+
+all_plate_nums = c(si_plate_nums, fe_plate_nums, ar_plate_nums, gamma_plate_nums)
+
+## To remove unprocessed plates - ONLY on 08/16/19 UNTIL the plates get processed!!!
+unprocessed_plates =c(505,521,553,609)
+si_plate_nums = si_plate_nums[!si_plate_nums %in% unprocessed_plates]
+ar_plate_nums = ar_plate_nums[!ar_plate_nums %in% unprocessed_plates]
+all_plate_nums = all_plate_nums[!all_plate_nums %in% unprocessed_plates]
+## ONCE ALL PLATES GET PROCESSED, GET RID OF THE ABOVE CHUNK!!!
+si_plate_count = length(si_plate_nums)
+ar_plate_count = length(ar_plate_nums)
+all_plate_count = length(all_plate_nums)
+```
+
+```{r}
+## Read all metadata
+subject_meta = read.csv("BNL_19A_sample_metadata_20190510_for_calc_20190527.csv", sep = ",", header = TRUE, stringsAsFactors = FALSE)
+subject_ids = unique(subject_meta$Sample_ID)
+num_subj = length(subject_ids)
+```
+
+
+## 08/16/19: Si, Fe, Ar, Gamma separate
+
+## Starting with Si
+
+```{r}
+## Read all data, combine with metadata (Si)
+
+# Read first file in initial array foci, then merge new data into it, then add metadata
+
+## Read first file
+foci_si_first = data.frame(Plate = si_plate_nums[1], Plate_well = paste(si_plate_nums[1], read.table(paste('BNL19A-ProcessedFiles-Set1A/average_well_P', si_plate_nums[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('BNL19A-ProcessedFiles-Set1A/average_well_P', si_plate_nums[1],'.txt', sep=""), sep="\t", header = TRUE))
+# Note that: new columns Plate and Plate_well are made. 
+
+## Read all the other files and combine them into a single giant file with ALL the plates and ALL the wells
+# This is for Si only
+si_table = foci_si_first # Not to lose the original first file just in case 
+
+for(ii in 2:si_plate_count){
+  temp_filename = paste('BNL19A-ProcessedFiles-Set1A/average_well_P', si_plate_nums[ii],'.txt', sep="")
+  temp_table = data.frame(Plate = si_plate_nums[ii], Plate_well = paste(si_plate_nums[ii], read.table(paste('BNL19A-ProcessedFiles-Set1A/average_well_P', si_plate_nums[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('BNL19A-ProcessedFiles-Set1A/average_well_P', si_plate_nums[ii],'.txt', sep=""), sep="\t", header = TRUE))
+  si_table = rbind(si_table, temp_table)
+}
+
+## Now we will add plate metadata
+si_table_w_plate_meta = merge(si_table, plate_list_19a, by.x = 'Plate', by.y = 'Plate_number', all.x = TRUE, all.y = FALSE)
+
+## Now we will add well metadata
+
+# Wells are different based on sample sets, so we need to make an extra column for Set_Well, and then add well metadata based on it.
+si_table_w_plate_meta$Set_well = paste(si_table_w_plate_meta$Sample_sets, si_table_w_plate_meta$Well, sep = "_")
+
+si_table_w_meta = merge(si_table_w_plate_meta, subject_meta, by.x = 'Set_well', by.y = 'Set_well')
+
+# Clean up: this has Well.x and Well.y, which are duplicates; Sample_sets and Set which are also duplicates.
+si_table_w_meta$Well = si_table_w_meta$Well.x
+si_table_w_meta$Timepoint = si_table_w_meta$Timepoint.x
+cols_to_drop = c('Well.x', 'Well.y', 'Sample_sets', 'Timepoint.x', 'Timepoint.y')
+si_long = si_table_w_meta[, !colnames(si_table_w_meta) %in% cols_to_drop]
+
+# This is ALL the data, meaning it includes duplicates. Duplicates should be averaged, but first we should filter the samples with very low number of nuclei. 
+
+# Visualize the data
+hist(si_long$num_nuc) 
+
+print("How many wells have been read at all?")
+print(c(nrow(si_long)))
+
+# Set low bar. This is arbitrary! We will ask for at least 50 imaged nuclei per well to consider that well. 
+low_bar = 50
+si_filt = si_long[si_long$num_nuc > (low_bar-1),]
+
+print("How many wells are left after filtering?")
+print(c(nrow(si_filt),"out of", nrow(si_long), "which is", nrow(si_filt)/nrow(si_long)))
+
+# Truncate dataframe to only include the columns of interest
+col_trunc = c("Sample_ID", "Duplicates", "avg_nfoci", "Set", "Rad_type", "Dose_Fluence", "Timepoint", "Age", "Gender", "BMI", "BMI_group")
+si_trunc = si_filt[,colnames(si_filt) %in% col_trunc]
+si_trunc$ID_Fluence_Timepoint = paste(si_trunc$Sample_ID, si_trunc$Dose_Fluence, si_trunc$Timepoint, sep = "_")
+
+# Now we will need to average A and B duplicates
+#si_avg = ddply(si_trunc, .(ID_Fluence_Timepoint, Sample_ID, Set, Rad_type, Dose_Fluence, Timepoint, Age, Gender, BMI, BMI_group), summarise, avg_nfoci = mean(avg_nfoci))
+
+
+si_avg = si_trunc ## Only because here we only have set 1A!
+
+print("How many samples do we have now?")
+print(c(nrow(si_avg)))
+
+# I don't like calling "Dose_Fluence" when we only have fluence; also it is a factor instead of a number
+colnames(si_avg)[colnames(si_avg) == "Dose_Fluence"] = "Fluence"
+si_avg$Fluence = as.factor(si_avg$Fluence)
+
+# Also I want my timepoint to go from 4h to 24h in outputs
+si_avg$Timepoint = factor(si_avg$Timepoint, levels = c("4h", "24h")) 
+
+# Also I want my BMI group to go from Normal to Overweight to Obese in outputs
+si_avg$BMI_group = factor(si_avg$BMI_group, levels = c("Normal", "Overweight", "Obese")) 
+
+# Check: did we keep at least 1 sample of all subjects after averaging and filtering
+if (length(unique(si_avg$Sample_ID)) == num_subj) {
+  print("All subjects have been retained")
+  } else {
+    print("Entire subjects were lost during averaging and filtering!")
+    print ("Original IDs:")
+    print(subject_ids)
+    print("New IDs:")
+    print(unique(si_avg$Sample_ID))
+  }
+
+## Initial analysis: demographics, comparison with different types of data, etc. 
+
+## OK, now we have the dataframe with all the Si data, after averaging all duplicates. What questions do we want to ask?
+
+# First, let's look at it very quickly by dose at 4h and 24h
+quick_sum = ddply(si_avg, .(Timepoint, Fluence), summarise, mean = mean(avg_nfoci), sd = sd(avg_nfoci))
+quick_sum
+
+# Now plotting everyone using individual samples
+all_plot_dots = ggplot(si_avg, aes(x = Fluence, y = avg_nfoci, col = Gender)) + geom_point() + geom_jitter()
+facet(all_plot_dots, facet.by = 'Timepoint')
+```
+
+## Repeating with Fe
+
+```{r}
+
+## Read first file
+foci_fe_first = data.frame(Plate = fe_plate_nums[1], Plate_well = paste(fe_plate_nums[1], read.table(paste('BNL19A-ProcessedFiles-Set1A/average_well_P', fe_plate_nums[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('BNL19A-ProcessedFiles-Set1A/average_well_P', fe_plate_nums[1],'.txt', sep=""), sep="\t", header = TRUE))
+# Note that: new columns Plate and Plate_well are made. 
+
+## Read all the other files and combine them into a single giant file with ALL the plates and ALL the wells
+# This is for fe only
+fe_table = foci_fe_first # Not to lose the original first file just in case 
+
+for(ii in 2:fe_plate_count){
+  temp_filename = paste('BNL19A-ProcessedFiles-Set1A/average_well_P', fe_plate_nums[ii],'.txt', sep="")
+  temp_table = data.frame(Plate = fe_plate_nums[ii], Plate_well = paste(fe_plate_nums[ii], read.table(paste('BNL19A-ProcessedFiles-Set1A/average_well_P', fe_plate_nums[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('BNL19A-ProcessedFiles-Set1A/average_well_P', fe_plate_nums[ii],'.txt', sep=""), sep="\t", header = TRUE))
+  fe_table = rbind(fe_table, temp_table)
+}
+
+## Now we will add plate metadata
+fe_table_w_plate_meta = merge(fe_table, plate_list_19a, by.x = 'Plate', by.y = 'Plate_number', all.x = TRUE, all.y = FALSE)
+
+## Now we will add well metadata
+
+# Wells are different based on sample sets, so we need to make an extra column for Set_Well, and then add well metadata based on it.
+fe_table_w_plate_meta$Set_well = paste(fe_table_w_plate_meta$Sample_sets, fe_table_w_plate_meta$Well, sep = "_")
+fe_table_w_meta = merge(fe_table_w_plate_meta, subject_meta, by.x = 'Set_well', by.y = 'Set_well')
+
+# Clean up: this has Well.x and Well.y, which are duplicates; Sample_sets and Set which are also duplicates.
+fe_table_w_meta$Well = fe_table_w_meta$Well.x
+fe_table_w_meta$Timepoint = fe_table_w_meta$Timepoint.x
+cols_to_drop = c('Well.x', 'Well.y', 'Sample_sets', 'Timepoint.x', 'Timepoint.y')
+fe_long = fe_table_w_meta[, !colnames(fe_table_w_meta) %in% cols_to_drop]
+
+# This is ALL the data, meaning it includes duplicates. Duplicates should be averaged, but first we should filter the samples with very low number of nuclei. 
+
+# Visualize the data
+hist(fe_long$num_nuc) 
+
+print("How many wells have been read at all?")
+print(c(nrow(fe_long)))
+
+# Set low bar. This is arbitrary! We will ask for at least 50 imaged nuclei per well to consider that well. 
+low_bar = 50
+fe_filt = fe_long[fe_long$num_nuc > (low_bar-1),]
+
+print("How many wells are left after filtering?")
+print(c(nrow(fe_filt),"out of", nrow(fe_long), "which is", nrow(fe_filt)/nrow(fe_long)))
+
+# Truncate dataframe to only include the columns of interest
+col_trunc = c("Sample_ID", "Duplicates", "avg_nfoci", "Set", "Rad_type", "Dose_Fluence", "Timepoint", "Age", "Gender", "BMI", "BMI_group")
+fe_trunc = fe_filt[,colnames(fe_filt) %in% col_trunc]
+fe_trunc$ID_Fluence_Timepoint = paste(fe_trunc$Sample_ID, fe_trunc$Dose_Fluence, fe_trunc$Timepoint, sep = "_")
+
+# Now we will need to average A and B duplicates
+#fe_avg = ddply(fe_trunc, .(ID_Fluence_Timepoint, Sample_ID, Set, Rad_type, Dose_Fluence, Timepoint, Age, Gender, BMI, BMI_group), summarise, avg_nfoci = mean(avg_nfoci))
+
+
+fe_avg = fe_trunc ## Only because here we only have set 1A!
+
+print("How many samples do we have now?")
+print(c(nrow(fe_avg)))
+
+# I don't like calling "Dose_Fluence" when we only have fluence; also it is a factor instead of a number
+colnames(fe_avg)[colnames(fe_avg) == "Dose_Fluence"] = "Fluence"
+fe_avg$Fluence = as.factor(fe_avg$Fluence)
+
+# Also I want my timepoint to go from 4h to 24h in outputs
+fe_avg$Timepoint = factor(fe_avg$Timepoint, levels = c("4h", "24h")) 
+
+# Also I want my BMI group to go from Normal to Overweight to Obese in outputs
+fe_avg$BMI_group = factor(fe_avg$BMI_group, levels = c("Normal", "Overweight", "Obese")) 
+
+# Check: did we keep at least 1 sample of all subjects after averaging and filtering
+if (length(unique(fe_avg$Sample_ID)) == num_subj) {
+  print("All subjects have been retained")
+  } else {
+    print("Entire subjects were lost during averaging and filtering!")
+    print ("Original IDs:")
+    print(subject_ids)
+    print("New IDs:")
+    print(unique(fe_avg$Sample_ID))
+  }
+
+## Initial analyses: demographics, comparison with different types of data, etc. 
+
+## OK, now we have the dataframe with all the fe data, after averaging all duplicates. What questions do we want to ask?
+
+# First, let's look at it very quickly by dose at 4h and 24h
+quick_sum = ddply(fe_avg, .(Timepoint, Fluence), summarise, mean = mean(avg_nfoci), sd = sd(avg_nfoci))
+quick_sum
+
+# Now plotting everyone using individual samples
+all_plot_dots = ggplot(fe_avg, aes(x = Fluence, y = avg_nfoci, col = Gender)) + geom_point() + geom_jitter()
+facet(all_plot_dots, facet.by = 'Timepoint')
+```
+
+
+## Repeating with Ar
+
+```{r}
+
+## Read first file
+foci_ar_first = data.frame(Plate = ar_plate_nums[1], Plate_well = paste(ar_plate_nums[1], read.table(paste('BNL19A-ProcessedFiles-Set1A/average_well_P', ar_plate_nums[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('BNL19A-ProcessedFiles-Set1A/average_well_P', ar_plate_nums[1],'.txt', sep=""), sep="\t", header = TRUE))
+# Note that: new columns Plate and Plate_well are made. 
+
+## Read all the other files and combine them into a single giant file with ALL the plates and ALL the wells
+# This is for ar only
+ar_table = foci_ar_first # Not to lose the original first file just in case 
+
+for(ii in 2:ar_plate_count){
+  temp_filename = paste('BNL19A-ProcessedFiles-Set1A/average_well_P', ar_plate_nums[ii],'.txt', sep="")
+  temp_table = data.frame(Plate = ar_plate_nums[ii], Plate_well = paste(ar_plate_nums[ii], read.table(paste('BNL19A-ProcessedFiles-Set1A/average_well_P', ar_plate_nums[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('BNL19A-ProcessedFiles-Set1A/average_well_P', ar_plate_nums[ii],'.txt', sep=""), sep="\t", header = TRUE))
+  ar_table = rbind(ar_table, temp_table)
+}
+
+## Now we will add plate metadata
+ar_table_w_plate_meta = merge(ar_table, plate_list_19a, by.x = 'Plate', by.y = 'Plate_number', all.x = TRUE, all.y = FALSE)
+
+## Now we will add well metadata
+
+# Wells are different based on sample sets, so we need to make an extra column for Set_Well, and then add well metadata based on it.
+ar_table_w_plate_meta$Set_well = paste(ar_table_w_plate_meta$Sample_sets, ar_table_w_plate_meta$Well, sep = "_")
+ar_table_w_meta = merge(ar_table_w_plate_meta, subject_meta, by.x = 'Set_well', by.y = 'Set_well')
+
+# Clean up: this has Well.x and Well.y, which are duplicates; Sample_sets and Set which are also duplicates.
+ar_table_w_meta$Well = ar_table_w_meta$Well.x
+ar_table_w_meta$Timepoint = ar_table_w_meta$Timepoint.x
+cols_to_drop = c('Well.x', 'Well.y', 'Sample_sets', 'Timepoint.x', 'Timepoint.y')
+ar_long = ar_table_w_meta[, !colnames(ar_table_w_meta) %in% cols_to_drop]
+
+# This is ALL the data, meaning it includes duplicates. Duplicates should be averaged, but first we should filter the samples with very low number of nuclei. 
+
+# Visualize the data
+hist(ar_long$num_nuc) 
+
+print("How many wells have been read at all?")
+print(c(nrow(ar_long)))
+
+# Set low bar. This is arbitrary! We will ask for at least 50 imaged nuclei per well to consider that well. 
+low_bar = 50
+ar_filt = ar_long[ar_long$num_nuc > (low_bar-1),]
+
+print("How many wells are left after filtering?")
+print(c(nrow(ar_filt),"out of", nrow(ar_long), "which is", nrow(ar_filt)/nrow(ar_long)))
+
+# Truncate dataframe to only include the columns of interest
+col_trunc = c("Sample_ID", "Duplicates", "avg_nfoci", "Set", "Rad_type", "Dose_Fluence", "Timepoint", "Age", "Gender", "BMI", "BMI_group")
+ar_trunc = ar_filt[,colnames(ar_filt) %in% col_trunc]
+ar_trunc$ID_Fluence_Timepoint = paste(ar_trunc$Sample_ID, ar_trunc$Dose_Fluence, ar_trunc$Timepoint, sep = "_")
+
+# Now we will need to average A and B duplicates
+#ar_avg = ddply(ar_trunc, .(ID_Fluence_Timepoint, Sample_ID, Set, Rad_type, Dose_Fluence, Timepoint, Age, Gender, BMI, BMI_group), summarise, avg_nfoci = mean(avg_nfoci))
+
+
+ar_avg = ar_trunc ## Only because here we only have set 1A!
+
+print("How many samples do we have now?")
+print(c(nrow(ar_avg)))
+
+# I don't like calling "Dose_Fluence" when we only have fluence; also it is a factor instead of a number
+colnames(ar_avg)[colnames(ar_avg) == "Dose_Fluence"] = "Fluence"
+ar_avg$Fluence = as.factor(ar_avg$Fluence)
+
+# Also I want my timepoint to go from 4h to 24h in outputs
+ar_avg$Timepoint = factor(ar_avg$Timepoint, levels = c("4h", "24h")) 
+
+# Also I want my BMI group to go from Normal to Overweight to Obese in outputs
+ar_avg$BMI_group = factor(ar_avg$BMI_group, levels = c("Normal", "Overweight", "Obese")) 
+
+# Check: did we keep at least 1 sample of all subjects after averaging and filtering
+if (length(unique(ar_avg$Sample_ID)) == num_subj) {
+  print("All subjects have been retained")
+  } else {
+    print("Entire subjects were lost during averaging and filtering!")
+    print ("Original IDs:")
+    print(subject_ids)
+    print("New IDs:")
+    print(unique(ar_avg$Sample_ID))
+  }
+
+## Initial analyses: demographics, comparison with different types of data, etc. 
+
+## OK, now we have the dataframe with all the ar data, after averaging all duplicates. What questions do we want to ask?
+
+# First, let's look at it very quickly by dose at 4h and 24h
+quick_sum = ddply(ar_avg, .(Timepoint, Fluence), summarise, mean = mean(avg_nfoci), sd = sd(avg_nfoci))
+quick_sum
+
+# Now plotting everyone using individual samples
+all_plot_dots = ggplot(ar_avg, aes(x = Fluence, y = avg_nfoci, col = Gender)) + geom_point() + geom_jitter()
+facet(all_plot_dots, facet.by = 'Timepoint')
+```
+
+
+
+## Now with Gamma 
+
+```{r}
+## Read first file
+foci_first = data.frame(Plate = gamma_plate_nums[1], Plate_well = paste(gamma_plate_nums[1], read.table(paste('BNL19A-ProcessedFiles-Set1A/average_well_P', gamma_plate_nums[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('BNL19A-ProcessedFiles-Set1A/average_well_P', gamma_plate_nums[1],'.txt', sep=""), sep="\t", header = TRUE))
+# Note that: new columns Plate and Plate_well are made. 
+
+## Read all the other files and combine them into a single giant file with ALL the plates and ALL the wells
+# This is for gamma only
+gamma_table = foci_gamma_first # Not to lose the original first file just in case 
+
+for(ii in 2:gamma_plate_count){
+  temp_filename = paste('BNL19A-ProcessedFiles-Set1A/average_well_P', gamma_plate_nums[ii],'.txt', sep="")
+  temp_table = data.frame(Plate = gamma_plate_nums[ii], Plate_well = paste(gamma_plate_nums[ii], read.table(paste('BNL19A-ProcessedFiles-Set1A/average_well_P', gamma_plate_nums[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('BNL19A-ProcessedFiles-Set1A/average_well_P', gamma_plate_nums[ii],'.txt', sep=""), sep="\t", header = TRUE))
+  gamma_table = rbind(gamma_table, temp_table)
+}
+
+## Now we will add plate metadata
+gamma_table_w_plate_meta = merge(gamma_table, plate_list_19a, by.x = 'Plate', by.y = 'Plate_number', all.x = TRUE, all.y = FALSE)
+
+## Now we will add well metadata
+
+# Wells are different based on sample sets, so we need to make an extra column for Set_Well, and then add well metadata based on it.
+gamma_table_w_plate_meta$Set_well = paste(gamma_table_w_plate_meta$Sample_sets, gamma_table_w_plate_meta$Well, sep = "_")
+gamma_table_w_meta = merge(gamma_table_w_plate_meta, subject_meta, by.x = 'Set_well', by.y = 'Set_well')
+
+# Clean up: this has Well.x and Well.y, which are duplicates; Sample_sets and Set which are also duplicates.
+gamma_table_w_meta$Well = gamma_table_w_meta$Well.x
+gamma_table_w_meta$Timepoint = gamma_table_w_meta$Timepoint.x
+cols_to_drop = c('Well.x', 'Well.y', 'Sample_sets', 'Timepoint.x', 'Timepoint.y')
+gamma_long = gamma_table_w_meta[, !colnames(gamma_table_w_meta) %in% cols_to_drop]
+
+# This is ALL the data, meaning it includes duplicates. Duplicates should be averaged, but first we should filter the samples with very low number of nuclei. 
+
+# Visualize the data
+hist(gamma_long$num_nuc) 
+
+print("How many wells have been read at all?")
+print(c(nrow(gamma_long)))
+
+# Set low bar. This is arbitrary! We will ask for at least 50 imaged nuclei per well to consider that well. 
+low_bar = 50
+gamma_filt = gamma_long[gamma_long$num_nuc > (low_bar-1),]
+
+print("How many wells are left after filtering?")
+print(c(nrow(gamma_filt),"out of", nrow(gamma_long), "which is", nrow(gamma_filt)/nrow(gamma_long)))
+
+# Truncate dataframe to only include the columns of interest
+col_trunc = c("Sample_ID", "Duplicates", "avg_nfoci", "Set", "Rad_type", "Dose_Fluence", "Timepoint", "Age", "Gender", "BMI", "BMI_group")
+gamma_trunc = gamma_filt[,colnames(gamma_filt) %in% col_trunc]
+gamma_trunc$ID_Fluence_Timepoint = paste(gamma_trunc$Sample_ID, gamma_trunc$Dose_Fluence, gamma_trunc$Timepoint, sep = "_")
+
+# Now we will need to average A and B duplicates
+#gamma_avg = ddply(gamma_trunc, .(ID_Fluence_Timepoint, Sample_ID, Set, Rad_type, Dose_Fluence, Timepoint, Age, Gender, BMI, BMI_group), summarise, avg_nfoci = mean(avg_nfoci))
+
+
+gamma_avg = gamma_trunc ## Only because here we only have set 1A!
+
+print("How many samples do we have now?")
+print(c(nrow(gamma_avg)))
+
+# I don't like calling "Dose_Fluence" when we only have dose; also it is a factor instead of a number
+colnames(gamma_avg)[colnames(gamma_avg) == "Dose_Fluence"] = "Dose"
+gamma_avg$Dose = as.factor(gamma_avg$Dose)
+
+# Also I want my timepoint to go from 4h to 24h in outputs
+gamma_avg$Timepoint = factor(gamma_avg$Timepoint, levels = c("4h", "24h")) 
+
+# Also I want my BMI group to go from Normal to Overweight to Obese in outputs
+gamma_avg$BMI_group = factor(gamma_avg$BMI_group, levels = c("Normal", "Overweight", "Obese")) 
+
+# Check: did we keep at least 1 sample of all subjects after averaging and filtering
+if (length(unique(gamma_avg$Sample_ID)) == num_subj) {
+  print("All subjects have been retained")
+  } else {
+    print("Entire subjects were lost during averaging and filtering!")
+    print ("Original IDs:")
+    print(subject_ids)
+    print("New IDs:")
+    print(unique(gamma_avg$Sample_ID))
+  }
+
+## Initial analyses: demographics, comparison with different types of data, etc. 
+
+## OK, now we have the dataframe with all the gamma data, after averaging all duplicates. What questions do we want to ask?
+
+# First, let's look at it very quickly by dose at 4h and 24h
+quick_sum = ddply(gamma_avg, .(Timepoint, Dose), summarise, mean = mean(avg_nfoci), sd = sd(avg_nfoci))
+quick_sum
+
+# Now plotting everyone using individual samples
+all_plot_dots = ggplot(gamma_avg, aes(x = Dose, y = avg_nfoci, col = Gender)) + geom_point() + geom_jitter()
+facet(all_plot_dots, facet.by = 'Timepoint')
+```
+
+
+
+
+
+
+## Up to here for now! 
+
+
+## Everything below from here is old!
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+# OK no difference by sex. Increase at 4h, not much at 24h. 
+# Other epidemiological variables? 
+
+# BMI?
+all_plot_bmi = ggplot(si_avg, aes(x = Fluence, y = avg_nfoci, col = Gender)) + 
+  geom_boxplot()
+facet(all_plot_bmi, facet.by = c('Timepoint', 'BMI_group'))
+
+all_plot_bmi2 = ggplot(si_avg, aes(x = Fluence, y = avg_nfoci, col = BMI_group)) + 
+  geom_boxplot()
+facet(all_plot_bmi2, facet.by = c('Timepoint', 'Gender'))
+
+all_plot_bmi3 = ggplot(si_avg, aes(x = BMI, y = avg_nfoci, col = Fluence)) + 
+  geom_point() + geom_smooth(method = "lm")
+facet(all_plot_bmi3, facet.by = c('Timepoint', 'Gender'))
+# No clear difference based on BMI, but worth looking into. 
+
+# Age? 
+all_plot_age = ggplot(si_avg, aes(x = Age, y = avg_nfoci, col = Gender)) + geom_point() + geom_smooth(method = "lm")
+facet(all_plot_age, facet.by = c('Timepoint','Fluence'))
+# No clear difference by age. 
+
+# Are control (no irradiation) values correlated between 4h and 24h datasets? Sort of a sanity check.
+# To answer that: si_avg is a looooong table. Make it wide! 
+si_avg$Fluence_Timepoint = paste("Si", "_", si_avg$Timepoint, "_", si_avg$Fluence, sep = "")
+si_fluencetime = dcast(si_avg, Sample_ID ~ Fluence_Timepoint, value.var = "avg_nfoci")
+write.csv(si_fluencetime, file = "18B_Si_Fluence_Time.csv", row.names = FALSE)
+
+# Now compare 4h and 24h results.
+plot_0comp = ggplot(si_fluencetime, aes(x = Si_4h_0, y = Si_24h_0)) + geom_point() + geom_smooth(method = "lm")
+plot_0comp
+
+# Add metadata/ROS and cell death data
+si_wide = merge(si_fluencetime, subject_meta, by.x. = "SampleID", by.y = "Sample_ID")
+
+# Compare absolute values of Si RIFs, ROS and cell death
+plot_3_RIF_death = ggplot(si_wide, aes(x = Si_24h_3, y = Si_Dead_percentage_3)) + geom_point() + geom_smooth(method = "lm")
+plot_3_RIF_death
+plot_3_RIF_CR = ggplot(si_wide, aes(x = Si_24h_3, y = Si_Live_CR_mean_3)) + geom_point() + geom_smooth(method = "lm")
+plot_3_RIF_CR
+# Results: 24h CR: 1, 3 - no correlation, 24h death: 1, 3 - anti correlation (low for 1.1, high for 3)
+# Results: 4h CR: 1, 3 - no correlation, 4h death: 1, 3 - anti correlation (low for 1.1, high for 3)
+
+# Compare fold values of Si RIFs, ROS and cell death
+si_wide$Si_4h_1_fold = si_wide$Si_4h_1.1 / si_wide$Si_4h_0
+si_wide$Si_4h_3_fold = si_wide$Si_4h_3 / si_wide$Si_4h_0
+si_wide$Si_4h_3_1_fold = si_wide$Si_4h_3 / si_wide$Si_4h_1.1
+si_wide$Si_24h_1_fold = si_wide$Si_24h_1.1 / si_wide$Si_24h_0
+si_wide$Si_24h_3_fold = si_wide$Si_24h_3 / si_wide$Si_24h_0
+si_wide$Si_24h_3_1_fold = si_wide$Si_24h_3 / si_wide$Si_24h_1.1
+
+# Add slope values of Si RIFs
+# Note: here all the slope values are based on fluence (NOT dose!) We can recalculate them based on dose for comparisons if necessary. 
+si_wide$Si_4h_1_slope = (si_wide$Si_4h_1.1 - si_wide$Si_4h_0)/1.1
+si_wide$Si_4h_3_1_slope = (si_wide$Si_4h_3 - si_wide$Si_4h_1.1)/1.9
+si_wide$Si_24h_1_slope = (si_wide$Si_24h_1.1 - si_wide$Si_24h_0)/1.1
+si_wide$Si_24h_3_1_slope = (si_wide$Si_24h_3 - si_wide$Si_24h_1.1)/1.9
+write.csv(si_wide, file = "18B_Si.csv", row.names = FALSE)
+
+# Let's try to add the slopes to the dot plot now!
+si_avg$Fluence_num = as.numeric(as.character(si_avg$Fluence))
+si_avg_1st_slope = si_avg[(si_avg$Fluence != "3"),]
+si_avg_2nd_slope = si_avg[(si_avg$Fluence != "0"),]
+  
+all_plot_dots_si_slopes = ggplot(si_avg, aes(x = Fluence_num, y = avg_nfoci, col = Gender)) + geom_point() + geom_jitter() + 
+  geom_smooth(data = si_avg_1st_slope, method = "glm") +
+  geom_smooth(data = si_avg_2nd_slope, method = "glm")
+facet(all_plot_dots_si_slopes, facet.by = 'Timepoint')
+
+# And the same for CR and cell death graphs
+
+# Compare Si RIFs and folds at different time points and in response to different fluences
+plot_1.1_RIF = ggplot(si_wide, aes(x = Si_4h_1.1, y = Si_24h_1.1)) + geom_point() + geom_smooth(method = "lm")
+plot_1.1_RIF
+plot_3_RIF = ggplot(si_wide, aes(x = Si_4h_3, y = Si_24h_3)) + geom_point() + geom_smooth(method = "lm")
+plot_3_RIF
+# Results: strong correlation between timepoints for both 1.1 and 3 fluences.
+
+plot_4h_RIF = ggplot(si_wide, aes(x = Si_4h_1.1, y = Si_4h_3)) + geom_point() + geom_smooth(method = "lm")
+plot_4h_RIF
+plot_24h_RIF = ggplot(si_wide, aes(x = Si_24h_1.1, y = Si_24h_3)) + geom_point() + geom_smooth(method = "lm")
+plot_24h_RIF
+# Results: strong correlation between fluences at each timepoint. 
+
+plot_4h_0_RIF = ggplot(si_wide, aes(x = Si_4h_0, y = Si_4h_3)) + geom_point() + geom_smooth(method = "lm")
+plot_4h_0_RIF
+plot_24h_0_RIF = ggplot(si_wide, aes(x = Si_24h_0, y = Si_24h_3)) + geom_point() + geom_smooth(method = "lm")
+plot_24h_0_RIF
+# Explanation of all the above results: the people who have a lot of RIFs at baseline also have a lot of RIFs afterwards (i.e. if I have 1 RIF at baseline I will have 3 after irradiation, but if you have 10 RIFs at baseline you will have 30 after irradiation. But we are equally sensitive to irradiation, which increases our RIFs 3-fold!)
+
+plot_1_fold = ggplot(si_wide, aes(x = Si_4h_1_fold, y = Si_24h_1_fold)) + geom_point() + geom_smooth(method = "lm")
+plot_1_fold
+plot_3_fold = ggplot(si_wide, aes(x = Si_4h_3_fold, y = Si_24h_3_fold)) + geom_point() + geom_smooth(method = "lm")
+plot_3_fold
+# Results: Fold differences at 1.1 or 3 between 4h and 24h not correlated (i.e. different people are sensitive at 4h and at 24h; most likely because at 24h there's so much repair...)
+
+plot_4h_fold = ggplot(si_wide, aes(x = Si_4h_1_fold, y = Si_4h_3_1_fold, col = Gender)) +
+  geom_point() +
+  xlim(0,10) + ylim(0,10) +
+  geom_vline(xintercept = 1) + geom_hline(yintercept = 1) + geom_abline(intercept = 0, slope = 1)
+plot_4h_fold
+
+plot_4h_slope = ggplot(si_wide, aes(x = Si_4h_1_slope, y = Si_4h_3_1_slope, col = Gender)) +
+  geom_point() +
+  xlim(-0.5,0.5) + ylim(-0.5,0.5) + geom_abline(intercept = 0, slope = 1) + geom_vline(xintercept = 0) + geom_hline(yintercept = 0) 
+plot_4h_slope
+
+plot_24h_fold = ggplot(si_wide, aes(x = Si_24h_1_fold, y = Si_24h_3_1_fold, col = Gender)) +
+  geom_point() +
+  xlim(0,6) + ylim(0,6) +
+  geom_vline(xintercept = 1) + geom_hline(yintercept = 1) + geom_abline(intercept = 0, slope = 1)
+plot_24h_fold
+# Results: These are the pentafigures separating people based on the patterns of their responses to ionizing radiation. 
+
+## Conclusion: for Si,  probably use 4h values - more relevant! At 24h there's too much repair.
+```
+
+```{r}
+## Compare Si responders. 
+si_0_sorted = sort(si_wide$Si_4h_0)
+si_0_sorted_low = mean(si_0_sorted[1:length(si_0_sorted)/10])
+si_0_sorted_high = mean(si_0_sorted[(length(si_0_sorted)*9/10):length(si_0_sorted)])
+si_0_sorted_fold = si_0_sorted_high/si_0_sorted_low
+
+si_3_sorted = sort(si_wide$Si_24h_3)
+si_3_sorted_low = mean(si_3_sorted[1:length(si_3_sorted)/10])
+si_3_sorted_high = mean(si_3_sorted[(length(si_3_sorted)*9/10):length(si_3_sorted)])
+si_3_sorted_fold = si_3_sorted_high/si_3_sorted_low
+
+si_wide$Si_4h_3_0_slope = (si_wide$Si_4h_3 - si_wide$Si_4h_0)/3
+si_3_slope_sorted = sort(si_wide$Si_4h_3_0_slope)
+si_3_slope_sorted_low = mean(si_3_slope_sorted[1:length(si_3_slope_sorted)/10])
+si_3_slope_sorted_high = mean(si_3_slope_sorted[(length(si_3_slope_sorted)*9/10):length(si_3_slope_sorted)])
+si_3_slope_sorted_fold = si_3_slope_sorted_high/si_3_slope_sorted_low
+si_3_slope_sorted_diff = si_3_slope_sorted_high - si_3_slope_sorted_low
+
+si_slope_low_high = si_wide[(si_wide$Si_4h_1_slope < si_wide$Si_4h_3_1_slope),]
+nrow(si_slope_low_high)*100/nrow(si_wide)
+si_slope_high_low = si_wide[(si_wide$Si_4h_1_slope > si_wide$Si_4h_3_1_slope),]
+nrow(si_slope_high_low)*100/nrow(si_wide)
+
+## Do 24h 3 particle values fit in 24h 0 confidence interval?
+si_24h_0_conf_low = (t.test(si_wide$Si_24h_0)$conf.int)[1]
+si_24h_0_conf_high = (t.test(si_wide$Si_24h_0)$conf.int)[2]
+si_wide$Si_24h_repaired = "repaired"
+si_wide$Si_24h_repaired[(si_wide$Si_24h_3 > si_24h_0_conf_high)] = "not_repaired"
+nrow(si_wide[(si_wide$Si_24h_repaired == "not_repaired"),]) * 100 / nrow(si_wide)
+
+```
+
+
+
+
+
+```{r}
+## Who is sensitive, who is resistant?
+## Also, how will we define sensitive/resistant?
+
+# For Si, use 4h
+# Bottom quantile in fold 1-0 and bottom quantile in fold 3-0 for resistant
+# Top quantile in fold 1-0 and top quantile in fold 3-0 for resistant
+quant_si_1_0_bottom = quantile(si_wide$Si_4h_1_fold, na.rm = TRUE)[2]
+quant_si_3_1_bottom = quantile(si_wide$Si_4h_3_1_fold, na.rm = TRUE)[2]
+quant_si_1_0_top = quantile(si_wide$Si_4h_1_fold, na.rm = TRUE)[3]
+quant_si_3_1_top = quantile(si_wide$Si_4h_3_1_fold, na.rm = TRUE)[3]
+
+subj_si_1_0_res = si_wide$Sample_ID[si_wide$Si_4h_1_fold < quant_si_1_0_bottom]
+subj_si_3_1_res = si_wide$Sample_ID[si_wide$Si_4h_3_1_fold < quant_si_3_1_bottom]
+subj_si_common_res = intersect(subj_si_1_0_res, subj_si_3_1_res)
+subj_si_common_res
+
+subj_si_1_0_sens = si_wide$Sample_ID[si_wide$Si_4h_1_fold > quant_si_1_0_top]
+subj_si_3_1_sens = si_wide$Sample_ID[si_wide$Si_4h_3_1_fold > quant_si_3_1_top]
+subj_si_common_sens = intersect(subj_si_1_0_sens, subj_si_3_1_sens)
+subj_si_common_sens
+
+# Who are these people?
+desc_subj_si_1_0_res = si_wide[si_wide$Sample_ID %in% subj_si_1_0_res,]
+desc_subj_si_3_1_res = si_wide[si_wide$Sample_ID %in% subj_si_3_1_res,]
+desc_subj_si_1_0_sens = si_wide[si_wide$Sample_ID %in% subj_si_1_0_sens,]
+desc_subj_si_3_1_sens = si_wide[si_wide$Sample_ID %in% subj_si_3_1_sens,]
+
+# Adding the resistance factor for each subject based on quantiles
+# Somewhat clunky, but for/if loop just as clunky...
+si_wide$Si_quantile_res = "Not_resistant_not_sensitive"
+si_wide$Si_quantile_res[si_wide$Sample_ID %in% subj_si_1_0_res] = "Res_quantile_low_dose"
+si_wide$Si_quantile_res[si_wide$Sample_ID %in% subj_si_3_1_res] = "Res_quantile_high_dose"
+si_wide$Si_quantile_res[si_wide$Sample_ID %in% subj_si_common_res] = "Res_quantile_both_doses"
+si_wide$Si_quantile_res[si_wide$Sample_ID %in% subj_si_1_0_sens] = "Sens_quantile_low_dose"
+si_wide$Si_quantile_res[si_wide$Sample_ID %in% subj_si_3_1_sens] = "Sens_quantile_low_dose"
+si_wide$Si_quantile_res[si_wide$Sample_ID %in% subj_si_common_sens] = "Sens_quantile_both_doses"
+
+# What are the patterns based on slope: subjects responding primarily to low doses (low slope >0, high slope <0) and responding to high doses (low slope <0, high slope >0)? 
+subj_si_low = si_wide$Sample_ID[si_wide$Si_4h_1_slope > 0 & si_wide$Si_4h_3_1_slope < 0]
+subj_si_high = si_wide$Sample_ID[si_wide$Si_4h_1_slope < 0 & si_wide$Si_4h_3_1_slope > 0]
+subj_si_low # low dose responders (early sensitivity)
+subj_si_high # high dose responders (late sensitivity)
+
+# Also, the most sensitive people can be considered having significantly higher slope than mean (mean + 2 * sd)
+# The most resistant people will then have significantly lower slope than mean (mean - 2 * sd)
+
+subj_si_1_0_res_slope = si_wide$Sample_ID[si_wide$Si_4h_1_slope < (mean(si_wide$Si_4h_1_slope, na.rm = TRUE) - 2 * sd(si_wide$Si_4h_1_slope, na.rm = TRUE))]
+subj_si_1_0_res_slope
+subj_si_3_1_res_slope = si_wide$Sample_ID[si_wide$Si_4h_3_1_slope < (mean(si_wide$Si_4h_3_1_slope, na.rm = TRUE) - 2 * sd(si_wide$Si_4h_3_1_slope, na.rm = TRUE))]
+subj_si_3_1_res_slope
+subj_si_common_res_slope = intersect(subj_si_1_0_res_slope, subj_si_3_1_res_slope)
+subj_si_common_res_slope
+
+subj_si_1_0_sens_slope = si_wide$Sample_ID[si_wide$Si_4h_1_slope > (mean(si_wide$Si_4h_1_slope, na.rm = TRUE) + 2 * sd(si_wide$Si_4h_1_slope, na.rm = TRUE))]
+subj_si_1_0_sens_slope
+subj_si_3_1_sens_slope = si_wide$Sample_ID[si_wide$Si_4h_3_1_slope > (mean(si_wide$Si_4h_3_1_slope, na.rm = TRUE) + 2 * sd(si_wide$Si_4h_3_1_slope, na.rm = TRUE))]
+subj_si_3_1_sens_slope
+subj_si_common_sens_slope = intersect(subj_si_1_0_sens_slope, subj_si_3_1_sens_slope)
+subj_si_common_sens_slope
+
+# No overlapping: people may be either low or high dose sensitive... 
+# Clearly need a higher N!
+
+# Who are these people?
+desc_subj_si_1_0_res_slope = si_wide[si_wide$Sample_ID %in% subj_si_1_0_res_slope,]
+desc_subj_si_3_1_res_slope = si_wide[si_wide$Sample_ID %in% subj_si_3_1_res_slope,]
+desc_subj_si_1_0_sens_slope = si_wide[si_wide$Sample_ID %in% subj_si_1_0_sens_slope,]
+desc_subj_si_3_1_sens_slope = si_wide[si_wide$Sample_ID %in% subj_si_3_1_sens_slope,]
+
+# Adding the resistance factor for each subject based on slopes
+si_wide$Si_slope_res = "Not_resistant_not_sensitive"
+si_wide$Si_slope_res[si_wide$Sample_ID %in% subj_si_1_0_res_slope] = "Res_slope_low_dose"
+si_wide$Si_slope_res[si_wide$Sample_ID %in% subj_si_3_1_res_slope] = "Res_slope_high_dose"
+si_wide$Si_slope_res[si_wide$Sample_ID %in% subj_si_common_res_slope] = "Res_slope_both_doses"
+si_wide$Si_slope_res[si_wide$Sample_ID %in% subj_si_1_0_sens_slope] = "Sens_slope_low_dose"
+si_wide$Si_slope_res[si_wide$Sample_ID %in% subj_si_3_1_sens_slope] = "Sens_slope_low_dose"
+si_wide$Si_slope_res[si_wide$Sample_ID %in% subj_si_common_sens_slope] = "Sens_slope_both_doses"
+
+write.csv(si_wide, "18B_Si_w_resistance.csv", row.names = FALSE)
+
+# Note: all these sensitivity factors are based on foci at 4 hours!
+```
+
+
+## 01/10/19: adding Fe. 
+
+```{r}
+## Now, comparison with Fe. 
+## First, Fe only data.
+# Read first file in initial array foci, then merge new data into it, then add metadata
+
+## Read first file
+foci_fe_first = data.frame(Plate = fe_plate_nums[1], Plate_well = paste(fe_plate_nums[1], read.csv(paste('~/Desktop/BNL_18B_DNA_damage/Fe-BNL_18B-P355-P378/P', fe_plate_nums[1],'.csv', sep=""), sep=",", header = TRUE)$Well, sep = "_"), read.csv(paste('~/Desktop/BNL_18B_DNA_damage/Fe-BNL_18B-P355-P378/P', fe_plate_nums[1],'.csv', sep=""), sep=",", header = TRUE))
+# Note that: new columns Plate and Plate_well are made. 
+
+## Read all the other files and combine them into a single giant file with ALL the plates and ALL the wells
+# This is for Fe only
+fe_table = foci_fe_first # Not to lose the original first file just in case 
+
+for(ii in 2:fe_plate_count){
+  temp_filename = paste('~/Desktop/BNL_18B_DNA_damage/Fe-BNL_18B-P355-P378/P', fe_plate_nums[ii],'.csv', sep="")
+  temp_table = data.frame(Plate = fe_plate_nums[ii], Plate_well = paste(fe_plate_nums[ii], read.csv(paste('~/Desktop/BNL_18B_DNA_damage/Fe-BNL_18B-P355-P378/P', fe_plate_nums[ii],'.csv', sep=""), sep=",", header = TRUE)$Well, sep = "_"), read.csv(paste('~/Desktop/BNL_18B_DNA_damage/Fe-BNL_18B-P355-P378/P', fe_plate_nums[ii],'.csv', sep=""), sep=",", header = TRUE))
+  fe_table = rbind(fe_table, temp_table)
+}
+
+## Now we will add plate metadata
+fe_table_w_plate_meta = merge(fe_table, plate_meta, by.x = 'Plate', by.y = 'Plate_number', all.x = TRUE, all.y = FALSE)
+
+## Now we will add well metadata
+
+# Wells are different based on sample sets, so we need to make an extra column for Set_Well, and then add well metadata based on it.
+fe_table_w_plate_meta$Set_well = paste(fe_table_w_plate_meta$Sample_sets, fe_table_w_plate_meta$Well, sep = "_")
+fe_table_w_meta = merge(fe_table_w_plate_meta, subject_meta, by.x = 'Set_well', by.y = 'Set_well')
+
+# Clean up: this has Well.x and Well.y, which are duplicates; Sample_sets and Set which are also duplicates.
+fe_table_w_meta$Well = fe_table_w_meta$Well.x
+fe_table_w_meta$Timepoint = fe_table_w_meta$Timepoint.x
+cols_to_drop = c('Well.x', 'Well.y', 'Sample_sets', 'Plate.1')
+fe_long = fe_table_w_meta[, !colnames(fe_table_w_meta) %in% cols_to_drop]
+
+# This is ALL the data, meaning it includes duplicates. Duplicates should be averaged, but first we should filter the samples with very low number of nuclei. 
+
+# Visualize the data
+# The colname Num_Foci in Fe was called num_nuc in Si. 
+# Similarly, the colname Mean in Fe was called avg_nfoci in Si. 
+# Rename both first. 
+colnames(fe_long)[colnames(fe_long)=="Num_Foci"] = "num_nuc"
+colnames(fe_long)[colnames(fe_long)=="Mean"] = "avg_nfoci"
+hist(fe_long$num_nuc) 
+
+print("How many wells have been read at all?")
+print(c(nrow(fe_long), "out of 2304"))
+
+# Set low bar. This is arbitrary! We will ask for at least 50 imaged nuclei per well to consider that well. 
+# Same as for Si.
+low_bar = 50
+fe_filt = fe_long[fe_long$num_nuc > (low_bar-1),]
+
+print("How many wells are left after filtering?")
+print(c(nrow(fe_filt),"out of", nrow(fe_long), "which is", nrow(fe_filt)/nrow(fe_long)))
+
+# Truncate dataframe to only include the columns of interest
+col_trunc = c("Sample_ID", "Duplicates", "avg_nfoci", "Set", "Rad_type", "Dose_Fluence", "Timepoint", "Age", "Gender", "BMI", "BMI_group")
+fe_trunc = fe_filt[,colnames(fe_filt) %in% col_trunc]
+fe_trunc$ID_Fluence_Timepoint = paste(fe_trunc$Sample_ID, fe_trunc$Dose_Fluence, fe_trunc$Timepoint, sep = "_")
+
+# Now we will need to average A and B duplicates
+fe_avg = ddply(fe_trunc, .(ID_Fluence_Timepoint, Sample_ID, Set, Rad_type, Dose_Fluence, Timepoint, Age, Gender, BMI, BMI_group), summarise, avg_nfoci = mean(avg_nfoci))
+
+print("How many samples do we have now?")
+print(c(nrow(fe_avg), "out of 1152"))
+
+# I don't like calling "Dose_Fluence" when we only have fluence; also it is a factor instead of a number
+colnames(fe_avg)[colnames(fe_avg) == "Dose_Fluence"] = "Fluence"
+fe_avg$Fluence = as.factor(fe_avg$Fluence)
+
+# Also I want my timepoint to go from 4h to 24h in outputs
+fe_avg$Timepoint = factor(fe_avg$Timepoint, levels = c("4h", "24h")) 
+
+# Also I want my BMI group to go from Normal to Overweight to Obese in outputs
+fe_avg$BMI_group = factor(fe_avg$BMI_group, levels = c("Normal", "Overweight", "Obese")) 
+
+# Check: did we keep at least 1 sample of all subjects after averaging and filtering
+if (length(unique(fe_avg$Sample_ID)) == num_subj) {
+  print("All subjects have been retained")
+  } else {
+    print("Entire subjects were lost during averaging and filtering!")
+    print ("Original IDs:")
+    print(num_subj)
+    print("New IDs:")
+    print(unique(fe_avg$Sample_ID))
+  }
+
+## Fe seems very high values in general, so compare between duplicates. Some differences, but not consistently in the same direction. 
+fe_trunc_a = fe_trunc[(fe_trunc$Duplicates == "A"),]
+fe_trunc_b = fe_trunc[(fe_trunc$Duplicates == "B"),]
+mean(fe_trunc_a$avg_nfoci[(fe_trunc_a$Dose_Fluence == "0") & (fe_trunc_a$Timepoint == "24h")])
+mean(fe_trunc_b$avg_nfoci[(fe_trunc_b$Dose_Fluence == "0") & (fe_trunc_b$Timepoint == "24h")])
+```
+
+
+```{r}
+## Initial analysis: demographics, comparison with different types of data, etc. 
+
+## OK, now we have the dataframe with all the Fe data, after averaging all duplicates. What questions do we want to ask?
+
+## Specifically for Fe at first, then will combine and compare as necessary. 
+
+# First, let's look at it very quickly by dose at 4h and 24h
+quick_sum = ddply(fe_avg, .(Timepoint, Fluence), summarise, mean = mean(avg_nfoci), sd = sd(avg_nfoci))
+quick_sum
+
+# Now plotting everyone in boxplots
+all_plot_fe = ggplot(fe_avg, aes(x = Fluence, y = avg_nfoci, col = Gender)) +
+  geom_boxplot()
+facet(all_plot_fe, facet.by = 'Timepoint')
+
+# Now plotting everyone using individual samples
+all_plot_dots_fe = ggplot(fe_avg, aes(x = Fluence, y = avg_nfoci, col = Gender)) + geom_point() + geom_jitter()
+facet(all_plot_dots_fe, facet.by = 'Timepoint')
+
+# OK no difference by sex. Increase at 4h, not much at 24h. 
+# Other epidemiological variables? 
+
+# BMI?
+all_plot_bmi_fe = ggplot(fe_avg, aes(x = Fluence, y = avg_nfoci, col = Gender)) + 
+  geom_boxplot()
+facet(all_plot_bmi_fe, facet.by = c('Timepoint', 'BMI_group'))
+
+all_plot_bmi2_fe = ggplot(fe_avg, aes(x = Fluence, y = avg_nfoci, col = BMI_group)) + 
+  geom_boxplot()
+facet(all_plot_bmi2_fe, facet.by = c('Timepoint', 'Gender'))
+
+all_plot_bmi3_fe = ggplot(fe_avg, aes(x = BMI, y = avg_nfoci, col = Gender)) + 
+  geom_point() + geom_smooth(method = "lm")
+facet(all_plot_bmi3_fe, facet.by = c('Timepoint', 'Fluence'))
+# No clear difference based on BMI, but worth looking into. 
+
+# Age? 
+all_plot_age_fe = ggplot(fe_avg, aes(x = Age, y = avg_nfoci, col = Gender)) + geom_point() + geom_smooth(method = "lm")
+facet(all_plot_age_fe, facet.by = c('Timepoint','Fluence'))
+# No clear difference by age. 
+
+# Are control (no irradiation) values correlated between 4h and 24h datasets? Sort of a sanity check.
+# To answer that: fe_avg is a looooong table. Make it wide! 
+fe_avg$Fluence_Timepoint = paste("Fe", "_", fe_avg$Timepoint, "_", fe_avg$Fluence, sep = "")
+fe_fluencetime = dcast(fe_avg, Sample_ID ~ Fluence_Timepoint, value.var = "avg_nfoci")
+write.csv(fe_fluencetime, file = "18B_Fe_Fluence_Time.csv", row.names = FALSE)
+
+# Now compare 4h and 24h results.
+plot_0comp_fe = ggplot(fe_fluencetime, aes(x = Fe_4h_0, y = Fe_24h_0)) + geom_point() + geom_smooth(method = "lm")
+plot_0comp_fe
+
+# Add metadata/ROS and cell death data
+fe_wide = merge(fe_fluencetime, subject_meta, by.x. = "SampleID", by.y = "Sample_ID")
+
+# Compare absolute values of Fe RIFs, ROS and cell death
+plot_3_RIF_death_fe = ggplot(fe_wide, aes(x = Fe_4h_3, y = Fe_Dead_percentage_3)) + geom_point() + geom_smooth(method = "lm")
+plot_3_RIF_death_fe
+plot_3_RIF_CR_fe = ggplot(fe_wide, aes(x = Fe_24h_3, y = Fe_3_Live_CR_mean_3)) + geom_point() + geom_smooth(method = "lm")
+plot_3_RIF_CR_fe
+# Results: 24h CR: 1, 3 - no correlation, 24h death: 1 - anti correlation, 3 - no correlation
+# Results: 4h CR: 1 - no correlation, 3 - a bit of anti correlation, 4h death: 1- no correlation, 3 - anti correlation
+
+# Compare fold values of Fe RIFs, ROS and cell death
+fe_wide$Fe_4h_1_fold = fe_wide$Fe_4h_1.1 / fe_wide$Fe_4h_0
+fe_wide$Fe_4h_3_fold = fe_wide$Fe_4h_3 / fe_wide$Fe_4h_0
+fe_wide$Fe_4h_3_1_fold = fe_wide$Fe_4h_3 / fe_wide$Fe_4h_1.1
+fe_wide$Fe_24h_1_fold = fe_wide$Fe_24h_1.1 / fe_wide$Fe_24h_0
+fe_wide$Fe_24h_3_fold = fe_wide$Fe_24h_3 / fe_wide$Fe_24h_0
+fe_wide$Fe_24h_3_1_fold = fe_wide$Fe_24h_3 / fe_wide$Fe_24h_1.1
+
+# Add slope values of Fe RIFs
+# Note: here all the slope values are based on fluence (NOT dose!) We can recalculate them based on dose for comparisons if necessary. 
+fe_wide$Fe_4h_1_slope = (fe_wide$Fe_4h_1.1 - fe_wide$Fe_4h_0)/1.1
+fe_wide$Fe_4h_3_1_slope = (fe_wide$Fe_4h_3 - fe_wide$Fe_4h_1.1)/1.9
+fe_wide$Fe_24h_1_slope = (fe_wide$Fe_24h_1.1 - fe_wide$Fe_24h_0)/1.1
+fe_wide$Fe_24h_3_1_slope = (fe_wide$Fe_24h_3 - fe_wide$Fe_24h_1.1)/1.9
+
+
+# Let's try to add the slopes to the dot plot now!
+fe_avg$Fluence_num = as.numeric(as.character(fe_avg$Fluence))
+fe_avg_1st_slope = fe_avg[(fe_avg$Fluence != "3"),]
+fe_avg_2nd_slope = fe_avg[(fe_avg$Fluence != "0"),]
+  
+all_plot_dots_fe_slopes = ggplot(fe_avg, aes(x = Fluence_num, y = avg_nfoci, col = Gender)) + geom_point() + geom_jitter() + 
+  geom_smooth(data = fe_avg_1st_slope, method = "glm") +
+  geom_smooth(data = fe_avg_2nd_slope, method = "glm")
+facet(all_plot_dots_fe_slopes, facet.by = 'Timepoint')
+
+
+# Compare Fe RIFs and folds at different time points and in response to different fluences
+plot_1.1_RIF_fe = ggplot(fe_wide, aes(x = Fe_4h_1.1, y = Fe_24h_1.1)) + geom_point() + geom_smooth(method = "lm")
+plot_1.1_RIF_fe
+plot_3_RIF_fe = ggplot(fe_wide, aes(x = Fe_4h_3, y = Fe_24h_3)) + geom_point() + geom_smooth(method = "lm")
+plot_3_RIF_fe
+# Results: strong correlation between timepoints at 1.1, but not 3 fluence!
+
+plot_4h_RIF_fe = ggplot(fe_wide, aes(x = Fe_4h_1.1, y = Fe_4h_3)) + geom_point() + geom_smooth(method = "lm")
+plot_4h_RIF_fe
+plot_24h_RIF_fe = ggplot(fe_wide, aes(x = Fe_24h_1.1, y = Fe_24h_3)) + geom_point() + geom_smooth(method = "lm")
+plot_24h_RIF_fe
+# Results: strong correlation between fluences at 4h, weak at 24h
+
+plot_4h_0_RIF_fe = ggplot(fe_wide, aes(x = Fe_4h_0, y = Fe_4h_1.1)) + geom_point() + geom_smooth(method = "lm")
+plot_4h_0_RIF_fe
+plot_24h_0_RIF_fe = ggplot(fe_wide, aes(x = Fe_24h_0, y = Fe_24h_1.1)) + geom_point() + geom_smooth(method = "lm")
+plot_24h_0_RIF_fe
+# Still correlated, but not at 1.1 at 4h, and much weaker than Si.
+# Explanation: some response depends on the subject, and some - on irradiation; the subject is less important than the irradiation. 
+
+plot_1_fold_fe = ggplot(fe_wide, aes(x = Fe_4h_1_fold, y = Fe_24h_1_fold)) + geom_point() + geom_smooth(method = "lm")
+plot_1_fold_fe
+plot_3_fold_fe = ggplot(fe_wide, aes(x = Fe_4h_3_1_fold, y = Fe_24h_3_1_fold)) + geom_point() + geom_smooth(method = "lm")
+plot_3_fold_fe
+# Results: Fold differences at 1.1 between 4h and 24h are not correlated (i.e. different people are sensitive at 4h and at 24h; most likely because at 24h there's so much repair...), but at 3 are somewhat anti correlated --> i.e. the people who are not sensitive at 4h are sensitive at 24h, and vice versa (probably because for the sensitive people, their cells are dead by 24h...unclear though)
+
+write.csv(fe_wide, file = "18B_Fe_wide_w_slopes.csv", row.names = FALSE)
+
+```
+
+```{r}
+## Compare Fe responders. 
+fe_0_sorted = sort(fe_wide$Fe_4h_0)
+fe_0_sorted_low = mean(fe_0_sorted[1:length(fe_0_sorted)/10])
+fe_0_sorted_high = mean(fe_0_sorted[(length(fe_0_sorted)*9/10):length(fe_0_sorted)])
+fe_0_sorted_fold = fe_0_sorted_high/fe_0_sorted_low
+
+fe_3_sorted = sort(fe_wide$Fe_24h_3)
+fe_3_sorted_low = mean(fe_3_sorted[1:length(fe_3_sorted)/10])
+fe_3_sorted_high = mean(fe_3_sorted[(length(fe_3_sorted)*9/10):length(fe_3_sorted)])
+fe_3_sorted_fold = fe_3_sorted_high/fe_3_sorted_low
+
+fe_wide$Fe_4h_3_0_slope = (fe_wide$Fe_4h_3 - fe_wide$Fe_4h_0)/3
+fe_3_slope_sorted = sort(fe_wide$Fe_4h_3_0_slope)
+fe_3_slope_sorted_low = mean(fe_3_slope_sorted[1:length(fe_3_slope_sorted)/10])
+fe_3_slope_sorted_high = mean(fe_3_slope_sorted[(length(fe_3_slope_sorted)*9/10):length(fe_3_slope_sorted)])
+fe_3_slope_sorted_fold = fe_3_slope_sorted_high/fe_3_slope_sorted_low
+fe_3_slope_sorted_diff = fe_3_slope_sorted_high - fe_3_slope_sorted_low
+
+fe_slope_low_high = fe_wide[(fe_wide$Fe_4h_1_slope < fe_wide$Fe_4h_3_1_slope),]
+nrow(fe_slope_low_high)*100/nrow(fe_wide)
+fe_slope_high_low = fe_wide[(fe_wide$Fe_4h_1_slope > fe_wide$Fe_4h_3_1_slope),]
+nrow(fe_slope_high_low)*100/nrow(fe_wide)
+
+## Do 24h 3 particle values fit in 24h 0 confidence interval?
+fe_24h_0_conf_low = (t.test(fe_wide$Fe_24h_0)$conf.int)[1]
+fe_24h_0_conf_high = (t.test(fe_wide$Fe_24h_0)$conf.int)[2]
+fe_wide$Fe_24h_repaired = "repaired"
+fe_wide$Fe_24h_repaired[(fe_wide$Fe_24h_3 > fe_24h_0_conf_high)] = "not_repaired"
+nrow(fe_wide[(fe_wide$Fe_24h_repaired == "not_repaired"),]) * 100 / nrow(fe_wide)
+
+```
+
+
+```{r}
+## Who is sensitive, who is resistant?
+## Also, how will we define sensitive/resistant?
+
+# For Fe, use 4h (same as for Si)
+# Bottom quantile in fold 1-0 and bottom quantile in fold 3-0 for resistant
+# Top quantile in fold 1-0 and top quantile in fold 3-0 for resistant
+quant_fe_1_0_bottom = quantile(fe_wide$Fe_4h_1_fold, na.rm = TRUE)[2]
+quant_fe_3_1_bottom = quantile(fe_wide$Fe_4h_3_1_fold, na.rm = TRUE)[2]
+quant_fe_1_0_top = quantile(fe_wide$Fe_4h_1_fold, na.rm = TRUE)[3]
+quant_fe_3_1_top = quantile(fe_wide$Fe_4h_3_1_fold, na.rm = TRUE)[3]
+
+subj_fe_1_0_res = fe_wide$Sample_ID[fe_wide$Fe_4h_1_fold < quant_fe_1_0_bottom]
+subj_fe_3_1_res = fe_wide$Sample_ID[fe_wide$Fe_4h_3_1_fold < quant_fe_3_1_bottom]
+subj_fe_common_res = intersect(subj_fe_1_0_res, subj_fe_3_1_res)
+subj_fe_common_res
+subj_fe_si_common_res = intersect(subj_fe_common_res, subj_si_common_res)
+subj_fe_si_common_res
+subj_fe_si_1_0_res = intersect(subj_fe_1_0_res, subj_si_1_0_res)
+subj_fe_si_1_0_res
+subj_fe_si_3_1_res = intersect(subj_fe_3_1_res, subj_si_3_1_res)
+subj_fe_si_3_1_res
+
+subj_fe_1_0_sens = fe_wide$Sample_ID[fe_wide$Fe_4h_1_fold > quant_fe_1_0_top]
+subj_fe_3_1_sens = fe_wide$Sample_ID[fe_wide$Fe_4h_3_1_fold > quant_fe_3_1_top]
+subj_fe_common_sens = intersect(subj_fe_1_0_sens, subj_fe_3_1_sens)
+subj_fe_common_sens
+subj_fe_si_common_sens = intersect(subj_fe_common_sens, subj_si_common_sens)
+subj_fe_si_common_sens
+subj_fe_si_1_0_sens = intersect(subj_fe_1_0_sens, subj_si_1_0_sens)
+subj_fe_si_1_0_sens
+subj_fe_si_3_1_sens = intersect(subj_fe_3_1_sens, subj_si_3_1_sens)
+subj_fe_si_3_1_sens
+
+# Adding the resistance factor for each subject based on quantiles
+# Somewhat clunky, but for/if loop just as clunky...
+fe_wide$fe_quantile_res = "Not_resistant_not_sensitive"
+fe_wide$fe_quantile_res[fe_wide$Sample_ID %in% subj_fe_1_0_res] = "Res_quantile_low_dose"
+fe_wide$fe_quantile_res[fe_wide$Sample_ID %in% subj_fe_3_1_res] = "Res_quantile_high_dose"
+fe_wide$fe_quantile_res[fe_wide$Sample_ID %in% subj_fe_common_res] = "Res_quantile_both_doses"
+fe_wide$fe_quantile_res[fe_wide$Sample_ID %in% subj_fe_1_0_sens] = "Sens_quantile_low_dose"
+fe_wide$fe_quantile_res[fe_wide$Sample_ID %in% subj_fe_3_1_sens] = "Sens_quantile_low_dose"
+fe_wide$fe_quantile_res[fe_wide$Sample_ID %in% subj_fe_common_sens] = "Sens_quantile_both_doses"
+
+# Alternative way to measure sensitivity.
+
+# What are the patterns based on slope: subjects responding primarily to low doses (low slope >0, high slope <0) and responding to high doses (low slope <0, high slope >0)? 
+subj_fe_low = fe_wide$Sample_ID[fe_wide$Fe_4h_1_slope > 0 & fe_wide$Fe_4h_3_1_slope < 0]
+subj_fe_high = fe_wide$Sample_ID[fe_wide$Fe_4h_1_slope < 0 & fe_wide$Fe_4h_3_1_slope > 0]
+subj_fe_low # low dose responders (early sensitivity)
+subj_fe_high # high dose responders (late sensitivity)
+
+# Also, the most sensitive people can be considered having significantly higher slope than mean (mean + 2 * sd)
+# The most resistant people will then have significantly lower slope than mean (mean - 2 * sd)
+
+subj_fe_1_0_res_slope = fe_wide$Sample_ID[fe_wide$Fe_4h_1_slope < (mean(fe_wide$Fe_4h_1_slope, na.rm = TRUE) - 2 * sd(fe_wide$Fe_4h_1_slope, na.rm = TRUE))]
+subj_fe_1_0_res_slope
+subj_fe_3_1_res_slope = fe_wide$Sample_ID[fe_wide$Fe_4h_3_1_slope < (mean(fe_wide$Fe_4h_3_1_slope, na.rm = TRUE) - 2 * sd(fe_wide$Fe_4h_3_1_slope, na.rm = TRUE))]
+subj_fe_3_1_res_slope
+subj_fe_common_res_slope = intersect(subj_fe_1_0_res_slope, subj_fe_3_1_res_slope)
+subj_fe_common_res_slope
+
+subj_fe_1_0_sens_slope = fe_wide$Sample_ID[fe_wide$Fe_4h_1_slope > (mean(fe_wide$Fe_4h_1_slope, na.rm = TRUE) + 2 * sd(fe_wide$Fe_4h_1_slope, na.rm = TRUE))]
+subj_fe_1_0_sens_slope
+subj_fe_3_1_sens_slope = fe_wide$Sample_ID[fe_wide$Fe_4h_3_1_slope > (mean(fe_wide$Fe_4h_3_1_slope, na.rm = TRUE) + 2 * sd(fe_wide$Fe_4h_3_1_slope, na.rm = TRUE))]
+subj_fe_3_1_sens_slope
+subj_fe_common_sens_slope = intersect(subj_fe_1_0_sens_slope, subj_fe_3_1_sens_slope)
+subj_fe_common_sens_slope
+
+# No overlapping between doses: people may be either low or high dose sensitive... 
+# Also no overlap between Fe and Si, sensitive or resistant
+# Clearly need a higher N!
+
+# Adding the resistance factor for each subject based on slopes
+fe_wide$Fe_slope_res = "Not_resistant_not_sensitive"
+fe_wide$Fe_slope_res[fe_wide$Sample_ID %in% subj_fe_1_0_res_slope] = "Res_slope_low_dose"
+fe_wide$Fe_slope_res[fe_wide$Sample_ID %in% subj_fe_3_1_res_slope] = "Res_slope_high_dose"
+fe_wide$Fe_slope_res[fe_wide$Sample_ID %in% subj_fe_common_res_slope] = "Res_slope_both_doses"
+fe_wide$Fe_slope_res[fe_wide$Sample_ID %in% subj_fe_1_0_sens_slope] = "Sens_slope_low_dose"
+fe_wide$Fe_slope_res[fe_wide$Sample_ID %in% subj_fe_3_1_sens_slope] = "Sens_slope_low_dose"
+fe_wide$Fe_slope_res[fe_wide$Sample_ID %in% subj_fe_common_sens_slope] = "Sens_slope_both_doses"
+
+write.csv(fe_wide, "18B_Fe_w_resistance.csv", row.names = FALSE)
+
+```
+
+## Adding Ar from Eloise
+
+```{r}
+## Read all data, combine with metadata (Ar)
+
+# Read first file in initial array foci, then merge new data into it, then add metadata
+
+## Read first file
+## Creates a table with one row for each well of the first plate, and the associated data in average_well_Pxxx.txt
+foci_ar_first = data.frame(Plate = ar_plate_nums[1], Plate_well = paste(ar_plate_nums[1], read.table(paste('~/Desktop/BNL_18B_DNA_damage/Eloise_18B_Ar/Processed_Ar_BNL_18B/average_well_P', ar_plate_nums[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('~/Desktop/BNL_18B_DNA_damage/Eloise_18B_Ar/Processed_Ar_BNL_18B/average_well_P', ar_plate_nums[1],'.txt', sep=""), sep="\t", header = TRUE))
+# Note that: new columns Plate and Plate_well are made. 
+
+## Read all the other files and combine them into a single giant file with ALL the plates and ALL the wells
+# This is for Ar only
+ar_table = foci_ar_first # Not to lose the original first file just in case 
+
+for(ii in 2:ar_plate_count){
+  temp_filename = paste('~/Desktop/BNL_18B_DNA_damage/Eloise_18B_Ar/Processed_Ar_BNL_18B/average_well_P', ar_plate_nums[ii],'.txt', sep="")
+  temp_table = data.frame(Plate = ar_plate_nums[ii], Plate_well = paste(ar_plate_nums[ii], read.table(paste('~/Desktop/BNL_18B_DNA_damage/Eloise_18B_Ar/Processed_Ar_BNL_18B/average_well_P', ar_plate_nums[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('~/Desktop/BNL_18B_DNA_damage/Eloise_18B_Ar/Processed_Ar_BNL_18B/average_well_P', ar_plate_nums[ii],'.txt', sep=""), sep="\t", header = TRUE))
+  ar_table = rbind(ar_table, temp_table)
+}
+
+## Now we will add plate metadata
+ar_table_w_plate_meta = merge(ar_table, plate_meta, by.x = 'Plate', by.y = 'Plate_number', all.x = TRUE, all.y = FALSE)
+
+## Now we will add well metadata
+
+# Wells are different based on sample sets, so we need to make an extra column for Set_Well, and then add well metadata based on it.
+ar_table_w_plate_meta$Set_well = paste(ar_table_w_plate_meta$Sample_sets, ar_table_w_plate_meta$Well, sep = "_")
+ar_table_w_meta = merge(ar_table_w_plate_meta, subject_meta, by.x = 'Set_well', by.y = 'Set_well')
+
+# Clean up: this has Well.x and Well.y, which are duplicates; Sample_sets and Set which are also duplicates.
+ar_table_w_meta$Well = ar_table_w_meta$Well.x 
+ar_table_w_meta$Timepoint = ar_table_w_meta$Timepoint.x
+cols_to_drop = c('Well.x', 'Well.y', 'Sample_sets', 'Timepoint.x', 'Timepoint.y')
+ar_long = ar_table_w_meta[, !colnames(ar_table_w_meta) %in% cols_to_drop]
+
+# This is ALL the data, meaning it includes duplicates. Duplicates should be averaged, but first we should filter the samples with very low number of nuclei. 
+
+# Visualize the data
+hist(ar_long$num_nuc) 
+
+print("How many wells have been read at all?")
+print(c(nrow(ar_long), "out of 2304"))
+
+# Set low bar. This is arbitrary! We will ask for at least 50 imaged nuclei per well to consider that well. 
+low_bar = 50
+ar_filt = ar_long[ar_long$num_nuc > (low_bar-1),]
+
+print("How many wells are left after filtering?")
+print(c(nrow(ar_filt),"out of", nrow(ar_long), "which is", (nrow(ar_filt)/nrow(ar_long))*100,"%"))
+
+# Truncate dataframe to only include the columns of interest
+col_trunc = c("Sample_ID", "Duplicates", "avg_nfoci", "Set", "Rad_type", "Dose_Fluence", "Timepoint", "Age", "Gender", "BMI", "BMI_group")
+ar_trunc = ar_filt[,colnames(ar_filt) %in% col_trunc]
+ar_trunc$ID_Fluence_Timepoint = paste(ar_trunc$Sample_ID, ar_trunc$Dose_Fluence, ar_trunc$Timepoint, sep = "_")
+
+# Now we will need to average A and B duplicates
+ar_avg = ddply(ar_trunc, .(ID_Fluence_Timepoint, Sample_ID, Set, Rad_type, Dose_Fluence, Timepoint, Age, Gender, BMI, BMI_group), summarise, avg_nfoci = mean(avg_nfoci))
+
+print("How many samples do we have now?")
+print(c(nrow(ar_avg)))
+
+# I don't like calling "Dose_Fluence" when we only have fluence; also it is a factor instead of a number
+colnames(ar_avg)[colnames(ar_avg) == "Dose_Fluence"] = "Fluence"
+ar_avg$Fluence = as.factor(ar_avg$Fluence)
+
+# Also I want my timepoint to go from 4h to 24h in outputs
+ar_avg$Timepoint = factor(ar_avg$Timepoint, levels = c("4h", "24h")) 
+
+# Also I want my BMI group to go from Normal to Overweight to Obese in outputs
+ar_avg$BMI_group = factor(ar_avg$BMI_group, levels = c("Normal", "Overweight", "Obese")) 
+
+# Check: did we keep at least 1 sample of all subjects after averaging and filtering
+if (length(unique(ar_avg$Sample_ID)) == length(subject_meta$Sample_ID)) {
+  print("All subjects have been retained")
+  } else {
+    print("Entire subjects were lost during averaging and filtering!")
+    print ("Original IDs:")
+    print(subject_meta$Sample_ID)
+    print("New IDs:")
+    print(unique(ar_avg$Sample_ID))
+  }
+
+```
+
+```{r}
+## Initial analysis: demographics, comparison with different types of data, etc. 
+
+## OK, now we have the dataframe with all the Si data, after averaging all duplicates. What questions do we want to ask?
+
+# First, let's look at it very quickly by dose at 4h and 24h
+quick_sum = ddply(ar_avg, .(Timepoint, Fluence), summarise, mean = mean(avg_nfoci), sd = sd(avg_nfoci))
+quick_sum
+
+# Now plotting everyone in boxplots
+all_plot = ggplot(ar_avg, aes(x = Fluence, y = avg_nfoci, col = Gender)) +
+  geom_boxplot()
+facet(all_plot, facet.by = 'Timepoint')
+
+# Now plotting everyone using individual samples
+all_plot_dots = ggplot(ar_avg, aes(x = Fluence, y = avg_nfoci, col = Gender)) + geom_point() + geom_jitter()
+facet(all_plot_dots, facet.by = 'Timepoint')
+
+# OK no difference by sex. Increase at 4h, not much at 24h. 
+# Other epidemiological variables? 
+
+# BMI?
+all_plot_bmi = ggplot(ar_avg, aes(x = Fluence, y = avg_nfoci, col = Gender)) + 
+  geom_boxplot()
+facet(all_plot_bmi, facet.by = c('Timepoint', 'BMI_group'))
+
+all_plot_bmi2 = ggplot(ar_avg, aes(x = Fluence, y = avg_nfoci, col = BMI_group)) + 
+  geom_boxplot()
+facet(all_plot_bmi2, facet.by = c('Timepoint', 'Gender'))
+
+all_plot_bmi3 = ggplot(ar_avg, aes(x = BMI, y = avg_nfoci, col = Fluence)) + 
+  geom_point() + geom_smooth(method = "lm")
+facet(all_plot_bmi3, facet.by = c('Timepoint', 'Gender'))
+# No clear difference based on BMI, but worth looking into. 
+
+# Age? 
+all_plot_age = ggplot(ar_avg, aes(x = Age, y = avg_nfoci, col = Gender)) + geom_point() + geom_smooth(method = "lm")
+facet(all_plot_age, facet.by = c('Timepoint','Fluence'))
+# No clear difference by age. 
+
+# Are control (no irradiation) values correlated between 4h and 24h datasets? Sort of a sanity check.
+# To answer that: si_avg is a looooong table. Make it wide! 
+ar_avg$Fluence_Timepoint = paste("Ar", "_", ar_avg$Timepoint, "_", ar_avg$Fluence, sep = "")
+ar_fluencetime = dcast(ar_avg, Sample_ID ~ Fluence_Timepoint, value.var = "avg_nfoci")
+write.csv(ar_fluencetime, file = "18B_Ar_Fluence_Time.csv", row.names = FALSE)
+
+# Now compare controls at 4h and 24h
+plot_0comp = ggplot(ar_fluencetime, aes(x = Ar_4h_0, y = Ar_24h_0)) + geom_point() + geom_smooth(method = "lm")
+plot_0comp
+
+# Add metadata/ROS and cell death data
+ar_wide = merge(ar_fluencetime, subject_meta, by.x. = "SampleID", by.y = "Sample_ID")
+write.csv(ar_wide, file = "18B_Ar.csv", row.names = FALSE)
+
+# Compare fold values of Ar RIFs, ROS and cell death
+ar_wide$Ar_4h_1_fold = ar_wide$Ar_4h_1.1 / ar_wide$Ar_4h_0
+ar_wide$Ar_4h_3_fold = ar_wide$Ar_4h_3 / ar_wide$Ar_4h_0
+ar_wide$Ar_4h_3_1_fold = ar_wide$Ar_4h_3 / ar_wide$Ar_4h_1.1
+ar_wide$Ar_24h_1_fold = ar_wide$Ar_24h_1.1 / ar_wide$Ar_24h_0
+ar_wide$Ar_24h_3_fold = ar_wide$Ar_24h_3 / ar_wide$Ar_24h_0
+ar_wide$Ar_24h_3_1_fold = ar_wide$Ar_24h_3 / ar_wide$Ar_24h_1.1
+
+# Add slope values of Ar RIFs
+# Note: here all the slope values are based on fluence (NOT dose!) We can recalculate them based on dose for comparisons if necessary. 
+ar_wide$Ar_4h_1_slope = (ar_wide$Ar_4h_1.1 - ar_wide$Ar_4h_0)/1.1
+ar_wide$Ar_4h_3_1_slope = (ar_wide$Ar_4h_3 - ar_wide$Ar_4h_1.1)/1.9
+ar_wide$Ar_24h_1_slope = (ar_wide$Ar_24h_1.1 - ar_wide$Ar_24h_0)/1.1
+ar_wide$Ar_24h_3_1_slope = (ar_wide$Ar_24h_3 - ar_wide$Ar_24h_1.1)/1.9
+
+write.csv(ar_wide, file = "18B_Ar_w_slopes.csv", row.names = FALSE)
+
+# Let's try to add the slopes to the dot plot now!
+ar_avg$Fluence_num = as.numeric(as.character(ar_avg$Fluence))
+ar_avg_1st_slope = ar_avg[(ar_avg$Fluence != "3"),]
+ar_avg_2nd_slope = ar_avg[(ar_avg$Fluence != "0"),]
+  
+all_plot_dots_ar_slopes = ggplot(ar_avg, aes(x = Fluence_num, y = avg_nfoci, col = Gender)) + geom_point() + geom_jitter() + 
+  geom_smooth(data = ar_avg_1st_slope, method = "glm") +
+  geom_smooth(data = ar_avg_2nd_slope, method = "glm")
+facet(all_plot_dots_ar_slopes, facet.by = 'Timepoint')
+
+# Compare Ar RIFs and folds at different time points and in response to different fluences
+plot_1.1_RIF = ggplot(ar_wide, aes(x = Ar_4h_1.1, y = Ar_24h_1.1)) + geom_point() + geom_smooth(method = "lm")
+plot_1.1_RIF
+plot_3_RIF = ggplot(ar_wide, aes(x = Ar_4h_3, y = Ar_24h_3)) + geom_point() + geom_smooth(method = "lm")
+plot_3_RIF
+# Results: strong correlation between timepoints for both 1.1 and 3 fluences.
+
+plot_4h_RIF = ggplot(ar_wide, aes(x = Ar_4h_1.1, y = Ar_4h_3)) + geom_point() + geom_smooth(method = "lm")
+plot_4h_RIF
+plot_24h_RIF = ggplot(ar_wide, aes(x = Ar_24h_1.1, y = Ar_24h_3)) + geom_point() + geom_smooth(method = "lm")
+plot_24h_RIF
+# Results: strong correlation between fluences at 4h, not that much at 24h. 
+
+plot_4h_0_RIF = ggplot(ar_wide, aes(x = Ar_4h_0, y = Ar_4h_3)) + geom_point() + geom_smooth(method = "lm")
+plot_4h_0_RIF
+plot_24h_0_RIF = ggplot(ar_wide, aes(x = Ar_24h_0, y = Ar_24h_3)) + geom_point() + geom_smooth(method = "lm")
+plot_24h_0_RIF
+# Explanation of all the above results: the people who have a lot of RIFs at baseline also have a lot of RIFs afterwards (i.e. if I have 1 RIF at baseline I will have 3 after irradiation, but if you have 10 RIFs at baseline you will have 30 after irradiation. But we are equally sensitive to irradiation, which increases our RIFs 3-fold!)## Initial analysis: demographics, comparison with different types of data, etc. 
+
+```
+
+
+```{r}
+## Compare Ar responders
+ar_0_sorted = sort(ar_wide$Ar_4h_0)
+ar_0_sorted_low = mean(ar_0_sorted[1:length(ar_0_sorted)/10])
+ar_0_sorted_high = mean(ar_0_sorted[(length(ar_0_sorted)*9/10):length(ar_0_sorted)])
+ar_0_sorted_fold = ar_0_sorted_high/ar_0_sorted_low
+
+ar_3_sorted = sort(ar_wide$Ar_24h_3)
+ar_3_sorted_low = mean(ar_3_sorted[1:length(ar_3_sorted)/10])
+ar_3_sorted_high = mean(ar_3_sorted[(length(ar_3_sorted)*9/10):length(ar_3_sorted)])
+ar_3_sorted_fold = ar_3_sorted_high/ar_3_sorted_low
+
+ar_wide$Ar_4h_3_0_slope = (ar_wide$Ar_4h_3 - ar_wide$Ar_4h_0)/3
+ar_3_slope_sorted = sort(ar_wide$Ar_4h_3_0_slope)
+ar_3_slope_sorted_low = mean(ar_3_slope_sorted[1:length(ar_3_slope_sorted)/10])
+ar_3_slope_sorted_high = mean(ar_3_slope_sorted[(length(ar_3_slope_sorted)*9/10):length(ar_3_slope_sorted)])
+ar_3_slope_sorted_fold = ar_3_slope_sorted_high/ar_3_slope_sorted_low
+ar_3_slope_sorted_diff = ar_3_slope_sorted_high - ar_3_slope_sorted_low
+
+ar_slope_low_high = ar_wide[(ar_wide$Ar_4h_1_slope < ar_wide$Ar_4h_3_1_slope),]
+nrow(ar_slope_low_high)*100/nrow(ar_wide)
+ar_slope_high_low = ar_wide[(ar_wide$Ar_4h_1_slope > ar_wide$Ar_4h_3_1_slope),]
+nrow(ar_slope_high_low)*100/nrow(ar_wide)
+
+## Do 24h 3 particle values fit in 24h 0 confidence interval?
+ar_24h_0_conf_low = (t.test(ar_wide$Ar_24h_0)$conf.int)[1]
+ar_24h_0_conf_high = (t.test(ar_wide$Ar_24h_0)$conf.int)[2]
+ar_wide$Ar_24h_repaired = "repaired"
+ar_wide$Ar_24h_repaired[(ar_wide$Ar_24h_3 > ar_24h_0_conf_high)] = "not_repaired"
+nrow(ar_wide[(ar_wide$Ar_24h_repaired == "not_repaired"),]) * 100 / nrow(ar_wide)
+```
+
+```{r}
+## Who is sensitive, who is resistant?
+## Also, how will we define sensitive/resistant?
+
+# For Ar, use 4h (same as for Si)
+# Bottom quantile in fold 1-0 and bottom quantile in fold 3-0 for resistant
+# Top quantile in fold 1-0 and top quantile in fold 3-0 for resistant
+quant_ar_1_0_bottom = quantile(ar_wide$Ar_4h_1_fold, na.rm = TRUE)[2]
+quant_ar_3_1_bottom = quantile(ar_wide$Ar_4h_3_1_fold, na.rm = TRUE)[2]
+quant_ar_1_0_top = quantile(ar_wide$Ar_4h_1_fold, na.rm = TRUE)[3]
+quant_ar_3_1_top = quantile(ar_wide$Ar_4h_3_1_fold, na.rm = TRUE)[3]
+
+subj_ar_1_0_res = ar_wide$Sample_ID[ar_wide$Ar_4h_1_fold < quant_ar_1_0_bottom]
+subj_ar_3_1_res = ar_wide$Sample_ID[ar_wide$Ar_4h_3_1_fold < quant_ar_3_1_bottom]
+subj_ar_common_res = intersect(subj_ar_1_0_res, subj_ar_3_1_res)
+subj_ar_common_res
+subj_ar_si_common_res = intersect(subj_ar_common_res, subj_si_common_res)
+subj_ar_si_common_res
+subj_ar_si_1_0_res = intersect(subj_ar_1_0_res, subj_si_1_0_res)
+subj_ar_si_1_0_res
+subj_ar_si_3_1_res = intersect(subj_ar_3_1_res, subj_si_3_1_res)
+subj_ar_si_3_1_res
+
+subj_ar_1_0_sens = ar_wide$Sample_ID[ar_wide$Ar_4h_1_fold > quant_ar_1_0_top]
+subj_ar_3_1_sens = ar_wide$Sample_ID[ar_wide$Ar_4h_3_1_fold > quant_ar_3_1_top]
+subj_ar_common_sens = intersect(subj_ar_1_0_sens, subj_ar_3_1_sens)
+subj_ar_common_sens
+subj_ar_si_common_sens = intersect(subj_ar_common_sens, subj_si_common_sens)
+subj_ar_si_common_sens
+subj_ar_si_1_0_sens = intersect(subj_ar_1_0_sens, subj_si_1_0_sens)
+subj_ar_si_1_0_sens
+subj_ar_si_3_1_sens = intersect(subj_ar_3_1_sens, subj_si_3_1_sens)
+subj_ar_si_3_1_sens
+
+# Adding the resistance factor for each subject based on quantiles
+# Somewhat clunky, but for/if loop just as clunky...
+ar_wide$ar_quantile_res = "Not_resistant_not_sensitive"
+ar_wide$ar_quantile_res[ar_wide$Sample_ID %in% subj_ar_1_0_res] = "Res_quantile_low_dose"
+ar_wide$ar_quantile_res[ar_wide$Sample_ID %in% subj_ar_3_1_res] = "Res_quantile_high_dose"
+ar_wide$ar_quantile_res[ar_wide$Sample_ID %in% subj_ar_common_res] = "Res_quantile_both_doses"
+ar_wide$ar_quantile_res[ar_wide$Sample_ID %in% subj_ar_1_0_sens] = "Sens_quantile_low_dose"
+ar_wide$ar_quantile_res[ar_wide$Sample_ID %in% subj_ar_3_1_sens] = "Sens_quantile_low_dose"
+ar_wide$ar_quantile_res[ar_wide$Sample_ID %in% subj_ar_common_sens] = "Sens_quantile_both_doses"
+
+# Alternative way to measure sensitivity.
+
+# What are the patterns based on slope: subjects responding primarily to low doses (low slope >0, high slope <0) and responding to high doses (low slope <0, high slope >0)? 
+subj_ar_low = ar_wide$Sample_ID[ar_wide$Ar_4h_1_slope > 0 & ar_wide$Ar_4h_3_1_slope < 0]
+subj_ar_high = ar_wide$Sample_ID[ar_wide$Ar_4h_1_slope < 0 & ar_wide$Ar_4h_3_1_slope > 0]
+subj_ar_low # low dose responders (early sensitivity)
+subj_ar_high # high dose responders (late sensitivity)
+
+# Also, the most sensitive people can be considered having significantly higher slope than mean (mean + 2 * sd)
+# The most resistant people will then have significantly lower slope than mean (mean - 2 * sd)
+
+subj_ar_1_0_res_slope = ar_wide$Sample_ID[ar_wide$Ar_4h_1_slope < (mean(ar_wide$Ar_4h_1_slope, na.rm = TRUE) - 2 * sd(ar_wide$Ar_4h_1_slope, na.rm = TRUE))]
+subj_ar_1_0_res_slope
+subj_ar_3_1_res_slope = ar_wide$Sample_ID[ar_wide$Ar_4h_3_1_slope < (mean(ar_wide$Ar_4h_3_1_slope, na.rm = TRUE) - 2 * sd(ar_wide$Ar_4h_3_1_slope, na.rm = TRUE))]
+subj_ar_3_1_res_slope
+subj_ar_common_res_slope = intersect(subj_ar_1_0_res_slope, subj_ar_3_1_res_slope)
+subj_ar_common_res_slope
+
+subj_ar_1_0_sens_slope = ar_wide$Sample_ID[ar_wide$Ar_4h_1_slope > (mean(ar_wide$Ar_4h_1_slope, na.rm = TRUE) + 2 * sd(ar_wide$Ar_4h_1_slope, na.rm = TRUE))]
+subj_ar_1_0_sens_slope
+subj_ar_3_1_sens_slope = ar_wide$Sample_ID[ar_wide$Ar_4h_3_1_slope > (mean(ar_wide$Ar_4h_3_1_slope, na.rm = TRUE) + 2 * sd(ar_wide$Ar_4h_3_1_slope, na.rm = TRUE))]
+subj_ar_3_1_sens_slope
+subj_ar_common_sens_slope = intersect(subj_ar_1_0_sens_slope, subj_ar_3_1_sens_slope)
+subj_ar_common_sens_slope
+
+# However! Overlap between Ar and Si, sensitive or resistant in folds/quantiles, not in SD's
+# Clearly need a higher N!
+
+# Adding the resistance factor for each subject based on slopes
+ar_wide$Ar_slope_res = "Not_resistant_not_sensitive"
+ar_wide$Ar_slope_res[ar_wide$Sample_ID %in% subj_ar_1_0_res_slope] = "Res_slope_low_dose"
+ar_wide$Ar_slope_res[ar_wide$Sample_ID %in% subj_ar_3_1_res_slope] = "Res_slope_high_dose"
+ar_wide$Ar_slope_res[ar_wide$Sample_ID %in% subj_ar_common_res_slope] = "Res_slope_both_doses"
+ar_wide$Ar_slope_res[ar_wide$Sample_ID %in% subj_ar_1_0_sens_slope] = "Sens_slope_low_dose"
+ar_wide$Ar_slope_res[ar_wide$Sample_ID %in% subj_ar_3_1_sens_slope] = "Sens_slope_low_dose"
+ar_wide$Ar_slope_res[ar_wide$Sample_ID %in% subj_ar_common_sens_slope] = "Sens_slope_both_doses"
+
+write.csv(ar_wide, "18B_Ar_w_resistance.csv", row.names = FALSE)
+```
+
+
+
+## Combining Si and Fe and Ar and comparing responses to Si and Fe and Ar!
+
+```{r}
+## Compare Si and Fe and Ar responses
+
+# First, let's combine both long and wide tables
+# No need to duplicate columns
+colnames_common = intersect(colnames(si_wide), colnames(fe_wide))
+colnames_common = intersect(colnames_common, colnames(ar_wide))
+colnames_common = colnames_common[colnames_common !="Sample_ID"]
+fe_wide_new = fe_wide[,!(colnames(fe_wide) %in% colnames_common)]
+ar_wide_new = ar_wide[,!(colnames(ar_wide) %in% colnames_common)]
+si_fe_wide = merge(si_wide, fe_wide_new, by.x = "Sample_ID", by.y = "Sample_ID")
+si_fe_ar_wide = merge(si_fe_wide, ar_wide_new, by.x = "Sample_ID", by.y = "Sample_ID")
+## This is the combined wide table
+si_fe_ar_long = rbind(si_avg, fe_avg, ar_avg) ## This is the combined long table
+write.csv(si_fe_ar_wide, "BNL_18B_Si_Fe_Ar_wide.csv", row.names = FALSE)
+write.csv(si_fe_ar_long, "BNL_18B_Si_Fe_Ar_long.csv", row.names = FALSE)
+
+# First, let's look at the absolute values.
+# Do subjects who have more RIFs in response to Si also have more RIFs in response to Fe and more RIFs in response to Ar? 
+
+# First, calculate correlations, their p values and Benjamini-Hochberg adjusted p values
+colnames_abs_si_fe_ar_wide = as.character(read.csv("Si_Fe_Ar_list_abs_val.csv", sep = ",", header = FALSE)[,1])
+si_fe_ar_wide_abs = si_fe_ar_wide[,colnames(si_fe_ar_wide) %in% colnames_abs_si_fe_ar_wide]
+si_fe_ar_abs_cor = cor(si_fe_ar_wide_abs, method = "pearson", use = "complete.obs")
+si_fe_ar_abs_cor_p = cor.mtest(as.matrix(si_fe_ar_wide_abs))$p
+colnames(si_fe_ar_abs_cor_p) = colnames(si_fe_ar_abs_cor)
+rownames(si_fe_ar_abs_cor_p) = rownames(si_fe_ar_abs_cor)
+si_fe_ar_abs_cor_padj = p.adjust(si_fe_ar_abs_cor_p, method = "fdr")
+# Now plot it!
+dev.new() ## Remember to run this from CONSOLE!! For whatever reason doesn't work as a chunk.
+pdf(file = "Si_Fe_Ar_abs_corrplot.pdf")
+corrplot(si_fe_ar_abs_cor, type = "upper", tl.col = "black", tl.srt = 45, tl.cex = 0.7, order = "alphabet", p.mat = si_fe_ar_abs_cor_p, sig.level = .05, number.cex = 0.5, insig = "blank")
+dev.off() ## Remember to run this from CONSOLE!! For whatever reason doesn't work as a chunk.
+
+# Then, let's compare fold changes.
+# Do subjects who have a higher fold change in response to Si also have higher fold change in response to Fe or Ar?
+# Here we should probably use slopes for dose and **not** for fluence, because we are matching the two! 
+# In individual differences, it matters less because we are dividing everyone by the same denominator and looking for outliers. Unless we are looking for common Fe/Si sensitive people, in which case it may help to stick to the same 4h and the same 0.3Gy dose value (instead of fluence), if at all... 
+
+si_fe_ar_wide_abs$Fe_4h_1_slope_Gy = (si_fe_ar_wide_abs$Fe_4h_1.1 - si_fe_ar_wide_abs$Fe_4h_0)/0.3
+si_fe_ar_wide_abs$Fe_4h_3_slope_Gy = (si_fe_ar_wide_abs$Fe_4h_3 - si_fe_ar_wide_abs$Fe_4h_1.1)/0.52
+si_fe_ar_wide_abs$Fe_24h_1_slope_Gy = (si_fe_ar_wide_abs$Fe_24h_1.1 - si_fe_ar_wide_abs$Fe_24h_0)/0.3
+si_fe_ar_wide_abs$Fe_24h_3_slope_Gy = (si_fe_ar_wide_abs$Fe_24h_3 - si_fe_ar_wide_abs$Fe_24h_1.1)/0.52
+si_fe_ar_wide_abs$Si_4h_1_slope_Gy = (si_fe_ar_wide_abs$Si_4h_1.1 - si_fe_ar_wide_abs$Si_4h_0)/0.1
+si_fe_ar_wide_abs$Si_4h_3_slope_Gy = (si_fe_ar_wide_abs$Si_4h_3 - si_fe_ar_wide_abs$Si_4h_1.1)/0.2
+si_fe_ar_wide_abs$Si_24h_1_slope_Gy = (si_fe_ar_wide_abs$Si_24h_1.1 - si_fe_ar_wide_abs$Si_24h_0)/0.1
+si_fe_ar_wide_abs$Si_24h_3_slope_Gy = (si_fe_ar_wide_abs$Si_24h_3 - si_fe_ar_wide_abs$Si_24h_1.1)/0.2
+si_fe_ar_wide_abs$Ar_4h_1_slope_Gy = (si_fe_ar_wide_abs$Ar_4h_1.1 - si_fe_ar_wide_abs$Ar_4h_0)/0.18
+si_fe_ar_wide_abs$Ar_4h_3_slope_Gy = (si_fe_ar_wide_abs$Ar_4h_3 - si_fe_ar_wide_abs$Ar_4h_1.1)/0.32
+si_fe_ar_wide_abs$Ar_24h_1_slope_Gy = (si_fe_ar_wide_abs$Ar_24h_1.1 - si_fe_ar_wide_abs$Ar_24h_0)/0.18
+si_fe_ar_wide_abs$Ar_24h_3_slope_Gy = (si_fe_ar_wide_abs$Ar_24h_3 - si_fe_ar_wide_abs$Ar_24h_1.1)/0.32
+
+si_fe_ar_wide_slope = si_fe_ar_wide_abs[,grep("slope_Gy", colnames(si_fe_ar_wide_abs))]
+
+si_fe_ar_slope_cor = cor(si_fe_ar_wide_slope, method = "pearson", use = "complete.obs")
+si_fe_ar_slope_cor_p = cor.mtest(as.matrix(si_fe_ar_wide_slope))$p
+colnames(si_fe_ar_slope_cor_p) = colnames(si_fe_ar_slope_cor)
+rownames(si_fe_ar_slope_cor_p) = rownames(si_fe_ar_slope_cor)
+si_fe_slope_ar_cor_padj = p.adjust(si_fe_ar_slope_cor_p, method = "fdr")
+# Now plot it!
+corrplot(si_fe_ar_slope_cor, type = "upper",
+         tl.col = "black", tl.srt = 45, tl.cex = 0.7, order = "alphabet", p.mat = si_fe_ar_slope_cor_p, sig.level = .05, number.cex = 0.5, insig = "blank")
+```
+
+
+```{r}
+
+# Turn all into doses and plot together? (Doses are basically fluences adjusted for LET...0.1/0.3 Gy for Si and 0.3/0.82 Gy for Fe)
+# will need looong dataframes again (from wide)
+# Will do doses in centiGray
+
+si_fe_ar_long$Dose = "tempo"
+si_fe_ar_long$Dose[si_fe_ar_long$Fluence == "0"] = "0"
+si_fe_ar_long$Dose[(si_fe_ar_long$Rad_type == "Si" & si_fe_ar_long$Fluence == "1.1")] = "10"
+si_fe_ar_long$Dose[(si_fe_ar_long$Rad_type == "Si" & si_fe_ar_long$Fluence == "3")] = "30"
+si_fe_ar_long$Dose[(si_fe_ar_long$Rad_type == "Fe" & si_fe_ar_long$Fluence == "1.1")] = "30"
+si_fe_ar_long$Dose[(si_fe_ar_long$Rad_type == "Fe" & si_fe_ar_long$Fluence == "3")] = "82"
+si_fe_ar_long$Dose[(si_fe_ar_long$Rad_type == "Ar" & si_fe_ar_long$Fluence == "1.1")] = "18"
+si_fe_ar_long$Dose[(si_fe_ar_long$Rad_type == "Ar" & si_fe_ar_long$Fluence == "3")] = "50"
+si_fe_ar_long$Dose_Gy = as.numeric(si_fe_ar_long$Dose)
+
+dose_plot = ggplot(si_fe_ar_long, aes(x = Dose_Gy, y = avg_nfoci, col = Rad_type)) + geom_point() + geom_jitter() 
+facet(dose_plot, facet.by = 'Timepoint')
+
+si_fe_ar_long$Rad_type = factor(si_fe_ar_long$Rad_type, levels = c("Si", "Ar", "Fe")) 
+
+fluence_plot = ggplot(si_fe_ar_long, aes(x = Fluence, y = avg_nfoci, col = Gender)) + geom_boxplot()
+facet(fluence_plot, facet.by = c('Timepoint', 'Rad_type'), nrow = 2, ncol = 3)
+
+## This is non normalized. Add normalization
+si_fe_ar_wide_norm = dcast(si_fe_ar_long, Sample_ID ~ Fluence_Timepoint, value.var = "avg_nfoci")
+si_fe_ar_wide_norm$Fe_4h_0_norm = si_fe_ar_wide_norm$Fe_4h_0 - mean(si_fe_ar_wide_norm$Fe_4h_0, na.rm = TRUE)
+si_fe_ar_wide_norm$Si_4h_0_norm = si_fe_ar_wide_norm$Si_4h_0 - mean(si_fe_ar_wide_norm$Si_4h_0, na.rm = TRUE)
+si_fe_ar_wide_norm$Ar_4h_0_norm = si_fe_ar_wide_norm$Ar_4h_0 - mean(si_fe_ar_wide_norm$Ar_4h_0, na.rm = TRUE)
+si_fe_ar_wide_norm$Fe_24h_0_norm = si_fe_ar_wide_norm$Fe_24h_0 - mean(si_fe_ar_wide_norm$Fe_24h_0, na.rm = TRUE)
+si_fe_ar_wide_norm$Si_24h_0_norm = si_fe_ar_wide_norm$Si_24h_0 - mean(si_fe_ar_wide_norm$Si_24h_0, na.rm = TRUE)
+si_fe_ar_wide_norm$Ar_24h_0_norm = si_fe_ar_wide_norm$Ar_24h_0 - mean(si_fe_ar_wide_norm$Ar_24h_0, na.rm = TRUE)
+si_fe_ar_wide_norm$Fe_4h_1.1_norm = si_fe_ar_wide_norm$Fe_4h_1.1 - si_fe_ar_wide_norm$Fe_4h_0
+si_fe_ar_wide_norm$Fe_4h_3_norm = si_fe_ar_wide_norm$Fe_4h_3 - si_fe_ar_wide_norm$Fe_4h_0
+si_fe_ar_wide_norm$Fe_24h_1.1_norm = si_fe_ar_wide_norm$Fe_24h_1.1 - si_fe_ar_wide_norm$Fe_24h_0
+si_fe_ar_wide_norm$Fe_24h_3_norm = si_fe_ar_wide_norm$Fe_24h_3 - si_fe_ar_wide_norm$Fe_24h_0
+si_fe_ar_wide_norm$Si_4h_1.1_norm = si_fe_ar_wide_norm$Si_4h_1.1 - si_fe_ar_wide_norm$Si_4h_0
+si_fe_ar_wide_norm$Si_4h_3_norm = si_fe_ar_wide_norm$Si_4h_3 - si_fe_ar_wide_norm$Si_4h_0
+si_fe_ar_wide_norm$Si_24h_1.1_norm = si_fe_ar_wide_norm$Si_24h_1.1 - si_fe_ar_wide_norm$Si_24h_0
+si_fe_ar_wide_norm$Si_24h_3_norm = si_fe_ar_wide_norm$Si_24h_3 - si_fe_ar_wide_norm$Si_24h_0
+si_fe_ar_wide_norm$Ar_4h_1.1_norm = si_fe_ar_wide_norm$Ar_4h_1.1 - si_fe_ar_wide_norm$Ar_4h_0
+si_fe_ar_wide_norm$Ar_4h_3_norm = si_fe_ar_wide_norm$Ar_4h_3 - si_fe_ar_wide_norm$Ar_4h_0
+si_fe_ar_wide_norm$Ar_24h_1.1_norm = si_fe_ar_wide_norm$Ar_24h_1.1 - si_fe_ar_wide_norm$Ar_24h_0
+si_fe_ar_wide_norm$Ar_24h_3_norm = si_fe_ar_wide_norm$Ar_24h_3 - si_fe_ar_wide_norm$Ar_24h_0
+
+si_fe_ar_long_norm_only = melt(si_fe_ar_wide_norm, id.vars = "Sample_ID", measure.vars = c("Si_4h_1.1_norm", "Si_4h_3_norm", "Si_24h_1.1_norm", "Si_24h_3_norm", "Fe_4h_1.1_norm", "Fe_4h_3_norm", "Fe_24h_1.1_norm", "Fe_24h_3_norm", "Si_4h_0_norm", "Si_24h_0_norm", "Fe_4h_0_norm", "Fe_24h_0_norm", "Ar_4h_1.1_norm", "Ar_4h_3_norm", "Ar_24h_1.1_norm", "Ar_24h_3_norm", "Ar_4h_0_norm", "Ar_24h_0_norm"), variable.name = "Normalized_metric", value.name = "norm_avg_nfoci")
+
+si_fe_ar_long_norm_only$ID_metric = paste(si_fe_ar_long_norm_only$Sample_ID, si_fe_ar_long_norm_only$Normalized_metric, sep = "_")
+
+si_fe_ar_long$ID_Fluence_Timepoint_norm_to_merge = paste(si_fe_ar_long$Sample_ID, si_fe_ar_long$Rad_type, si_fe_ar_long$Timepoint, si_fe_ar_long$Fluence, "norm", sep = "_")
+
+si_fe_ar_long_norm = merge(si_fe_ar_long, si_fe_ar_long_norm_only, by.x = "ID_Fluence_Timepoint_norm_to_merge", by.y = "ID_metric")
+
+fluence_plot_norm = ggplot(si_fe_ar_long_norm, aes(x = Fluence, y = norm_avg_nfoci, col = Gender)) + geom_point() + geom_jitter()
+facet(fluence_plot_norm, facet.by = c('Timepoint', 'Rad_type'), nrow = 3, ncol = 2)
+
+#dose_plot_norm = ggplot(si_fe_ar_long_norm, aes(x = Dose_Gy, y = norm_avg_nfoci, col = Rad_type)) + geom_jitter(aes(shape = ".", alpha = 0.5)) +
+  #geom_smooth(data = si_fe_ar_long_norm_no_Fe3, aes(col = Rad_type), method = "glm") + 
+  #geom_smooth(data = si_fe_ar_long_norm_Fe3_only, aes(col = Rad_type), method = "glm") +
+  #ylim(-2,5)
+
+dose_plot_norm = ggplot(si_fe_ar_long_norm, aes(x = Dose_Gy, y = norm_avg_nfoci, col = Rad_type)) + geom_jitter(aes(shape = ".", alpha = 0.5)) + ylim(-2,2.5)
+facet(dose_plot_norm, facet.by = 'Timepoint')
+ggsave("normalized_by_dose_NOT_delta_with_Ar.pdf", width = 10, height = 10, units = "in")
+
+## Now, add normalization by "delta RIF/RIF"
+si_fe_ar_wide_norm = dcast(si_fe_ar_long, Sample_ID ~ Fluence_Timepoint, value.var = "avg_nfoci")
+si_fe_ar_wide_norm$Fe_4h_0_norm_delta = (si_fe_ar_wide_norm$Fe_4h_0 - mean(si_fe_ar_wide_norm$Fe_4h_0, na.rm = TRUE))/mean(si_fe_ar_wide_norm$Fe_4h_0, na.rm = TRUE)
+si_fe_ar_wide_norm$Si_4h_0_norm_delta = (si_fe_ar_wide_norm$Si_4h_0 - mean(si_fe_ar_wide_norm$Si_4h_0, na.rm = TRUE))/mean(si_fe_ar_wide_norm$Si_4h_0, na.rm = TRUE)
+si_fe_ar_wide_norm$Ar_4h_0_norm_delta = (si_fe_ar_wide_norm$Ar_4h_0 - mean(si_fe_ar_wide_norm$Ar_4h_0, na.rm = TRUE))/mean(si_fe_ar_wide_norm$Ar_4h_0, na.rm = TRUE)
+si_fe_ar_wide_norm$Fe_24h_0_norm_delta = (si_fe_ar_wide_norm$Fe_24h_0 - mean(si_fe_ar_wide_norm$Fe_24h_0, na.rm = TRUE))/mean(si_fe_ar_wide_norm$Fe_24h_0, na.rm = TRUE)
+si_fe_ar_wide_norm$Si_24h_0_norm_delta = (si_fe_ar_wide_norm$Si_24h_0 - mean(si_fe_ar_wide_norm$Si_24h_0, na.rm = TRUE))/mean(si_fe_ar_wide_norm$Si_24h_0, na.rm = TRUE)
+si_fe_ar_wide_norm$Ar_24h_0_norm_delta = (si_fe_ar_wide_norm$Ar_24h_0 - mean(si_fe_ar_wide_norm$Ar_24h_0, na.rm = TRUE))/mean(si_fe_ar_wide_norm$Ar_24h_0, na.rm = TRUE)
+si_fe_ar_wide_norm$Fe_4h_1.1_norm_delta = (si_fe_ar_wide_norm$Fe_4h_1.1 - si_fe_ar_wide_norm$Fe_4h_0)/si_fe_ar_wide_norm$Fe_4h_0
+si_fe_ar_wide_norm$Fe_4h_3_norm_delta = (si_fe_ar_wide_norm$Fe_4h_3 - si_fe_ar_wide_norm$Fe_4h_0)/si_fe_ar_wide_norm$Fe_4h_0
+si_fe_ar_wide_norm$Fe_24h_1.1_norm_delta = (si_fe_ar_wide_norm$Fe_24h_1.1 - si_fe_ar_wide_norm$Fe_24h_0)/si_fe_ar_wide_norm$Fe_24h_0
+si_fe_ar_wide_norm$Fe_24h_3_norm_delta = (si_fe_ar_wide_norm$Fe_24h_3 - si_fe_ar_wide_norm$Fe_24h_0)/si_fe_ar_wide_norm$Fe_24h_0
+si_fe_ar_wide_norm$Si_4h_1.1_norm_delta = (si_fe_ar_wide_norm$Si_4h_1.1 - si_fe_ar_wide_norm$Si_4h_0)/si_fe_ar_wide_norm$Si_4h_0
+si_fe_ar_wide_norm$Si_4h_3_norm_delta = (si_fe_ar_wide_norm$Si_4h_3 - si_fe_ar_wide_norm$Si_4h_0)/si_fe_ar_wide_norm$Si_4h_0
+si_fe_ar_wide_norm$Si_24h_1.1_norm_delta = (si_fe_ar_wide_norm$Si_24h_1.1 - si_fe_ar_wide_norm$Si_24h_0)/si_fe_ar_wide_norm$Si_24h_0
+si_fe_ar_wide_norm$Si_24h_3_norm_delta = (si_fe_ar_wide_norm$Si_24h_3 - si_fe_ar_wide_norm$Si_24h_0)/si_fe_ar_wide_norm$Si_24h_0
+si_fe_ar_wide_norm$Ar_4h_1.1_norm_delta = (si_fe_ar_wide_norm$Ar_4h_1.1 - si_fe_ar_wide_norm$Ar_4h_0)/si_fe_ar_wide_norm$Ar_4h_0
+si_fe_ar_wide_norm$Ar_4h_3_norm_delta = (si_fe_ar_wide_norm$Ar_4h_3 - si_fe_ar_wide_norm$Ar_4h_0)/si_fe_ar_wide_norm$Ar_4h_0
+si_fe_ar_wide_norm$Ar_24h_1.1_norm_delta = (si_fe_ar_wide_norm$Ar_24h_1.1 - si_fe_ar_wide_norm$Ar_24h_0)/si_fe_ar_wide_norm$Ar_24h_0
+si_fe_ar_wide_norm$Ar_24h_3_norm_delta = (si_fe_ar_wide_norm$Ar_24h_3 - si_fe_ar_wide_norm$Ar_24h_0)/si_fe_ar_wide_norm$Ar_24h_0
+
+si_fe_ar_long_norm_only_delta = melt(si_fe_ar_wide_norm, id.vars = "Sample_ID", measure.vars = c("Si_4h_1.1_norm_delta", "Si_4h_3_norm_delta", "Si_24h_1.1_norm_delta", "Si_24h_3_norm_delta", "Fe_4h_1.1_norm_delta", "Fe_4h_3_norm_delta", "Fe_24h_1.1_norm_delta", "Fe_24h_3_norm_delta", "Si_4h_0_norm_delta", "Si_24h_0_norm_delta", "Fe_4h_0_norm_delta", "Fe_24h_0_norm_delta", "Ar_4h_1.1_norm_delta", "Ar_4h_3_norm_delta", "Ar_24h_1.1_norm_delta", "Ar_24h_3_norm_delta", "Ar_4h_0_norm_delta", "Ar_24h_0_norm_delta"), variable.name = "Normalized_metric_delta", value.name = "norm_avg_nfoci_delta")
+
+si_fe_ar_long_norm_only_delta$ID_metric_delta = paste(si_fe_ar_long_norm_only_delta$Sample_ID, si_fe_ar_long_norm_only_delta$Normalized_metric_delta, sep = "_")
+
+si_fe_ar_long$ID_Fluence_Timepoint_norm_to_merge_delta = paste(si_fe_ar_long$Sample_ID, si_fe_ar_long$Rad_type, si_fe_ar_long$Timepoint, si_fe_ar_long$Fluence, "norm", "delta", sep = "_")
+
+si_fe_ar_long_norm_delta = merge(si_fe_ar_long, si_fe_ar_long_norm_only_delta, by.x = "ID_Fluence_Timepoint_norm_to_merge_delta", by.y = "ID_metric_delta")
+
+fluence_plot_norm_delta = ggplot(si_fe_ar_long_norm_delta, aes(x = Fluence, y = norm_avg_nfoci_delta, col = Gender)) + geom_point() + geom_jitter()
+facet(fluence_plot_norm_delta, facet.by = c('Timepoint', 'Rad_type'), nrow = 3, ncol = 2)
+
+fluence_plot_norm_delta = ggplot(si_fe_ar_long_norm_delta, aes(x = Fluence, y = norm_avg_nfoci_delta, col = Gender)) + geom_boxplot()
+facet(fluence_plot_norm_delta, facet.by = c('Timepoint', 'Rad_type'), nrow = 3, ncol = 2)
+
+
+dose_plot_norm_delta = ggplot(si_fe_ar_long_norm_delta, aes(x = Dose_Gy, y = norm_avg_nfoci_delta, col = Rad_type)) + geom_jitter(aes(alpha = 0.5))
+facet(dose_plot_norm_delta, facet.by = 'Timepoint')
+ggsave("Si_Fe_Ar_normalized_by_dFF.pdf", width = 5, height = 5, units = "in")
+```
+
+```{r}
+## Who is sensitive, who is resistant? Let's consider both...
+plot_4h_slope_fe = ggplot(si_fe_ar_wide_abs, aes(x = Fe_4h_1_slope_Gy, y = Fe_4h_3_slope_Gy)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1) + geom_vline(xintercept = 0) + geom_hline(yintercept = 0) + xlim(-5, 5) + ylim(-5, 5) 
+plot_4h_slope_fe
+
+plot_24h_slope_fe = ggplot(si_fe_ar_wide_abs, aes(x = Fe_24h_1_slope_Gy, y = Fe_24h_3_slope_Gy)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1) + geom_vline(xintercept = 0) + geom_hline(yintercept = 0)
+plot_24h_slope_fe
+
+plot_4h_slope_si = ggplot(si_fe_ar_wide_abs, aes(x = Si_4h_1_slope_Gy, y = Si_4h_3_slope_Gy)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1) + geom_vline(xintercept = 0) + geom_hline(yintercept = 0)  + xlim(-5, 5) + ylim(-5, 5) 
+plot_4h_slope_si
+
+plot_24h_slope_si = ggplot(si_fe_ar_wide_abs, aes(x = Si_24h_1_slope_Gy, y = Si_24h_3_slope_Gy)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1) + geom_vline(xintercept = 0) + geom_hline(yintercept = 0) + xlim(-5, 5) + ylim(-5, 5) 
+plot_24h_slope_si
+
+plot_4h_slope_ar = ggplot(si_fe_ar_wide_abs, aes(x = Ar_4h_1_slope_Gy, y = Ar_4h_3_slope_Gy)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1) + geom_vline(xintercept = 0) + geom_hline(yintercept = 0)  + xlim(-5, 5) + ylim(-5, 5) 
+plot_4h_slope_ar
+
+plot_24h_slope_ar = ggplot(si_fe_ar_wide_abs, aes(x = Ar_24h_1_slope_Gy, y = Ar_24h_3_slope_Gy)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1) + geom_vline(xintercept = 0) + geom_hline(yintercept = 0) + xlim(-5, 5) + ylim(-5, 5) 
+plot_24h_slope_ar
+
+plot_grid(plot_4h_slope_si, plot_24h_slope_si, plot_4h_slope_ar, plot_24h_slope_ar, plot_4h_slope_fe, plot_24h_slope_fe, nrow = 3, ncol = 2, align  = "h")
+ggsave("all_pentafigures_with_Ar_by_DOSE_NOT_FLUENCE.pdf", width = 10, height = 10, units = "in")
+
+# Results: These are the pentafigures separating people based on the patterns of their responses to ionizing radiation. Slopes calculated based on DOSE, not fluence.
+```
