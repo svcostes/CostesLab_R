@@ -1,0 +1,1631 @@
+## Analysing CellROX intensity and  formation in response to different qualities and doses of ionizing radiation
+## In human samples! 
+## Egle Cekanaviciute, USRA/NASA Ames, May 2019
+## For runs 19A (Spring 2019) and 18B (Summer 2018)
+
+## Based on Sylvain's analysis of mouse data and my analysis of 18B DNA damage/repair foci data as well. 
+## To be expanded (in a separate file) by adding 19A data on DNA damage/repair foci, this is just the basics. 
+
+
+```{r}
+require('lattice')
+require('ggplot2')
+require('polynom')
+require('corrplot')
+require('ggpubr')
+require('plyr')
+require('reshape2')
+require('cowplot')
+```
+
+```{r}
+setwd("~/Desktop/BNL_19A_flow_analysis") ## Change as necessary: this is the main directory
+theme_set(theme_bw(base_size = 12)) ## For prettier graphs
+```
+
+```{r}
+## Read all flow data, which in this case includes metadata ROS and cell death data in WIDE format
+flow_18b = read.csv('/Users/ecekanav/Desktop/BNL_19A_flow_analysis/BNL_18B_sample_metadata_20190510.csv', sep = ",", header = TRUE)
+flow_19a = read.csv('/Users/ecekanav/Desktop/BNL_19A_flow_analysis/BNL_19A_sample_metadata_20190510.csv', sep = ",", header = TRUE)
+
+## And merge the two to make a combined table
+flow_all = merge(flow_18b, flow_19a, by.x = 'Sample_ID', by.y = 'Sample_ID', all.x = TRUE, all.y = FALSE)
+
+## Remove the samples with very low PBMC counts (<100)
+hist(flow_19a$Ar_PBMC_count_0, breaks = 100) ## 400 is a reasonable cutoff for PBMCs. We will use unirradiated/control cells for cutoff. 
+flow_19a$low_PBMC = FALSE
+flow_19a$low_PBMC[flow_19a$Ar_PBMC_count_0 < 100 | flow_19a$Si_PBMC_count_0 < 100 | flow_19a$Fe_PBMC_count_0 < 100 | flow_19a$Gamma_PBMC_count_0 < 100] = TRUE ## Would use 400, but 18B needs ~100! So will try 100 here too. 
+flow_19a_filt = flow_19a[flow_19a$low_PBMC == FALSE,]
+
+print("Initial number of samples in flow_19a") 
+print(nrow(flow_19a))
+print("Samples left after filtering in flow_19a") 
+print(nrow(flow_19a_filt))
+
+## Will use only filtered samples for future analysis 
+
+## Normalize cell death and CR
+flow_19a_filt$Si_1_dead_fold = flow_19a_filt$Si_Dead_percentage_1 / flow_19a_filt$Si_Dead_percentage_0
+flow_19a_filt$Si_1_dead_dff = (flow_19a_filt$Si_Dead_percentage_1 - flow_19a_filt$Si_Dead_percentage_0)/flow_19a_filt$Si_Dead_percentage_0 ## "delta F over F"
+flow_19a_filt$Si_1_dead_slope_dose = (flow_19a_filt$Si_Dead_percentage_1 - flow_19a_filt$Si_Dead_percentage_0) / 10 ## This is slope based on dose in centiGray
+flow_19a_filt$Si_1_dead_slope_fluence = (flow_19a_filt$Si_Dead_percentage_1 - flow_19a_filt$Si_Dead_percentage_0) / 1.1  ## This is slope based on fluence
+flow_19a_filt$Si_3_dead_fold = flow_19a_filt$Si_Dead_percentage_3 / flow_19a_filt$Si_Dead_percentage_0
+flow_19a_filt$Si_3_dead_dff = (flow_19a_filt$Si_Dead_percentage_3 - flow_19a_filt$Si_Dead_percentage_0)/flow_19a_filt$Si_Dead_percentage_0 ## "delta F over F"
+flow_19a_filt$Si_3_dead_slope_dose = (flow_19a_filt$Si_Dead_percentage_3 - flow_19a_filt$Si_Dead_percentage_1) / 20 ## This is slope based on dose in centiGray
+flow_19a_filt$Si_3_dead_slope_fluence = (flow_19a_filt$Si_Dead_percentage_3 - flow_19a_filt$Si_Dead_percentage_1) / 1.9  ## This is slope based on fluence
+
+flow_19a_filt$Ar_1_dead_fold = flow_19a_filt$Ar_Dead_percentage_1 / flow_19a_filt$Ar_Dead_percentage_0
+flow_19a_filt$Ar_1_dead_dff = (flow_19a_filt$Ar_Dead_percentage_1 - flow_19a_filt$Ar_Dead_percentage_0)/flow_19a_filt$Ar_Dead_percentage_0 ## "delta F over F"
+flow_19a_filt$Ar_1_dead_slope_dose = (flow_19a_filt$Ar_Dead_percentage_1 - flow_19a_filt$Ar_Dead_percentage_0) / 18 ## This is slope based on dose in centiGray
+flow_19a_filt$Ar_1_dead_slope_fluence = (flow_19a_filt$Ar_Dead_percentage_1 - flow_19a_filt$Ar_Dead_percentage_0) / 1.1  ## This is slope based on fluence
+flow_19a_filt$Ar_3_dead_fold = flow_19a_filt$Ar_Dead_percentage_3 / flow_19a_filt$Ar_Dead_percentage_0
+flow_19a_filt$Ar_3_dead_dff = (flow_19a_filt$Ar_Dead_percentage_3 - flow_19a_filt$Ar_Dead_percentage_0)/flow_19a_filt$Ar_Dead_percentage_0 ## "delta F over F"
+flow_19a_filt$Ar_3_dead_slope_dose = (flow_19a_filt$Ar_Dead_percentage_3 - flow_19a_filt$Ar_Dead_percentage_1) / 32 ## This is slope based on dose in centiGray
+flow_19a_filt$Ar_3_dead_slope_fluence = (flow_19a_filt$Ar_Dead_percentage_3 - flow_19a_filt$Ar_Dead_percentage_1) / 1.9  ## This is slope based on fluence
+
+flow_19a_filt$Fe_1_dead_fold = flow_19a_filt$Fe_Dead_percentage_1 / flow_19a_filt$Fe_Dead_percentage_0
+flow_19a_filt$Fe_1_dead_dff = (flow_19a_filt$Fe_Dead_percentage_1 - flow_19a_filt$Fe_Dead_percentage_0)/flow_19a_filt$Fe_Dead_percentage_0 ## "delta F over F"
+flow_19a_filt$Fe_1_dead_slope_dose = (flow_19a_filt$Fe_Dead_percentage_1 - flow_19a_filt$Fe_Dead_percentage_0) / 30 ## This is slope based on dose in centiGray
+flow_19a_filt$Fe_1_dead_slope_fluence = (flow_19a_filt$Fe_Dead_percentage_1 - flow_19a_filt$Fe_Dead_percentage_0) / 1.1  ## This is slope based on fluence
+flow_19a_filt$Fe_3_dead_fold = flow_19a_filt$Fe_Dead_percentage_3 / flow_19a_filt$Fe_Dead_percentage_0
+flow_19a_filt$Fe_3_dead_dff = (flow_19a_filt$Fe_Dead_percentage_3 - flow_19a_filt$Fe_Dead_percentage_0)/flow_19a_filt$Fe_Dead_percentage_0 ## "delta F over F"
+flow_19a_filt$Fe_3_dead_slope_dose = (flow_19a_filt$Fe_Dead_percentage_3 - flow_19a_filt$Fe_Dead_percentage_1) / 52 ## This is slope based on dose in centiGray
+flow_19a_filt$Fe_3_dead_slope_fluence = (flow_19a_filt$Fe_Dead_percentage_3 - flow_19a_filt$Fe_Dead_percentage_1) / 1.9  ## This is slope based on fluence
+
+flow_19a_filt$Gamma_10_dead_fold = flow_19a_filt$Gamma_Dead_percentage_10 / flow_19a_filt$Gamma_Dead_percentage_0
+flow_19a_filt$Gamma_10_dead_dff = (flow_19a_filt$Gamma_Dead_percentage_10 - flow_19a_filt$Gamma_Dead_percentage_0)/flow_19a_filt$Gamma_Dead_percentage_0 ## "delta F over F"
+flow_19a_filt$Gamma_10_dead_slope_dose = (flow_19a_filt$Gamma_Dead_percentage_10 - flow_19a_filt$Gamma_Dead_percentage_0) / 10 ## This is slope based on dose in centiGray
+flow_19a_filt$Gamma_100_dead_fold = flow_19a_filt$Gamma_Dead_percentage_100 / flow_19a_filt$Gamma_Dead_percentage_0
+flow_19a_filt$Gamma_100_dead_dff = (flow_19a_filt$Gamma_Dead_percentage_100 - flow_19a_filt$Gamma_Dead_percentage_0)/flow_19a_filt$Gamma_Dead_percentage_0 ## "delta F over F"
+flow_19a_filt$Gamma_100_dead_slope_dose = (flow_19a_filt$Gamma_Dead_percentage_100 - flow_19a_filt$Gamma_Dead_percentage_10) / 90 ## This is slope based on dose in centiGray
+
+
+flow_19a_filt$Si_1_cr_fold = flow_19a_filt$Si_Live_CR_mean_1 / flow_19a_filt$Si_Live_CR_mean_0
+flow_19a_filt$Si_1_cr_dff = (flow_19a_filt$Si_Live_CR_mean_1 - flow_19a_filt$Si_Live_CR_mean_0)/flow_19a_filt$Si_Live_CR_mean_0 ## "delta F over F"
+flow_19a_filt$Si_1_cr_slope_dose = (flow_19a_filt$Si_Live_CR_mean_1 - flow_19a_filt$Si_Live_CR_mean_0) / 10 ## This is slope based on dose in centiGray
+flow_19a_filt$Si_1_cr_slope_fluence = (flow_19a_filt$Si_Live_CR_mean_1 - flow_19a_filt$Si_Live_CR_mean_0) / 1.1  ## This is slope based on fluence
+flow_19a_filt$Si_3_cr_fold = flow_19a_filt$Si_Live_CR_mean_3 / flow_19a_filt$Si_Live_CR_mean_0
+flow_19a_filt$Si_3_cr_dff = (flow_19a_filt$Si_Live_CR_mean_3 - flow_19a_filt$Si_Live_CR_mean_0)/flow_19a_filt$Si_Live_CR_mean_0 ## "delta F over F"
+flow_19a_filt$Si_3_cr_slope_dose = (flow_19a_filt$Si_Live_CR_mean_3 - flow_19a_filt$Si_Live_CR_mean_1) / 20 ## This is slope based on dose in centiGray
+flow_19a_filt$Si_3_cr_slope_fluence = (flow_19a_filt$Si_Live_CR_mean_3 - flow_19a_filt$Si_Live_CR_mean_1) / 1.9  ## This is slope based on fluence
+
+flow_19a_filt$Ar_1_cr_fold = flow_19a_filt$Ar_Live_CR_mean_1 / flow_19a_filt$Ar_Live_CR_mean_0
+flow_19a_filt$Ar_1_cr_dff = (flow_19a_filt$Ar_Live_CR_mean_1 - flow_19a_filt$Ar_Live_CR_mean_0)/flow_19a_filt$Ar_Live_CR_mean_0 ## "delta F over F"
+flow_19a_filt$Ar_1_cr_slope_dose = (flow_19a_filt$Ar_Live_CR_mean_1 - flow_19a_filt$Ar_Live_CR_mean_0) / 18 ## This is slope based on dose in centiGray
+flow_19a_filt$Ar_1_cr_slope_fluence = (flow_19a_filt$Ar_Live_CR_mean_1 - flow_19a_filt$Ar_Live_CR_mean_0) / 1.1  ## This is slope based on fluence
+flow_19a_filt$Ar_3_cr_fold = flow_19a_filt$Ar_Live_CR_mean_3 / flow_19a_filt$Ar_Live_CR_mean_0
+flow_19a_filt$Ar_3_cr_dff = (flow_19a_filt$Ar_Live_CR_mean_3 - flow_19a_filt$Ar_Live_CR_mean_0)/flow_19a_filt$Ar_Live_CR_mean_0 ## "delta F over F"
+flow_19a_filt$Ar_3_cr_slope_dose = (flow_19a_filt$Ar_Live_CR_mean_3 - flow_19a_filt$Ar_Live_CR_mean_1) / 32 ## This is slope based on dose in centiGray
+flow_19a_filt$Ar_3_cr_slope_fluence = (flow_19a_filt$Ar_Live_CR_mean_3 - flow_19a_filt$Ar_Live_CR_mean_1) / 1.9  ## This is slope based on fluence
+
+flow_19a_filt$Fe_1_cr_fold = flow_19a_filt$Fe_Live_CR_mean_1 / flow_19a_filt$Fe_Live_CR_mean_0
+flow_19a_filt$Fe_1_cr_dff = (flow_19a_filt$Fe_Live_CR_mean_1 - flow_19a_filt$Fe_Live_CR_mean_0)/flow_19a_filt$Fe_Live_CR_mean_0 ## "delta F over F"
+flow_19a_filt$Fe_1_cr_slope_dose = (flow_19a_filt$Fe_Live_CR_mean_1 - flow_19a_filt$Fe_Live_CR_mean_0) / 30 ## This is slope based on dose in centiGray
+flow_19a_filt$Fe_1_cr_slope_fluence = (flow_19a_filt$Fe_Live_CR_mean_1 - flow_19a_filt$Fe_Live_CR_mean_0) / 1.1  ## This is slope based on fluence
+flow_19a_filt$Fe_3_cr_fold = flow_19a_filt$Fe_Live_CR_mean_3 / flow_19a_filt$Fe_Live_CR_mean_0
+flow_19a_filt$Fe_3_cr_dff = (flow_19a_filt$Fe_Live_CR_mean_3 - flow_19a_filt$Fe_Live_CR_mean_0)/flow_19a_filt$Fe_Live_CR_mean_0 ## "delta F over F"
+flow_19a_filt$Fe_3_cr_slope_dose = (flow_19a_filt$Fe_Live_CR_mean_3 - flow_19a_filt$Fe_Live_CR_mean_1) / 52 ## This is slope based on dose in centiGray
+flow_19a_filt$Fe_3_cr_slope_fluence = (flow_19a_filt$Fe_Live_CR_mean_3 - flow_19a_filt$Fe_Live_CR_mean_1) / 1.9  ## This is slope based on fluence
+
+flow_19a_filt$Gamma_10_cr_fold = flow_19a_filt$Gamma_Live_CR_mean_10 / flow_19a_filt$Gamma_Live_CR_mean_0
+flow_19a_filt$Gamma_10_cr_dff = (flow_19a_filt$Gamma_Live_CR_mean_10 - flow_19a_filt$Gamma_Live_CR_mean_0)/flow_19a_filt$Gamma_Live_CR_mean_0 ## "delta F over F"
+flow_19a_filt$Gamma_10_cr_slope_dose = (flow_19a_filt$Gamma_Live_CR_mean_10 - flow_19a_filt$Gamma_Live_CR_mean_0) / 10 ## This is slope based on dose in centiGray
+flow_19a_filt$Gamma_100_cr_fold = flow_19a_filt$Gamma_Live_CR_mean_100 / flow_19a_filt$Gamma_Live_CR_mean_0
+flow_19a_filt$Gamma_100_cr_dff = (flow_19a_filt$Gamma_Live_CR_mean_100 - flow_19a_filt$Gamma_Live_CR_mean_0)/flow_19a_filt$Gamma_Live_CR_mean_0 ## "delta F over F"
+flow_19a_filt$Gamma_100_cr_slope_dose = (flow_19a_filt$Gamma_Live_CR_mean_100 - flow_19a_filt$Gamma_Live_CR_mean_10) / 90 ## This is slope based on dose in centiGray
+
+```
+
+```{r}
+## Compare samples
+ar_0_death_sorted = sort(flow_19a_filt$Ar_Dead_percentage_0)
+ar_0_death_sorted_low = mean(ar_0_death_sorted[1:length(ar_0_death_sorted)/10])
+ar_0_death_sorted_high = mean(ar_0_death_sorted[(length(ar_0_death_sorted)*9/10):length(ar_0_death_sorted)])
+ar_0_death_sorted_fold = ar_0_death_sorted_high/ar_0_death_sorted_low
+
+ar_3_death_sorted = sort(flow_19a_filt$Ar_Dead_percentage_3)
+ar_3_death_sorted_low = mean(ar_3_death_sorted[1:length(ar_3_death_sorted)/10])
+ar_3_death_sorted_high = mean(ar_3_death_sorted[(length(ar_3_death_sorted)*9/10):length(ar_3_death_sorted)])
+ar_3_death_sorted_fold = ar_3_death_sorted_high/ar_3_death_sorted_low
+
+fe_0_death_sorted = sort(flow_19a_filt$Fe_Dead_percentage_0)
+fe_0_death_sorted_low = mean(fe_0_death_sorted[1:length(fe_0_death_sorted)/10])
+fe_0_death_sorted_high = mean(fe_0_death_sorted[(length(fe_0_death_sorted)*9/10):length(fe_0_death_sorted)])
+fe_0_death_sorted_fold = fe_0_death_sorted_high/fe_0_death_sorted_low
+
+fe_3_death_sorted = sort(flow_19a_filt$Fe_Dead_percentage_3)
+fe_3_death_sorted_low = mean(fe_3_death_sorted[1:length(fe_3_death_sorted)/10])
+fe_3_death_sorted_high = mean(fe_3_death_sorted[(length(fe_3_death_sorted)*9/10):length(fe_3_death_sorted)])
+fe_3_death_sorted_fold = fe_3_death_sorted_high/fe_3_death_sorted_low
+
+si_0_death_sorted = sort(flow_19a_filt$Si_Dead_percentage_0)
+si_0_death_sorted_low = mean(si_0_death_sorted[1:length(si_0_death_sorted)/10])
+si_0_death_sorted_high = mean(si_0_death_sorted[(length(si_0_death_sorted)*9/10):length(si_0_death_sorted)])
+si_0_death_sorted_fold = si_0_death_sorted_high/si_0_death_sorted_low
+
+si_3_death_sorted = sort(flow_19a_filt$Si_Dead_percentage_3)
+si_3_death_sorted_low = mean(si_3_death_sorted[1:length(si_3_death_sorted)/10])
+si_3_death_sorted_high = mean(si_3_death_sorted[(length(si_3_death_sorted)*9/10):length(si_3_death_sorted)])
+si_3_death_sorted_fold = si_3_death_sorted_high/si_3_death_sorted_low
+
+ar_0_for_cr = flow_19a_filt[(flow_19a_filt$Set != "Set_2"),] ## because Set 2 Ar at 0 was restained and got weird CR values
+ar_0_cr_sorted = sort(ar_0_for_cr$Ar_Live_CR_mean_0)
+ar_0_cr_sorted_low = mean(ar_0_cr_sorted[1:length(ar_0_cr_sorted)/10])
+ar_0_cr_sorted_high = mean(ar_0_cr_sorted[(length(ar_0_cr_sorted)*9/10):length(ar_0_cr_sorted)])
+ar_0_cr_sorted_fold = ar_0_cr_sorted_high/ar_0_cr_sorted_low
+
+fe_0_cr_sorted = sort(flow_19a_filt$Fe_Live_CR_mean_0)
+fe_0_cr_sorted_low = mean(fe_0_cr_sorted[1:length(fe_0_cr_sorted)/10])
+fe_0_cr_sorted_high = mean(fe_0_cr_sorted[(length(fe_0_cr_sorted)*9/10):length(fe_0_cr_sorted)])
+fe_0_cr_sorted_fold = fe_0_cr_sorted_high/fe_0_cr_sorted_low
+
+si_0_cr_sorted = sort(flow_19a_filt$Si_Live_CR_mean_0)
+si_0_cr_sorted_low = mean(si_0_cr_sorted[1:length(si_0_cr_sorted)/10])
+si_0_cr_sorted_high = mean(si_0_cr_sorted[(length(si_0_cr_sorted)*9/10):length(si_0_cr_sorted)])
+si_0_cr_sorted_fold = si_0_cr_sorted_high/si_0_cr_sorted_low
+
+## If we look at 3 vs. 0 particle slopes, we need to add them to the table
+flow_19a_filt$Si_3_0_dead_slope_fluence = (flow_19a_filt$Si_Dead_percentage_3 - flow_19a_filt$Si_Dead_percentage_0)/3
+flow_19a_filt$Ar_3_0_dead_slope_fluence = (flow_19a_filt$Ar_Dead_percentage_3 - flow_19a_filt$Ar_Dead_percentage_0)/3
+flow_19a_filt$Fe_3_0_dead_slope_fluence = (flow_19a_filt$Fe_Dead_percentage_3 - flow_19a_filt$Fe_Dead_percentage_0)/3
+
+si_3_0_death_slopes_sorted = sort(flow_19a_filt$Si_3_0_dead_slope_fluence)
+si_3_0_death_slopes_sorted_low = mean(si_3_0_death_slopes_sorted[1:length(si_3_0_death_slopes_sorted)/10])
+si_3_0_death_slopes_sorted_high = mean(si_3_0_death_slopes_sorted[(length(si_3_0_death_slopes_sorted)*9/10):length(si_3_0_death_slopes_sorted)])
+si_3_0_death_slopes_sorted_fold = si_3_0_death_slopes_sorted_high/si_3_0_death_slopes_sorted_low
+si_3_0_death_slopes_sorted_diff = si_3_0_death_slopes_sorted_high-si_3_0_death_slopes_sorted_low
+
+
+ar_3_0_death_slopes_sorted = sort(flow_19a_filt$Ar_3_0_dead_slope_fluence)
+ar_3_0_death_slopes_sorted_low = mean(ar_3_0_death_slopes_sorted[1:length(ar_3_0_death_slopes_sorted)/10])
+ar_3_0_death_slopes_sorted_high = mean(ar_3_0_death_slopes_sorted[(length(ar_3_0_death_slopes_sorted)*9/10):length(ar_3_0_death_slopes_sorted)])
+ar_3_0_death_slopes_sorted_fold = ar_3_0_death_slopes_sorted_high/ar_3_0_death_slopes_sorted_low
+ar_3_0_death_slopes_sorted_diff = ar_3_0_death_slopes_sorted_high-ar_3_0_death_slopes_sorted_low
+
+fe_3_0_death_slopes_sorted = sort(flow_19a_filt$Fe_3_0_dead_slope_fluence)
+fe_3_0_death_slopes_sorted_low = mean(fe_3_0_death_slopes_sorted[1:length(fe_3_0_death_slopes_sorted)/10])
+fe_3_0_death_slopes_sorted_high = mean(fe_3_0_death_slopes_sorted[(length(fe_3_0_death_slopes_sorted)*9/10):length(fe_3_0_death_slopes_sorted)])
+fe_3_0_death_slopes_sorted_fold = fe_3_0_death_slopes_sorted_high/fe_3_0_death_slopes_sorted_low
+fe_3_0_death_slopes_sorted_diff = fe_3_0_death_slopes_sorted_high-fe_3_0_death_slopes_sorted_low
+
+si_dead_slope_low_high = flow_19a_filt[(flow_19a_filt$Si_1_dead_slope_fluence < flow_19a_filt$Si_3_dead_slope_fluence),]
+nrow(si_dead_slope_low_high)*100/nrow(flow_19a_filt)
+si_dead_slope_high_low = flow_19a_filt[(flow_19a_filt$Si_1_dead_slope_fluence > flow_19a_filt$Si_3_dead_slope_fluence),]
+nrow(si_dead_slope_high_low)*100/nrow(flow_19a_filt)
+
+ar_dead_slope_low_high = flow_19a_filt[(flow_19a_filt$Ar_1_dead_slope_fluence < flow_19a_filt$Ar_3_dead_slope_fluence),]
+nrow(ar_dead_slope_low_high)*100/nrow(flow_19a_filt)
+ar_dead_slope_high_low = flow_19a_filt[(flow_19a_filt$Ar_1_dead_slope_fluence > flow_19a_filt$Ar_3_dead_slope_fluence),]
+nrow(ar_dead_slope_high_low)*100/nrow(flow_19a_filt)
+
+fe_dead_slope_low_high = flow_19a_filt[(flow_19a_filt$Fe_1_dead_slope_fluence < flow_19a_filt$Fe_3_dead_slope_fluence),]
+nrow(fe_dead_slope_low_high)*100/nrow(flow_19a_filt)
+fe_dead_slope_high_low = flow_19a_filt[(flow_19a_filt$Fe_1_dead_slope_fluence > flow_19a_filt$Fe_3_dead_slope_fluence),]
+nrow(fe_dead_slope_high_low)*100/nrow(flow_19a_filt)
+
+```
+
+
+```{r}
+## Make long tables for each radiation quality
+
+## Starting with Si
+
+si_cr_dead_long = melt(flow_19a_filt, id.vars = c("Sample_ID", "Gender", "Age", "BMI", "BMI_group", "CMV", "FL3"), measure.vars = colnames(flow_19a_filt)[grepl("Si", colnames(flow_19a_filt))], variable.name = "Metric_detailed", value.name = "Percentage_CR_dead")
+si_cr_dead_long$BMI_group = factor(si_cr_dead_long$BMI_group, levels = c("Underweight", "Normal", "Overweight", "Obese")) ## ordering BMI levels
+si_cr_dead_long$Metric_detailed = as.character(si_cr_dead_long$Metric_detailed)
+si_cr_dead_long$Metric = "tempo"
+si_cr_dead_long$Fluence = "tempo"
+si_cr_dead_long$Norm = "raw"
+si_cr_dead_long$Metric[grepl("Live_CR",si_cr_dead_long$Metric_detailed)] = "ROS"
+si_cr_dead_long$Metric[grepl("Live_FL3_CR",si_cr_dead_long$Metric_detailed)] = "FL3_ROS"
+si_cr_dead_long$Metric[grepl("dead_fold",si_cr_dead_long$Metric_detailed)] = "Cell death fold"
+si_cr_dead_long$Metric[grepl("cr_fold",si_cr_dead_long$Metric_detailed)] = "ROS fold"
+si_cr_dead_long$Metric[grepl("Dead_percentage",si_cr_dead_long$Metric_detailed)] = "Cell death"
+si_cr_dead_long$Fluence[grepl("0",si_cr_dead_long$Metric_detailed)] = "0"
+si_cr_dead_long$Fluence[grepl("1",si_cr_dead_long$Metric_detailed)] = "1.1"
+si_cr_dead_long$Fluence[grepl("3",si_cr_dead_long$Metric_detailed)] = "3"
+si_cr_dead_long$Norm[grepl("fold",si_cr_dead_long$Metric_detailed)] = "fold"
+si_cr_dead_long$Norm[grepl("dff",si_cr_dead_long$Metric_detailed)] = "dff"
+si_cr_dead_long$Norm[grepl("slope_dose",si_cr_dead_long$Metric_detailed)] = "slope_dose"
+si_cr_dead_long$Norm[grepl("slope_fluence",si_cr_dead_long$Metric_detailed)] = "slope_fluence"
+
+si_dead_long = si_cr_dead_long[(si_cr_dead_long$Metric == "Cell death" & si_cr_dead_long$Norm == "raw"),]
+si_dead_long$Radiation_quality = "Si"
+si_cr_long = si_cr_dead_long[(si_cr_dead_long$Metric == "ROS" & si_cr_dead_long$Norm == "raw"),]
+si_cr_long$Radiation_quality = "Si"
+
+si_dead_long_fold = si_cr_dead_long[(si_cr_dead_long$Metric == "Cell death fold" & si_cr_dead_long$Norm == "fold"),]
+si_dead_long_fold$Radiation_quality = "Si"
+si_cr_long_fold = si_cr_dead_long[(si_cr_dead_long$Metric == "ROS fold" & si_cr_dead_long$Norm == "fold"),]
+si_cr_long_fold$Radiation_quality = "Si"
+  
+all_plot_dots_si_dead = ggplot(si_dead_long, aes(x = Fluence, y = Percentage_CR_dead, col = Gender)) + geom_point() + geom_jitter() + ylab("Dead, % all PBMCs")
+facet(all_plot_dots_si_dead, facet.by = 'Gender')
+  
+all_plot_dots_si_dead = ggplot(si_dead_long, aes(x = Fluence, y = Percentage_CR_dead, col = BMI_group)) + geom_boxplot() + ylab("Dead, % all PBMCs")
+facet(all_plot_dots_si_dead, facet.by = 'Gender')
+
+all_plot_dots_si_cr = ggplot(si_cr_long, aes(x = Fluence, y = Percentage_CR_dead, col = BMI_group)) + geom_boxplot() + ylab("Mean CR in live PBMCs")
+facet(all_plot_dots_si_cr, facet.by = 'Gender')
+
+all_plot_dots_si_cr = ggplot(si_cr_long, aes(x = Fluence, y = Percentage_CR_dead, col = Gender)) + geom_point() + geom_jitter() + ylab("Mean CR in live PBMCs")
+facet(all_plot_dots_si_cr, facet.by = 'Gender')
+
+```
+
+```{r}
+## Now for Fe
+
+fe_cr_dead_long = melt(flow_19a_filt, id.vars = c("Sample_ID", "Gender", "Age", "BMI", "BMI_group", "CMV", "FL3"), measure.vars = colnames(flow_19a_filt)[grepl("Fe", colnames(flow_19a_filt))], variable.name = "Metric_detailed", value.name = "Percentage_CR_dead")
+fe_cr_dead_long$BMI_group = factor(fe_cr_dead_long$BMI_group, levels = c("Underweight", "Normal", "Overweight", "Obese")) ## ordering BMI levels
+fe_cr_dead_long$Metric_detailed = as.character(fe_cr_dead_long$Metric_detailed)
+fe_cr_dead_long$Metric = "tempo"
+fe_cr_dead_long$Fluence = "tempo"
+fe_cr_dead_long$Norm = "raw"
+fe_cr_dead_long$Metric[grepl("cr_fold",fe_cr_dead_long$Metric_detailed)] = "ROS fold"
+fe_cr_dead_long$Metric[grepl("Live_CR",fe_cr_dead_long$Metric_detailed)] = "ROS"
+fe_cr_dead_long$Metric[grepl("Live_FL3_CR",fe_cr_dead_long$Metric_detailed)] = "FL3_ROS"
+fe_cr_dead_long$Metric[grepl("dead_fold",fe_cr_dead_long$Metric_detailed)] = "Cell death fold"
+fe_cr_dead_long$Metric[grepl("Dead_percentage",fe_cr_dead_long$Metric_detailed)] = "Cell death"
+fe_cr_dead_long$Fluence[grepl("0",fe_cr_dead_long$Metric_detailed)] = "0"
+fe_cr_dead_long$Fluence[grepl("1",fe_cr_dead_long$Metric_detailed)] = "1.1"
+fe_cr_dead_long$Fluence[grepl("3",fe_cr_dead_long$Metric_detailed)] = "3"
+fe_cr_dead_long$Norm[grepl("fold",fe_cr_dead_long$Metric_detailed)] = "fold"
+fe_cr_dead_long$Norm[grepl("dff",fe_cr_dead_long$Metric_detailed)] = "dff"
+fe_cr_dead_long$Norm[grepl("slope_dose",fe_cr_dead_long$Metric_detailed)] = "slope_dose"
+fe_cr_dead_long$Norm[grepl("slope_fluence",fe_cr_dead_long$Metric_detailed)] = "slope_fluence"
+
+fe_dead_long = fe_cr_dead_long[(fe_cr_dead_long$Metric == "Cell death" & fe_cr_dead_long$Norm == "raw"),]
+fe_dead_long$Radiation_quality = "Fe"
+fe_cr_long = fe_cr_dead_long[(fe_cr_dead_long$Metric == "ROS" & fe_cr_dead_long$Norm == "raw"),]
+fe_cr_long$Radiation_quality = "Fe"
+
+fe_dead_long_fold = fe_cr_dead_long[(fe_cr_dead_long$Metric == "Cell death fold" & fe_cr_dead_long$Norm == "fold"),]
+fe_dead_long_fold$Radiation_quality = "Fe"
+fe_cr_long_fold = fe_cr_dead_long[(fe_cr_dead_long$Metric == "ROS fold" & fe_cr_dead_long$Norm == "fold"),]
+fe_cr_long_fold$Radiation_quality = "Fe"
+  
+all_plot_dots_fe_dead = ggplot(fe_dead_long, aes(x = Fluence, y = Percentage_CR_dead, col = Gender)) + geom_point() + geom_jitter() + ylab("Dead, % all PBMCs")
+facet(all_plot_dots_fe_dead, facet.by = 'Gender')
+  
+all_plot_dots_fe_dead = ggplot(fe_dead_long, aes(x = Fluence, y = Percentage_CR_dead, col = BMI_group)) + geom_boxplot() + ylab("Dead, % all PBMCs")
+facet(all_plot_dots_fe_dead, facet.by = 'Gender')
+
+all_plot_dots_fe_cr = ggplot(fe_cr_long, aes(x = Fluence, y = Percentage_CR_dead, col = BMI_group)) + geom_boxplot() + ylab("Mean CR in live PBMCs")
+facet(all_plot_dots_fe_cr, facet.by = 'Gender')
+
+all_plot_dots_fe_cr = ggplot(fe_cr_long, aes(x = Fluence, y = Percentage_CR_dead, col = Gender)) + geom_point() + geom_jitter() + ylab("Mean CR in live PBMCs")
+facet(all_plot_dots_fe_cr, facet.by = 'Gender')
+
+```
+
+
+```{r}
+## Now for Ar
+
+ar_cr_dead_long = melt(flow_19a_filt, id.vars = c("Sample_ID", "Gender", "Age", "BMI", "BMI_group", "CMV", "FL3"), measure.vars = colnames(flow_19a_filt)[grepl("Ar", colnames(flow_19a_filt))], variable.name = "Metric_detailed", value.name = "Percentage_CR_dead")
+ar_cr_dead_long$BMI_group = factor(ar_cr_dead_long$BMI_group, levels = c("Underweight", "Normal", "Overweight", "Obese")) ## ordering BMI levels
+ar_cr_dead_long$Metric_detailed = as.character(ar_cr_dead_long$Metric_detailed)
+ar_cr_dead_long$Metric = "tempo"
+ar_cr_dead_long$Fluence = "tempo"
+ar_cr_dead_long$Norm = "raw"
+ar_cr_dead_long$Metric[grepl("Live_CR",ar_cr_dead_long$Metric_detailed)] = "ROS"
+ar_cr_dead_long$Metric[grepl("cr_fold",ar_cr_dead_long$Metric_detailed)] = "ROS fold"
+ar_cr_dead_long$Metric[grepl("Live_FL3_CR",ar_cr_dead_long$Metric_detailed)] = "FL3_ROS"
+ar_cr_dead_long$Metric[grepl("dead_fold",ar_cr_dead_long$Metric_detailed)] = "Cell death fold"
+ar_cr_dead_long$Metric[grepl("Dead_percentage",ar_cr_dead_long$Metric_detailed)] = "Cell death"
+ar_cr_dead_long$Fluence[grepl("0",ar_cr_dead_long$Metric_detailed)] = "0"
+ar_cr_dead_long$Fluence[grepl("1",ar_cr_dead_long$Metric_detailed)] = "1.1"
+ar_cr_dead_long$Fluence[grepl("3",ar_cr_dead_long$Metric_detailed)] = "3"
+ar_cr_dead_long$Norm[grepl("fold",ar_cr_dead_long$Metric_detailed)] = "fold"
+ar_cr_dead_long$Norm[grepl("dff",ar_cr_dead_long$Metric_detailed)] = "dff"
+ar_cr_dead_long$Norm[grepl("slope_dose",ar_cr_dead_long$Metric_detailed)] = "slope_dose"
+ar_cr_dead_long$Norm[grepl("slope_fluence",ar_cr_dead_long$Metric_detailed)] = "slope_fluence"
+
+ar_dead_long = ar_cr_dead_long[(ar_cr_dead_long$Metric == "Cell death" & ar_cr_dead_long$Norm == "raw"),]
+ar_dead_long$Radiation_quality = "Ar"
+ar_cr_long = ar_cr_dead_long[(ar_cr_dead_long$Metric == "ROS" & ar_cr_dead_long$Norm == "raw"),]
+ar_cr_long$Radiation_quality = "Ar"
+
+ar_dead_long_fold = ar_cr_dead_long[(ar_cr_dead_long$Metric == "Cell death fold" & ar_cr_dead_long$Norm == "fold"),]
+ar_dead_long_fold$Radiation_quality = "Ar"
+ar_cr_long_fold = ar_cr_dead_long[(ar_cr_dead_long$Metric == "ROS fold" & ar_cr_dead_long$Norm == "fold"),]
+ar_cr_long_fold$Radiation_quality = "Ar"
+
+  
+all_plot_dots_ar_dead = ggplot(ar_dead_long, aes(x = Fluence, y = Percentage_CR_dead, col = Gender)) + geom_point() + geom_jitter() + ylab("Dead, % all PBMCs")
+facet(all_plot_dots_ar_dead, facet.by = 'Gender')
+  
+all_plot_dots_ar_dead = ggplot(ar_dead_long, aes(x = Fluence, y = Percentage_CR_dead, col = BMI_group)) + geom_boxplot() + ylab("Dead, % all PBMCs")
+facet(all_plot_dots_ar_dead, facet.by = 'Gender')
+
+all_plot_dots_ar_cr = ggplot(ar_cr_long, aes(x = Fluence, y = Percentage_CR_dead, col = BMI_group)) + geom_boxplot() + ylab("Mean CR in live PBMCs")
+facet(all_plot_dots_ar_cr, facet.by = 'Gender')
+
+all_plot_dots_ar_cr = ggplot(ar_cr_long, aes(x = Fluence, y = Percentage_CR_dead, col = Gender)) + geom_point() + geom_jitter() + ylab("Mean CR in live PBMCs")
+facet(all_plot_dots_ar_cr, facet.by = 'Gender')
+
+```
+
+
+```{r}
+## Now for Gamma
+
+gamma_cr_dead_long = melt(flow_19a_filt, id.vars = c("Sample_ID", "Gender", "Age", "BMI", "BMI_group", "CMV", "FL3"), measure.vars = colnames(flow_19a_filt)[grepl("Gamma", colnames(flow_19a_filt))], variable.name = "Metric_detailed", value.name = "Percentage_CR_dead")
+gamma_cr_dead_long$BMI_group = factor(gamma_cr_dead_long$BMI_group, levels = c("Underweight", "Normal", "Overweight", "Obese")) ## ordering BMI levels
+gamma_cr_dead_long$Metric_detailed = as.character(gamma_cr_dead_long$Metric_detailed)
+gamma_cr_dead_long$Metric = "tempo"
+gamma_cr_dead_long$Fluence = "tempo"
+gamma_cr_dead_long$Norm = "raw"
+gamma_cr_dead_long$Metric[grepl("Live_CR",gamma_cr_dead_long$Metric_detailed)] = "ROS"
+gamma_cr_dead_long$Metric[grepl("cr_fold",gamma_cr_dead_long$Metric_detailed)] = "ROS fold"
+gamma_cr_dead_long$Metric[grepl("Live_FL3_CR",gamma_cr_dead_long$Metric_detailed)] = "FL3_ROS"
+gamma_cr_dead_long$Metric[grepl("dead_fold",gamma_cr_dead_long$Metric_detailed)] = "Cell death fold"
+gamma_cr_dead_long$Metric[grepl("Dead_percentage",gamma_cr_dead_long$Metric_detailed)] = "Cell death"
+gamma_cr_dead_long$Fluence[grepl("0",gamma_cr_dead_long$Metric_detailed)] = "0"
+gamma_cr_dead_long$Fluence[grepl("10",gamma_cr_dead_long$Metric_detailed)] = "10_cGy"
+gamma_cr_dead_long$Fluence[grepl("100",gamma_cr_dead_long$Metric_detailed)] = "100_cGy"
+gamma_cr_dead_long$Norm[grepl("fold",gamma_cr_dead_long$Metric_detailed)] = "fold"
+gamma_cr_dead_long$Norm[grepl("dff",gamma_cr_dead_long$Metric_detailed)] = "dff"
+gamma_cr_dead_long$Norm[grepl("slope_dose",gamma_cr_dead_long$Metric_detailed)] = "slope_dose"
+gamma_cr_dead_long$Norm[grepl("slope_fluence",gamma_cr_dead_long$Metric_detailed)] = "slope_fluence"
+
+gamma_dead_long = gamma_cr_dead_long[(gamma_cr_dead_long$Metric == "Cell death" & gamma_cr_dead_long$Norm == "raw"),]
+gamma_dead_long$Radiation_quality = "Gamma"
+gamma_cr_long = gamma_cr_dead_long[(gamma_cr_dead_long$Metric == "ROS" & gamma_cr_dead_long$Norm == "raw"),]
+gamma_cr_long$Radiation_quality = "Gamma"
+
+gamma_dead_long_fold = gamma_cr_dead_long[(gamma_cr_dead_long$Metric == "Cell death fold" & gamma_cr_dead_long$Norm == "fold"),]
+gamma_dead_long_fold$Radiation_quality = "Gamma"
+gamma_cr_long_fold = gamma_cr_dead_long[(gamma_cr_dead_long$Metric == "ROS fold" & gamma_cr_dead_long$Norm == "fold"),]
+gamma_cr_long_fold$Radiation_quality = "Gamma"
+  
+all_plot_dots_gamma_dead = ggplot(gamma_dead_long, aes(x = Fluence, y = Percentage_CR_dead, col = Gender)) + geom_point() + geom_jitter() + ylab("Dead, % all PBMCs")
+facet(all_plot_dots_gamma_dead, facet.by = 'Gender')
+  
+all_plot_dots_gamma_dead = ggplot(gamma_dead_long, aes(x = Fluence, y = Percentage_CR_dead, col = BMI_group)) + geom_boxplot() + ylab("Dead, % all PBMCs")
+facet(all_plot_dots_gamma_dead, facet.by = 'Gender')
+
+all_plot_dots_gamma_cr = ggplot(gamma_cr_long, aes(x = Fluence, y = Percentage_CR_dead, col = BMI_group)) + geom_boxplot() + ylab("Mean CR in live PBMCs")
+facet(all_plot_dots_gamma_cr, facet.by = 'Gender')
+
+all_plot_dots_gamma_cr = ggplot(gamma_cr_long, aes(x = Fluence, y = Percentage_CR_dead, col = Gender)) + geom_point() + geom_jitter() + ylab("Mean CR in live PBMCs")
+facet(all_plot_dots_gamma_cr, facet.by = 'Gender')
+
+```
+
+
+```{r}
+## And now for combined
+
+## First cell death
+
+all_dead_long = rbind(si_dead_long, ar_dead_long, fe_dead_long, gamma_dead_long)
+all_dead_long$Radiation_quality = factor(all_dead_long$Radiation_quality, levels = c("Si", "Ar", "Fe", "Gamma")) ## ordering radiation types
+colnames(all_dead_long) = gsub("Fluence", "Dose_or_Fluence", colnames(all_dead_long))
+all_dead_long$Dose_level[all_dead_long$Dose_or_Fluence == "10_cGy"] = "Low"
+all_dead_long$Dose_level[all_dead_long$Dose_or_Fluence == "1.1"] = "Low"
+all_dead_long$Dose_level[all_dead_long$Dose_or_Fluence == "3"] = "High"
+all_dead_long$Dose_level[all_dead_long$Dose_or_Fluence == "100_cGy"] = "High"
+all_dead_long$Dose_level[all_dead_long$Dose_or_Fluence == "0"] = "Control"
+all_dead_long$Dose_level = factor(all_dead_long$Dose_level, levels = c("Control", "Low", "High"))
+all_dead_long$BMI_group_comb[all_dead_long$BMI_group == "Normal"] = "Normal"
+all_dead_long$BMI_group_comb[all_dead_long$BMI_group == "Underweight"] = "Normal"
+all_dead_long$BMI_group_comb[all_dead_long$BMI_group == "Overweight"] = "Overweight_and_Obese"
+all_dead_long$BMI_group_comb[all_dead_long$BMI_group == "Obese"] = "Overweight_and_Obese"
+
+cmv_19a = read.csv("BNL_19A_CMV.csv", sep = ",", header = TRUE)
+all_dead_long_cmv = merge(all_dead_long, cmv_19a, by.x = "Sample_ID", by.y = "Sample_ID", all.x = TRUE, all.y = FALSE, no.dups = TRUE)
+
+all_plot_dead = ggplot(all_dead_long, aes(x = Dose_level, y = Percentage_CR_dead, col = Gender)) + geom_point() + geom_jitter() + ylab("Dead, % all PBMCs")
+facet(all_plot_dead, facet.by = 'Radiation_quality')
+
+all_plot_dead = ggplot(all_dead_long, aes(x = Dose_level, y = Percentage_CR_dead, col = Gender)) + geom_boxplot() + ylab("Dead, % all PBMCs")
+facet(all_plot_dead, facet.by = 'Radiation_quality')
+  
+all_plot_dead = ggplot(all_dead_long, aes(x = Dose_level, y = Percentage_CR_dead, col = BMI_group_comb)) + geom_boxplot() + ylab("Dead, % all PBMCs")
+facet(all_plot_dead, facet.by = 'Radiation_quality')
+
+all_plot_dead = ggplot(all_dead_long, aes(x = Dose_level, y = Percentage_CR_dead, col = BMI_group)) + geom_boxplot() + ylab("Dead, % all PBMCs")
+facet(all_plot_dead, facet.by = c('Gender', 'Radiation_quality'))
+
+all_plot_dead = ggplot(all_dead_long, aes(x = BMI, y = Percentage_CR_dead, col = Dose_level)) + geom_point() + ylab("Dead, % all PBMCs") + geom_smooth(method = "glm")
+facet(all_plot_dead, facet.by = c('Gender', 'Radiation_quality'))
+
+all_plot_dead = ggplot(all_dead_long, aes(x = Age, y = Percentage_CR_dead, col = Dose_level)) + geom_point() + ylab("Dead, % all PBMCs") + geom_smooth(method = "glm")
+facet(all_plot_dead, facet.by = c('Gender', 'Radiation_quality'))
+
+```
+
+
+```{r}
+## Now CR
+
+all_cr_long = rbind(si_cr_long, ar_cr_long, fe_cr_long, gamma_cr_long)
+all_cr_long$Radiation_quality = factor(all_cr_long$Radiation_quality, levels = c("Si", "Ar", "Fe", "Gamma")) ## ordering radiation types
+colnames(all_cr_long) = gsub("Fluence", "Dose_or_Fluence", colnames(all_cr_long))
+all_cr_long$Dose_level[all_cr_long$Dose_or_Fluence == "10_cGy"] = "Low"
+all_cr_long$Dose_level[all_cr_long$Dose_or_Fluence == "1.1"] = "Low"
+all_cr_long$Dose_level[all_cr_long$Dose_or_Fluence == "3"] = "High"
+all_cr_long$Dose_level[all_cr_long$Dose_or_Fluence == "100_cGy"] = "High"
+all_cr_long$Dose_level[all_cr_long$Dose_or_Fluence == "0"] = "Control"
+all_cr_long$Dose_level = factor(all_cr_long$Dose_level, levels = c("Control", "Low", "High"))
+all_cr_long$Set = "Set_1"
+all_cr_long$Set[(all_cr_long$Sample_ID > 1501)] = "Set_4"
+all_cr_long$Set[((all_cr_long$Sample_ID < 1502) & (all_cr_long$Sample_ID > 1405))] = "Set_3"
+all_cr_long$Set[((all_cr_long$Sample_ID < 1406) & (all_cr_long$Sample_ID > 1309))] = "Set_2"
+
+## Filter: remove Ar Set_1 Dose 3 and Ar Set_2 Dose 0
+all_cr_long_filt = all_cr_long[!((all_cr_long$Set == "Set_2") & (all_cr_long$Dose_level == "Control") & (all_cr_long$Radiation_quality == "Ar")),]
+all_cr_long_filt = all_cr_long_filt[!((all_cr_long_filt$Set == "Set_1") & (all_cr_long_filt$Dose_level == "High") & (all_cr_long_filt$Radiation_quality == "Ar")),]
+
+
+all_plot_cr = ggplot(all_cr_long_filt, aes(x = Dose_level, y = Percentage_CR_dead, col = Gender)) + geom_boxplot() + ylab("Mean CellROX in live PBMCs")
+facet(all_plot_cr, facet.by = 'Radiation_quality')
+  
+all_plot_cr = ggplot(all_cr_long_filt, aes(x = Dose_level, y = Percentage_CR_dead, col = BMI_group)) + geom_boxplot() + ylab("Mean CellROX in live PBMCs")
+facet(all_plot_cr, facet.by = 'Radiation_quality')
+
+all_plot_cr = ggplot(all_cr_long_filt, aes(x = Age, y = Percentage_CR_dead, col = Dose_level)) + geom_point() + ylab("Mean CellROX in live PBMCs") + geom_smooth(method = "glm")
+facet(all_plot_cr, facet.by = c('Gender', 'Radiation_quality'))
+
+```
+
+```{r}
+## Now fold: dead
+
+all_dead_long_fold = rbind(si_dead_long_fold, ar_dead_long_fold, fe_dead_long_fold, gamma_dead_long_fold)
+all_dead_long_fold$Radiation_quality = factor(all_dead_long_fold$Radiation_quality, levels = c("Si", "Ar", "Fe", "Gamma")) ## ordering radiation types
+colnames(all_dead_long_fold) = gsub("Fluence", "Dose_or_Fluence", colnames(all_dead_long_fold))
+all_dead_long_fold$Dose_level[all_dead_long_fold$Dose_or_Fluence == "10_cGy"] = "Low"
+all_dead_long_fold$Dose_level[all_dead_long_fold$Dose_or_Fluence == "1.1"] = "Low"
+all_dead_long_fold$Dose_level[all_dead_long_fold$Dose_or_Fluence == "3"] = "High"
+all_dead_long_fold$Dose_level[all_dead_long_fold$Dose_or_Fluence == "100_cGy"] = "High"
+all_dead_long_fold$Dose_level[all_dead_long_fold$Dose_or_Fluence == "0"] = "Control"
+all_dead_long_fold$Dose_level = factor(all_dead_long_fold$Dose_level, levels = c("Control", "Low", "High"))
+all_dead_long_fold$BMI_group_comb[all_dead_long_fold$BMI_group == "Normal"] = "Normal"
+all_dead_long_fold$BMI_group_comb[all_dead_long_fold$BMI_group == "Underweight"] = "Normal"
+all_dead_long_fold$BMI_group_comb[all_dead_long_fold$BMI_group == "Overweight"] = "Overweight_and_Obese"
+all_dead_long_fold$BMI_group_comb[all_dead_long_fold$BMI_group == "Obese"] = "Overweight_and_Obese"
+
+all_plot_dead_fold = ggplot(all_dead_long_fold, aes(x = Dose_level, y = Percentage_CR_dead, col = Gender)) + geom_boxplot() + ylab("Dead, % all PBMCs, FOLD over 0 Gy") + ylim(0,10)
+facet(all_plot_dead_fold, facet.by = 'Radiation_quality')
+
+all_plot_dead_fold = ggplot(all_dead_long_fold, aes(x = Dose_level, y = Percentage_CR_dead, col = BMI_group)) + geom_boxplot() + ylab("Dead, % all PBMCs, FOLD over 0 Gy") + ylim(0, 10)
+facet(all_plot_dead_fold, facet.by = c('Gender', 'Radiation_quality'))
+
+all_plot_dead_fold = ggplot(all_dead_long_fold, aes(x = BMI, y = Percentage_CR_dead, col = Dose_level)) + geom_point() + ylab("Dead, % all PBMCs, FOLD over 0Gy") + geom_smooth(method = "glm") + ylim(0, 10)
+facet(all_plot_dead_fold, facet.by = c('Gender', 'Radiation_quality'))
+
+all_plot_dead_fold = ggplot(all_dead_long_fold, aes(x = Age, y = Percentage_CR_dead, col = Dose_level)) + geom_point() + ylab("Dead, % all PBMCs, FOLD over 0 Gy") + geom_smooth(method = "glm") + ylim(0, 10)
+facet(all_plot_dead_fold, facet.by = c('Gender', 'Radiation_quality'))
+
+
+```
+
+```{r}
+## And now fold: CR
+all_cr_long_fold = rbind(si_cr_long_fold, ar_cr_long_fold, fe_cr_long_fold, gamma_cr_long_fold)
+all_cr_long_fold$Radiation_quality = factor(all_cr_long_fold$Radiation_quality, levels = c("Si", "Ar", "Fe", "Gamma")) ## ordering radiation types
+colnames(all_cr_long_fold) = gsub("Fluence", "Dose_or_Fluence", colnames(all_cr_long_fold))
+all_cr_long_fold$Dose_level[all_cr_long_fold$Dose_or_Fluence == "10_cGy"] = "Low"
+all_cr_long_fold$Dose_level[all_cr_long_fold$Dose_or_Fluence == "1.1"] = "Low"
+all_cr_long_fold$Dose_level[all_cr_long_fold$Dose_or_Fluence == "3"] = "High"
+all_cr_long_fold$Dose_level[all_cr_long_fold$Dose_or_Fluence == "100_cGy"] = "High"
+all_cr_long_fold$Dose_level[all_cr_long_fold$Dose_or_Fluence == "0"] = "Control"
+all_cr_long_fold$Dose_level = factor(all_cr_long_fold$Dose_level, levels = c("Control", "Low", "High"))
+all_cr_long_fold$BMI_group_comb[all_cr_long_fold$BMI_group == "Normal"] = "Normal"
+all_cr_long_fold$BMI_group_comb[all_cr_long_fold$BMI_group == "Underweight"] = "Normal"
+all_cr_long_fold$BMI_group_comb[all_cr_long_fold$BMI_group == "Overweight"] = "Overweight_and_Obese"
+all_cr_long_fold$BMI_group_comb[all_cr_long_fold$BMI_group == "Obese"] = "Overweight_and_Obese"
+all_cr_long_fold$Set = "Set_1"
+all_cr_long_fold$Set[(all_cr_long_fold$Sample_ID > 1501)] = "Set_4"
+all_cr_long_fold$Set[((all_cr_long_fold$Sample_ID < 1502) & (all_cr_long_fold$Sample_ID > 1405))] = "Set_3"
+all_cr_long_fold$Set[((all_cr_long_fold$Sample_ID < 1406) & (all_cr_long_fold$Sample_ID > 1309))] = "Set_2"
+
+## Filter: remove Ar Set_1 Dose 3 and Ar Set_2 Dose 0
+all_cr_long_fold_filt = all_cr_long_fold[!((all_cr_long_fold$Set == "Set_1") & (all_cr_long_fold$Dose_level == "High")),]
+
+all_plot_cr_fold = ggplot(all_cr_long_fold_filt, aes(x = Dose_level, y = Percentage_CR_dead, col = Gender)) + geom_boxplot() + ylab("Mean CellROX in live PBMCs, FOLD over 0 Gy") + ylim(0,10)
+facet(all_plot_cr_fold, facet.by = 'Radiation_quality')
+
+all_plot_cr_fold = ggplot(all_cr_long_fold_filt, aes(x = Dose_level, y = Percentage_CR_dead, col = BMI_group)) + geom_boxplot() + ylab("Mean CellROX in live PBMCs, FOLD over 0 Gy") + ylim(0, 10)
+facet(all_plot_cr_fold, facet.by = c('Gender', 'Radiation_quality'))
+
+all_plot_cr_fold = ggplot(all_cr_long_fold_filt, aes(x = BMI, y = Percentage_CR_dead, col = Dose_level)) + geom_point() + ylab("Mean CellROX in live PBMCs, FOLD over 0Gy") + geom_smooth(method = "glm") + ylim(0, 10)
+facet(all_plot_cr_fold, facet.by = c('Gender', 'Radiation_quality'))
+
+all_plot_cr_fold = ggplot(all_cr_long_fold_filt, aes(x = Age, y = Percentage_CR_dead, col = Dose_level)) + geom_point() + ylab("Mean CellROX in live PBMCs, FOLD over 0 Gy") + geom_smooth(method = "glm") + ylim(0, 10)
+facet(all_plot_cr_fold, facet.by = c('Gender', 'Radiation_quality'))
+
+
+```
+
+
+
+
+
+
+```{r}
+## And now, repeat analysis for 18B
+## Remove the samples with very low PBMC counts (<100)
+hist(flow_18b$Ar_PBMC_count_0, breaks = 100) ## 100 is a reasonable cutoff for PBMCs. We will use unirradiated/control cells for cutoff. 
+flow_18b$low_PBMC = FALSE
+flow_18b$low_PBMC[flow_18b$Ar_PBMC_count_0 < 100 | flow_18b$Si_PBMC_count_0 < 100 | flow_18b$Fe_PBMC_count_0 < 100 | flow_18b$Gamma_PBMC_count_0 < 100] = TRUE 
+flow_18b_filt = flow_18b[flow_18b$low_PBMC == FALSE,]
+
+print("Initial number of samples in flow_18b") 
+print(nrow(flow_18b))
+print("Samples left after filtering in flow_18b") 
+print(nrow(flow_18b_filt))
+
+## Will use only filtered samples for future analysis 
+
+## Normalize cell death and CR
+flow_18b_filt$Si_1_dead_fold = flow_18b_filt$Si_Dead_percentage_1 / flow_18b_filt$Si_Dead_percentage_0
+flow_18b_filt$Si_1_dead_dff = (flow_18b_filt$Si_Dead_percentage_1 - flow_18b_filt$Si_Dead_percentage_0)/flow_18b_filt$Si_Dead_percentage_0 ## "delta F over F"
+flow_18b_filt$Si_1_dead_slope_dose = (flow_18b_filt$Si_Dead_percentage_1 - flow_18b_filt$Si_Dead_percentage_0) / 10 ## This is slope based on dose in centiGray
+flow_18b_filt$Si_1_dead_slope_fluence = (flow_18b_filt$Si_Dead_percentage_1 - flow_18b_filt$Si_Dead_percentage_0) / 1.1  ## This is slope based on fluence
+flow_18b_filt$Si_3_dead_fold = flow_18b_filt$Si_Dead_percentage_3 / flow_18b_filt$Si_Dead_percentage_0
+flow_18b_filt$Si_3_dead_dff = (flow_18b_filt$Si_Dead_percentage_3 - flow_18b_filt$Si_Dead_percentage_0)/flow_18b_filt$Si_Dead_percentage_0 ## "delta F over F"
+flow_18b_filt$Si_3_dead_slope_dose = (flow_18b_filt$Si_Dead_percentage_3 - flow_18b_filt$Si_Dead_percentage_1) / 20 ## This is slope based on dose in centiGray
+flow_18b_filt$Si_3_dead_slope_fluence = (flow_18b_filt$Si_Dead_percentage_3 - flow_18b_filt$Si_Dead_percentage_1) / 1.9  ## This is slope based on fluence
+
+flow_18b_filt$Ar_1_dead_fold = flow_18b_filt$Ar_Dead_percentage_1 / flow_18b_filt$Ar_Dead_percentage_0
+flow_18b_filt$Ar_1_dead_dff = (flow_18b_filt$Ar_Dead_percentage_1 - flow_18b_filt$Ar_Dead_percentage_0)/flow_18b_filt$Ar_Dead_percentage_0 ## "delta F over F"
+flow_18b_filt$Ar_1_dead_slope_dose = (flow_18b_filt$Ar_Dead_percentage_1 - flow_18b_filt$Ar_Dead_percentage_0) / 18 ## This is slope based on dose in centiGray
+flow_18b_filt$Ar_1_dead_slope_fluence = (flow_18b_filt$Ar_Dead_percentage_1 - flow_18b_filt$Ar_Dead_percentage_0) / 1.1  ## This is slope based on fluence
+flow_18b_filt$Ar_3_dead_fold = flow_18b_filt$Ar_Dead_percentage_3 / flow_18b_filt$Ar_Dead_percentage_0
+flow_18b_filt$Ar_3_dead_dff = (flow_18b_filt$Ar_Dead_percentage_3 - flow_18b_filt$Ar_Dead_percentage_0)/flow_18b_filt$Ar_Dead_percentage_0 ## "delta F over F"
+flow_18b_filt$Ar_3_dead_slope_dose = (flow_18b_filt$Ar_Dead_percentage_3 - flow_18b_filt$Ar_Dead_percentage_1) / 32 ## This is slope based on dose in centiGray
+flow_18b_filt$Ar_3_dead_slope_fluence = (flow_18b_filt$Ar_Dead_percentage_3 - flow_18b_filt$Ar_Dead_percentage_1) / 1.9  ## This is slope based on fluence
+
+flow_18b_filt$Fe_1_dead_fold = flow_18b_filt$Fe_Dead_percentage_1 / flow_18b_filt$Fe_Dead_percentage_0
+flow_18b_filt$Fe_1_dead_dff = (flow_18b_filt$Fe_Dead_percentage_1 - flow_18b_filt$Fe_Dead_percentage_0)/flow_18b_filt$Fe_Dead_percentage_0 ## "delta F over F"
+flow_18b_filt$Fe_1_dead_slope_dose = (flow_18b_filt$Fe_Dead_percentage_1 - flow_18b_filt$Fe_Dead_percentage_0) / 30 ## This is slope based on dose in centiGray
+flow_18b_filt$Fe_1_dead_slope_fluence = (flow_18b_filt$Fe_Dead_percentage_1 - flow_18b_filt$Fe_Dead_percentage_0) / 1.1  ## This is slope based on fluence
+flow_18b_filt$Fe_3_dead_fold = flow_18b_filt$Fe_Dead_percentage_3 / flow_18b_filt$Fe_Dead_percentage_0
+flow_18b_filt$Fe_3_dead_dff = (flow_18b_filt$Fe_Dead_percentage_3 - flow_18b_filt$Fe_Dead_percentage_0)/flow_18b_filt$Fe_Dead_percentage_0 ## "delta F over F"
+flow_18b_filt$Fe_3_dead_slope_dose = (flow_18b_filt$Fe_Dead_percentage_3 - flow_18b_filt$Fe_Dead_percentage_1) / 52 ## This is slope based on dose in centiGray
+flow_18b_filt$Fe_3_dead_slope_fluence = (flow_18b_filt$Fe_Dead_percentage_3 - flow_18b_filt$Fe_Dead_percentage_1) / 1.9  ## This is slope based on fluence
+
+flow_18b_filt$Gamma_10_dead_fold = flow_18b_filt$Gamma_Dead_percentage_10 / flow_18b_filt$Gamma_Dead_percentage_0
+flow_18b_filt$Gamma_10_dead_dff = (flow_18b_filt$Gamma_Dead_percentage_10 - flow_18b_filt$Gamma_Dead_percentage_0)/flow_18b_filt$Gamma_Dead_percentage_0 ## "delta F over F"
+flow_18b_filt$Gamma_10_dead_slope_dose = (flow_18b_filt$Gamma_Dead_percentage_10 - flow_18b_filt$Gamma_Dead_percentage_0) / 10 ## This is slope based on dose in centiGray
+flow_18b_filt$Gamma_100_dead_fold = flow_18b_filt$Gamma_Dead_percentage_100 / flow_18b_filt$Gamma_Dead_percentage_0
+flow_18b_filt$Gamma_100_dead_dff = (flow_18b_filt$Gamma_Dead_percentage_100 - flow_18b_filt$Gamma_Dead_percentage_0)/flow_18b_filt$Gamma_Dead_percentage_0 ## "delta F over F"
+flow_18b_filt$Gamma_100_dead_slope_dose = (flow_18b_filt$Gamma_Dead_percentage_100 - flow_18b_filt$Gamma_Dead_percentage_10) / 90 ## This is slope based on dose in centiGray
+
+colnames(flow_18b_filt) = gsub("Si_0_Live_CR_mean_0", "Si_Live_CR_mean_0", colnames(flow_18b_filt)) ## for some reason colname was wrong
+
+flow_18b_filt$Si_1_cr_fold = flow_18b_filt$Si_Live_CR_mean_1 / flow_18b_filt$Si_Live_CR_mean_0 
+flow_18b_filt$Si_1_cr_dff = (flow_18b_filt$Si_Live_CR_mean_1 - flow_18b_filt$Si_Live_CR_mean_0)/flow_18b_filt$Si_Live_CR_mean_0 ## "delta F over F"
+flow_18b_filt$Si_1_cr_slope_dose = (flow_18b_filt$Si_Live_CR_mean_1 - flow_18b_filt$Si_Live_CR_mean_0) / 10 ## This is slope based on dose in centiGray
+flow_18b_filt$Si_1_cr_slope_fluence = (flow_18b_filt$Si_Live_CR_mean_1 - flow_18b_filt$Si_Live_CR_mean_0) / 1.1  ## This is slope based on fluence
+flow_18b_filt$Si_3_cr_fold = flow_18b_filt$Si_Live_CR_mean_3 / flow_18b_filt$Si_Live_CR_mean_0
+flow_18b_filt$Si_3_cr_dff = (flow_18b_filt$Si_Live_CR_mean_3 - flow_18b_filt$Si_Live_CR_mean_0)/flow_18b_filt$Si_Live_CR_mean_0 ## "delta F over F"
+flow_18b_filt$Si_3_cr_slope_dose = (flow_18b_filt$Si_Live_CR_mean_3 - flow_18b_filt$Si_Live_CR_mean_1) / 20 ## This is slope based on dose in centiGray
+flow_18b_filt$Si_3_cr_slope_fluence = (flow_18b_filt$Si_Live_CR_mean_3 - flow_18b_filt$Si_Live_CR_mean_1) / 1.9  ## This is slope based on fluence
+
+flow_18b_filt$Ar_1_cr_fold = flow_18b_filt$Ar_Live_CR_mean_1 / flow_18b_filt$Ar_Live_CR_mean_0
+flow_18b_filt$Ar_1_cr_dff = (flow_18b_filt$Ar_Live_CR_mean_1 - flow_18b_filt$Ar_Live_CR_mean_0)/flow_18b_filt$Ar_Live_CR_mean_0 ## "delta F over F"
+flow_18b_filt$Ar_1_cr_slope_dose = (flow_18b_filt$Ar_Live_CR_mean_1 - flow_18b_filt$Ar_Live_CR_mean_0) / 18 ## This is slope based on dose in centiGray
+flow_18b_filt$Ar_1_cr_slope_fluence = (flow_18b_filt$Ar_Live_CR_mean_1 - flow_18b_filt$Ar_Live_CR_mean_0) / 1.1  ## This is slope based on fluence
+flow_18b_filt$Ar_3_cr_fold = flow_18b_filt$Ar_Live_CR_mean_3 / flow_18b_filt$Ar_Live_CR_mean_0
+flow_18b_filt$Ar_3_cr_dff = (flow_18b_filt$Ar_Live_CR_mean_3 - flow_18b_filt$Ar_Live_CR_mean_0)/flow_18b_filt$Ar_Live_CR_mean_0 ## "delta F over F"
+flow_18b_filt$Ar_3_cr_slope_dose = (flow_18b_filt$Ar_Live_CR_mean_3 - flow_18b_filt$Ar_Live_CR_mean_1) / 32 ## This is slope based on dose in centiGray
+flow_18b_filt$Ar_3_cr_slope_fluence = (flow_18b_filt$Ar_Live_CR_mean_3 - flow_18b_filt$Ar_Live_CR_mean_1) / 1.9  ## This is slope based on fluence
+
+colnames(flow_18b_filt) = gsub("Fe_3_Live_CR_mean_3", "Fe_Live_CR_mean_3", colnames(flow_18b_filt)) ## for some reason colname was wrong
+
+flow_18b_filt$Fe_1_cr_fold = flow_18b_filt$Fe_Live_CR_mean_1 / flow_18b_filt$Fe_Live_CR_mean_0
+flow_18b_filt$Fe_1_cr_dff = (flow_18b_filt$Fe_Live_CR_mean_1 - flow_18b_filt$Fe_Live_CR_mean_0)/flow_18b_filt$Fe_Live_CR_mean_0 ## "delta F over F"
+flow_18b_filt$Fe_1_cr_slope_dose = (flow_18b_filt$Fe_Live_CR_mean_1 - flow_18b_filt$Fe_Live_CR_mean_0) / 30 ## This is slope based on dose in centiGray
+flow_18b_filt$Fe_1_cr_slope_fluence = (flow_18b_filt$Fe_Live_CR_mean_1 - flow_18b_filt$Fe_Live_CR_mean_0) / 1.1  ## This is slope based on fluence
+flow_18b_filt$Fe_3_cr_fold = flow_18b_filt$Fe_Live_CR_mean_3 / flow_18b_filt$Fe_Live_CR_mean_0
+flow_18b_filt$Fe_3_cr_dff = (flow_18b_filt$Fe_Live_CR_mean_3 - flow_18b_filt$Fe_Live_CR_mean_0)/flow_18b_filt$Fe_Live_CR_mean_0 ## "delta F over F"
+flow_18b_filt$Fe_3_cr_slope_dose = (flow_18b_filt$Fe_Live_CR_mean_3 - flow_18b_filt$Fe_Live_CR_mean_1) / 52 ## This is slope based on dose in centiGray
+flow_18b_filt$Fe_3_cr_slope_fluence = (flow_18b_filt$Fe_Live_CR_mean_3 - flow_18b_filt$Fe_Live_CR_mean_1) / 1.9  ## This is slope based on fluence
+
+flow_18b_filt$Gamma_10_cr_fold = flow_18b_filt$Gamma_Live_CR_mean_10 / flow_18b_filt$Gamma_Live_CR_mean_0
+flow_18b_filt$Gamma_10_cr_dff = (flow_18b_filt$Gamma_Live_CR_mean_10 - flow_18b_filt$Gamma_Live_CR_mean_0)/flow_18b_filt$Gamma_Live_CR_mean_0 ## "delta F over F"
+flow_18b_filt$Gamma_10_cr_slope_dose = (flow_18b_filt$Gamma_Live_CR_mean_10 - flow_18b_filt$Gamma_Live_CR_mean_0) / 10 ## This is slope based on dose in centiGray
+flow_18b_filt$Gamma_100_cr_fold = flow_18b_filt$Gamma_Live_CR_mean_100 / flow_18b_filt$Gamma_Live_CR_mean_0
+flow_18b_filt$Gamma_100_cr_dff = (flow_18b_filt$Gamma_Live_CR_mean_100 - flow_18b_filt$Gamma_Live_CR_mean_0)/flow_18b_filt$Gamma_Live_CR_mean_0 ## "delta F over F"
+flow_18b_filt$Gamma_100_cr_slope_dose = (flow_18b_filt$Gamma_Live_CR_mean_100 - flow_18b_filt$Gamma_Live_CR_mean_10) / 90 ## This is slope based on dose in centiGray
+
+```
+
+
+```{r}
+## 18B: long tables for each radiation quality
+
+si_18b_cr_dead_long = melt(flow_18b_filt, id.vars = c("Sample_ID", "Gender", "Age", "BMI", "BMI_group", "CMV", "FL3"), measure.vars = colnames(flow_18b_filt)[grepl("Si", colnames(flow_18b_filt))], variable.name = "Metric_detailed", value.name = "Percentage_CR_dead")
+si_18b_cr_dead_long$BMI_group = factor(si_18b_cr_dead_long$BMI_group, levels = c("Underweight", "Normal", "Overweight", "Obese")) ## ordering BMI levels
+si_18b_cr_dead_long$Metric_detailed = as.character(si_18b_cr_dead_long$Metric_detailed)
+si_18b_cr_dead_long$Metric = "tempo"
+si_18b_cr_dead_long$Fluence = "tempo"
+si_18b_cr_dead_long$Norm = "raw"
+si_18b_cr_dead_long$Metric[grepl("Live_CR",si_18b_cr_dead_long$Metric_detailed)] = "ROS"
+si_18b_cr_dead_long$Metric[grepl("dead",si_18b_cr_dead_long$Metric_detailed)] = "Cell death"
+si_18b_cr_dead_long$Metric[grepl("Dead",si_18b_cr_dead_long$Metric_detailed)] = "Cell death"
+si_18b_cr_dead_long$Fluence[grepl("0",si_18b_cr_dead_long$Metric_detailed)] = "0"
+si_18b_cr_dead_long$Fluence[grepl("1",si_18b_cr_dead_long$Metric_detailed)] = "1.1"
+si_18b_cr_dead_long$Fluence[grepl("3",si_18b_cr_dead_long$Metric_detailed)] = "3"
+si_18b_cr_dead_long$Norm[grepl("fold",si_18b_cr_dead_long$Metric_detailed)] = "fold"
+si_18b_cr_dead_long$Norm[grepl("dff",si_18b_cr_dead_long$Metric_detailed)] = "dff"
+si_18b_cr_dead_long$Norm[grepl("slope_dose",si_18b_cr_dead_long$Metric_detailed)] = "slope_dose"
+si_18b_cr_dead_long$Norm[grepl("slope_fluence",si_18b_cr_dead_long$Metric_detailed)] = "slope_fluence"
+##Si CR we will want to plot the sets separately
+si_18b_cr_dead_long$Set = "Set_1"
+si_18b_cr_dead_long$Set[si_18b_cr_dead_long$Sample_ID > 1127] = "Set_2"
+
+si_18b_dead_long = si_18b_cr_dead_long[(si_18b_cr_dead_long$Metric == "Cell death" & si_18b_cr_dead_long$Norm == "raw"),]
+si_18b_dead_long$Radiation_quality = "Si"
+si_18b_cr_long = si_18b_cr_dead_long[(si_18b_cr_dead_long$Metric == "ROS" & si_18b_cr_dead_long$Norm == "raw"),]
+si_18b_cr_long$Radiation_quality = "Si"
+  
+all_plot_dots_si_18b_dead = ggplot(si_18b_dead_long, aes(x = Fluence, y = Percentage_CR_dead, col = Gender)) + geom_point() + geom_jitter() + ylab("Dead, % all PBMCs")
+facet(all_plot_dots_si_18b_dead, facet.by = 'Gender')
+  
+all_plot_dots_si_18b_dead = ggplot(si_18b_dead_long, aes(x = Fluence, y = Percentage_CR_dead, col = Gender)) + geom_boxplot() + ylab("Dead, % all PBMCs")
+facet(all_plot_dots_si_18b_dead, facet.by = 'Gender')
+
+all_plot_dots_si_18b_cr = ggplot(si_18b_cr_long, aes(x = Fluence, y = Percentage_CR_dead, col = Gender)) + geom_boxplot() + ylab("Mean CR in live PBMCs")
+facet(all_plot_dots_si_18b_cr, facet.by = c('Gender', 'Set'))
+
+all_plot_dots_si_18b_cr = ggplot(si_18b_cr_long, aes(x = Fluence, y = Percentage_CR_dead, col = Gender)) + geom_point() + geom_jitter() + ylab("Mean CR in live PBMCs")
+facet(all_plot_dots_si_18b_cr, facet.by = 'Gender')
+
+## Now for Fe
+
+fe_18b_cr_dead_long = melt(flow_18b_filt, id.vars = c("Sample_ID", "Gender", "Age", "BMI", "BMI_group", "CMV", "FL3"), measure.vars = colnames(flow_18b_filt)[grepl("Fe", colnames(flow_18b_filt))], variable.name = "Metric_detailed", value.name = "Percentage_CR_dead")
+fe_18b_cr_dead_long$BMI_group = factor(fe_18b_cr_dead_long$BMI_group, levels = c("Underweight", "Normal", "Overweight", "Obese")) ## ordering BMI levels
+fe_18b_cr_dead_long$Metric_detailed = as.character(fe_18b_cr_dead_long$Metric_detailed)
+fe_18b_cr_dead_long$Metric = "tempo"
+fe_18b_cr_dead_long$Fluence = "tempo"
+fe_18b_cr_dead_long$Norm = "raw"
+fe_18b_cr_dead_long$Metric[grepl("Live_CR",fe_18b_cr_dead_long$Metric_detailed)] = "ROS"
+fe_18b_cr_dead_long$Metric[grepl("dead",fe_18b_cr_dead_long$Metric_detailed)] = "Cell death"
+fe_18b_cr_dead_long$Metric[grepl("Dead",fe_18b_cr_dead_long$Metric_detailed)] = "Cell death"
+fe_18b_cr_dead_long$Fluence[grepl("0",fe_18b_cr_dead_long$Metric_detailed)] = "0"
+fe_18b_cr_dead_long$Fluence[grepl("1",fe_18b_cr_dead_long$Metric_detailed)] = "1.1"
+fe_18b_cr_dead_long$Fluence[grepl("3",fe_18b_cr_dead_long$Metric_detailed)] = "3"
+fe_18b_cr_dead_long$Norm[grepl("fold",fe_18b_cr_dead_long$Metric_detailed)] = "fold"
+fe_18b_cr_dead_long$Norm[grepl("dff",fe_18b_cr_dead_long$Metric_detailed)] = "dff"
+fe_18b_cr_dead_long$Norm[grepl("slope_dose",fe_18b_cr_dead_long$Metric_detailed)] = "slope_dose"
+fe_18b_cr_dead_long$Norm[grepl("slope_fluence",fe_18b_cr_dead_long$Metric_detailed)] = "slope_fluence"
+
+fe_18b_dead_long = fe_18b_cr_dead_long[(fe_18b_cr_dead_long$Metric == "Cell death" & fe_18b_cr_dead_long$Norm == "raw"),]
+fe_18b_dead_long$Radiation_quality = "Fe"
+fe_18b_cr_long = fe_18b_cr_dead_long[(fe_18b_cr_dead_long$Metric == "ROS" & fe_18b_cr_dead_long$Norm == "raw"),]
+fe_18b_cr_long$Radiation_quality = "Fe"
+  
+all_plot_dots_fe_18b_dead = ggplot(fe_18b_dead_long, aes(x = Fluence, y = Percentage_CR_dead, col = Gender)) + geom_point() + geom_jitter() + ylab("Dead, % all PBMCs")
+facet(all_plot_dots_fe_18b_dead, facet.by = 'Gender')
+  
+all_plot_dots_fe_18b_dead = ggplot(fe_18b_dead_long, aes(x = Fluence, y = Percentage_CR_dead, col = BMI_group)) + geom_boxplot() + ylab("Dead, % all PBMCs")
+facet(all_plot_dots_fe_18b_dead, facet.by = 'Gender')
+
+all_plot_dots_fe_18b_cr = ggplot(fe_18b_cr_long, aes(x = Fluence, y = Percentage_CR_dead, col = BMI_group)) + geom_boxplot() + ylab("Mean CR in live PBMCs")
+facet(all_plot_dots_fe_18b_cr, facet.by = 'Gender')
+
+all_plot_dots_fe_18b_cr = ggplot(fe_18b_cr_long, aes(x = Fluence, y = Percentage_CR_dead, col = Gender)) + geom_point() + geom_jitter() + ylab("Mean CR in live PBMCs")
+facet(all_plot_dots_fe_18b_cr, facet.by = 'Gender')
+
+## Now for Ar
+
+ar_18b_cr_dead_long = melt(flow_18b_filt, id.vars = c("Sample_ID", "Gender", "Age", "BMI", "BMI_group", "CMV", "FL3"), measure.vars = colnames(flow_18b_filt)[grepl("Ar", colnames(flow_18b_filt))], variable.name = "Metric_detailed", value.name = "Percentage_CR_dead")
+ar_18b_cr_dead_long$BMI_group = factor(ar_18b_cr_dead_long$BMI_group, levels = c("Underweight", "Normal", "Overweight", "Obese")) ## ordering BMI levels
+ar_18b_cr_dead_long$Metric_detailed = as.character(ar_18b_cr_dead_long$Metric_detailed)
+ar_18b_cr_dead_long$Metric = "tempo"
+ar_18b_cr_dead_long$Fluence = "tempo"
+ar_18b_cr_dead_long$Norm = "raw"
+ar_18b_cr_dead_long$Metric[grepl("Live_CR",ar_18b_cr_dead_long$Metric_detailed)] = "ROS"
+ar_18b_cr_dead_long$Metric[grepl("dead",ar_18b_cr_dead_long$Metric_detailed)] = "Cell death"
+ar_18b_cr_dead_long$Metric[grepl("Dead",ar_18b_cr_dead_long$Metric_detailed)] = "Cell death"
+ar_18b_cr_dead_long$Fluence[grepl("0",ar_18b_cr_dead_long$Metric_detailed)] = "0"
+ar_18b_cr_dead_long$Fluence[grepl("1",ar_18b_cr_dead_long$Metric_detailed)] = "1.1"
+ar_18b_cr_dead_long$Fluence[grepl("3",ar_18b_cr_dead_long$Metric_detailed)] = "3"
+ar_18b_cr_dead_long$Norm[grepl("fold",ar_18b_cr_dead_long$Metric_detailed)] = "fold"
+ar_18b_cr_dead_long$Norm[grepl("dff",ar_18b_cr_dead_long$Metric_detailed)] = "dff"
+ar_18b_cr_dead_long$Norm[grepl("slope_dose",ar_18b_cr_dead_long$Metric_detailed)] = "slope_dose"
+ar_18b_cr_dead_long$Norm[grepl("slope_fluence",ar_18b_cr_dead_long$Metric_detailed)] = "slope_fluence"
+
+ar_18b_dead_long = ar_18b_cr_dead_long[(ar_18b_cr_dead_long$Metric == "Cell death" & ar_18b_cr_dead_long$Norm == "raw"),]
+ar_18b_dead_long$Radiation_quality = "Ar"
+ar_18b_cr_long = ar_18b_cr_dead_long[(ar_18b_cr_dead_long$Metric == "ROS" & ar_18b_cr_dead_long$Norm == "raw"),]
+ar_18b_cr_long$Radiation_quality = "Ar"
+  
+all_plot_dots_ar_18b_dead = ggplot(ar_18b_dead_long, aes(x = Fluence, y = Percentage_CR_dead, col = Gender)) + geom_point() + geom_jitter() + ylab("Dead, % all PBMCs")
+facet(all_plot_dots_ar_18b_dead, facet.by = 'Gender')
+  
+all_plot_dots_ar_18b_dead = ggplot(ar_18b_dead_long, aes(x = Fluence, y = Percentage_CR_dead, col = BMI_group)) + geom_boxplot() + ylab("Dead, % all PBMCs")
+facet(all_plot_dots_ar_18b_dead, facet.by = 'Gender')
+
+all_plot_dots_ar_18b_cr = ggplot(ar_18b_cr_long, aes(x = Fluence, y = Percentage_CR_dead, col = BMI_group)) + geom_boxplot() + ylab("Mean CR in live PBMCs")
+facet(all_plot_dots_ar_18b_cr, facet.by = 'Gender')
+
+all_plot_dots_ar_18b_cr = ggplot(ar_18b_cr_long, aes(x = Fluence, y = Percentage_CR_dead, col = Gender)) + geom_point() + geom_jitter() + ylab("Mean CR in live PBMCs")
+facet(all_plot_dots_ar_18b_cr, facet.by = 'Gender')
+
+
+```
+
+
+```{r}
+## Now combined, 18B only
+
+## First cell death
+
+all_18b_dead_long = rbind(si_18b_dead_long, ar_18b_dead_long, fe_18b_dead_long)
+all_18b_dead_long$Radiation_quality = factor(all_18b_dead_long$Radiation_quality, levels = c("Si", "Ar", "Fe")) ## ordering radiation types
+colnames(all_18b_dead_long) = gsub("Fluence", "Dose_or_Fluence", colnames(all_18b_dead_long))
+all_18b_dead_long$Dose_level[all_18b_dead_long$Dose_or_Fluence == "1.1"] = "Low"
+all_18b_dead_long$Dose_level[all_18b_dead_long$Dose_or_Fluence == "3"] = "High"
+all_18b_dead_long$Dose_level[all_18b_dead_long$Dose_or_Fluence == "0"] = "Control"
+all_18b_dead_long$Dose_level = factor(all_18b_dead_long$Dose_level, levels = c("Control", "Low", "High"))
+all_18b_dead_long$BMI_group_comb[all_18b_dead_long$BMI_group == "Normal"] = "Normal"
+all_18b_dead_long$BMI_group_comb[all_18b_dead_long$BMI_group == "Underweight"] = "Normal"
+all_18b_dead_long$BMI_group_comb[all_18b_dead_long$BMI_group == "Overweight"] = "Overweight_and_Obese"
+all_18b_dead_long$BMI_group_comb[all_18b_dead_long$BMI_group == "Obese"] = "Overweight_and_Obese"
+
+all_18b_plot_dead = ggplot(all_18b_dead_long, aes(x = Dose_level, y = Percentage_CR_dead, col = Gender)) + geom_point() + geom_jitter() + ylab("Dead, % all PBMCs")
+facet(all_18b_plot_dead, facet.by = 'Radiation_quality')
+
+all_18b_plot_dead = ggplot(all_18b_dead_long, aes(x = Dose_level, y = Percentage_CR_dead, col = Gender)) + geom_boxplot() + ylab("Dead, % all PBMCs")
+facet(all_18b_plot_dead, facet.by = 'Radiation_quality')
+  
+all_18b_plot_dead = ggplot(all_18b_dead_long, aes(x = Dose_level, y = Percentage_CR_dead, col = BMI_group_comb)) + geom_boxplot() + ylab("Dead, % all PBMCs")
+facet(all_18b_plot_dead, facet.by = 'Radiation_quality')
+
+all_18b_plot_dead = ggplot(all_18b_dead_long, aes(x = Dose_level, y = Percentage_CR_dead, col = BMI_group)) + geom_boxplot() + ylab("Dead, % all PBMCs")
+facet(all_18b_plot_dead, facet.by = c('Gender', 'Radiation_quality'))
+
+all_18b_plot_dead = ggplot(all_18b_dead_long, aes(x = BMI, y = Percentage_CR_dead, col = Dose_level)) + geom_point() + ylab("Dead, % all PBMCs") + geom_smooth(method = "glm")
+facet(all_18b_plot_dead, facet.by = c('Gender','Radiation_quality'))
+
+all_18b_plot_dead = ggplot(all_18b_dead_long, aes(x = Age, y = Percentage_CR_dead, col = Dose_level)) + geom_point() + ylab("Dead, % all PBMCs") + geom_smooth(method = "glm")
+facet(all_18b_plot_dead, facet.by = c('Gender', 'Radiation_quality'))
+
+## Now CR
+ar_18b_cr_long$Set = "Both"
+fe_18b_cr_long$Set = "Both"
+
+all_18b_cr_long = rbind(si_18b_cr_long, ar_18b_cr_long, fe_18b_cr_long)
+all_18b_cr_long$Radiation_quality = factor(all_18b_cr_long$Radiation_quality, levels = c("Si", "Ar", "Fe")) ## ordering radiation types
+colnames(all_18b_cr_long) = gsub("Fluence", "Dose_or_Fluence", colnames(all_18b_cr_long))
+all_18b_cr_long$Dose_level[all_18b_cr_long$Dose_or_Fluence == "1.1"] = "Low"
+all_18b_cr_long$Dose_level[all_18b_cr_long$Dose_or_Fluence == "3"] = "High"
+all_18b_cr_long$Dose_level[all_18b_cr_long$Dose_or_Fluence == "0"] = "Control"
+all_18b_cr_long$Dose_level = factor(all_18b_cr_long$Dose_level, levels = c("Control", "Low", "High"))
+
+##Now will remove Set 1 for Si
+all_18b_cr_long = all_18b_cr_long[(all_18b_cr_long$Set != "Set_1"),]
+
+all_18b_plot_cr = ggplot(all_18b_cr_long, aes(x = Dose_level, y = Percentage_CR_dead, col = Gender)) + geom_boxplot() + ylab("Mean CellROX in live PBMCs")
+facet(all_18b_plot_cr, facet.by = 'Radiation_quality')
+  
+all_18b_plot_cr = ggplot(all_18b_cr_long, aes(x = Dose_level, y = Percentage_CR_dead, col = BMI)) + geom_boxplot() + ylab("Mean CellROX in live PBMCs")
+facet(all_18b_plot_cr, facet.by = 'Radiation_quality')
+
+all_18b_plot_cr = ggplot(all_18b_cr_long, aes(x = BMI, y = Percentage_CR_dead, col = Dose_level)) + geom_point() + ylab("Mean CellROX in live PBMCs") + geom_smooth(method = "glm")
+facet(all_18b_plot_cr, facet.by = c('Gender', 'Radiation_quality'))
+
+all_18b_plot_cr = ggplot(all_18b_cr_long, aes(x = Dose_level, y = Percentage_CR_dead, col = BMI_group)) + geom_boxplot() + ylab("Mean CellROX in live PBMCs")
+facet(all_18b_plot_cr, facet.by = c('Gender', 'Radiation_quality'))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+## Initial analysis: demographics 
+
+## OK, now we have the dataframe with all the Si data, after averaging all duplicates. What questions do we want to ask?
+
+# First, let's look at it very quickly by dose at 4h and 24h
+quick_sum = ddply(si_avg, .(Timepoint, Fluence), summarise, mean = mean(avg_nfoci), sd = sd(avg_nfoci))
+quick_sum
+
+# Now plotting everyone in boxplots
+all_plot = ggplot(si_avg, aes(x = Fluence, y = avg_nfoci, col = Sex)) +
+  geom_boxplot()
+facet(all_plot, facet.by = 'Timepoint')
+
+# Now plotting everyone using individual samples
+all_plot_dots = ggplot(si_avg, aes(x = Fluence, y = avg_nfoci, col = Sex)) + geom_point() + geom_jitter()
+facet(all_plot_dots, facet.by = 'Timepoint')
+
+# OK no difference by sex. Increase at 4h, not much at 24h. 
+# Other epidemiological variables? 
+
+# BMI?
+all_plot_bmi = ggplot(si_avg, aes(x = Fluence, y = avg_nfoci, col = Sex)) + 
+  geom_boxplot()
+facet(all_plot_bmi, facet.by = c('Timepoint', 'BMI_group'))
+
+all_plot_bmi2 = ggplot(si_avg, aes(x = Fluence, y = avg_nfoci, col = BMI_group)) + 
+  geom_boxplot()
+facet(all_plot_bmi2, facet.by = c('Timepoint', 'Sex'))
+
+all_plot_bmi3 = ggplot(si_avg, aes(x = BMI, y = avg_nfoci, col = Fluence)) + 
+  geom_point() + geom_smooth(method = "lm")
+facet(all_plot_bmi3, facet.by = c('Timepoint', 'Sex'))
+# No clear difference based on BMI, but worth looking into. 
+
+# Age? 
+all_plot_age = ggplot(si_avg, aes(x = Age, y = avg_nfoci, col = Sex)) + geom_point() + geom_smooth(method = "lm")
+facet(all_plot_age, facet.by = c('Timepoint','Fluence'))
+# No clear difference by age. 
+
+# Are control (no irradiation) values correlated between 4h and 24h datasets? Sort of a sanity check.
+# To answer that: si_avg is a looooong table. Make it wide! 
+si_avg$Fluence_Timepoint = paste("Si", "_", si_avg$Timepoint, "_", si_avg$Fluence, sep = "")
+si_fluencetime = dcast(si_avg, Sample_ID ~ Fluence_Timepoint, value.var = "avg_nfoci")
+write.csv(si_fluencetime, file = "18B_Si_Fluence_Time.csv", row.names = FALSE)
+
+# Now compare 4h and 24h results.
+plot_0comp = ggplot(si_fluencetime, aes(x = Si_4h_0, y = Si_24h_0)) + geom_point() + geom_smooth(method = "lm")
+plot_0comp
+
+# Add metadata/ROS and cell death data
+si_wide = merge(si_fluencetime, subject_meta, by.x. = "SampleID", by.y = "Sample_ID")
+write.csv(si_wide, file = "18B_Si.csv", row.names = FALSE)
+
+# Compare absolute values of Si RIFs, ROS and cell death
+plot_3_RIF_death = ggplot(si_wide, aes(x = Si_24h_3, y = Si_dead_3)) + geom_point() + geom_smooth(method = "lm")
+plot_3_RIF_death
+plot_3_RIF_CR = ggplot(si_wide, aes(x = Si_24h_3, y = Si_CR_3)) + geom_point() + geom_smooth(method = "lm")
+plot_3_RIF_CR
+# Results: 24h CR: 1, 3 - no correlation, 24h death: 1, 3 - anti correlation (low for 1.1, high for 3)
+# Results: 4h CR: 1, 3 - no correlation, 4h death: 1, 3 - anti correlation (low for 1.1, high for 3)
+
+# Compare fold values of Si RIFs, ROS and cell death
+si_wide$Si_4h_1_fold = si_wide$Si_4h_1.1 / si_wide$Si_4h_0
+si_wide$Si_4h_3_fold = si_wide$Si_4h_3 / si_wide$Si_4h_0
+si_wide$Si_4h_3_1_fold = si_wide$Si_4h_3 / si_wide$Si_4h_1.1
+si_wide$Si_24h_1_fold = si_wide$Si_24h_1.1 / si_wide$Si_24h_0
+si_wide$Si_24h_3_fold = si_wide$Si_24h_3 / si_wide$Si_24h_0
+si_wide$Si_24h_3_1_fold = si_wide$Si_24h_3 / si_wide$Si_24h_1.1
+si_wide$Si_24h_1_fold_CR = si_wide$Si_CR_1 / si_wide$Si_CR_0
+si_wide$Si_24h_3_fold_CR = si_wide$Si_CR_3 / si_wide$Si_CR_0
+si_wide$Si_24h_1_fold_dead = si_wide$Si_dead_1 / si_wide$Si_dead_0
+si_wide$Si_24h_3_fold_dead = si_wide$Si_dead_3 / si_wide$Si_dead_0
+
+# Add slope values of Si RIFs
+# Note: here all the slope values are based on fluence (NOT dose!) We can recalculate them based on dose for comparisons if necessary. 
+si_wide$Si_4h_1_slope = (si_wide$Si_4h_1.1 - si_wide$Si_4h_0)/1.1
+si_wide$Si_4h_3_1_slope = (si_wide$Si_4h_3 - si_wide$Si_4h_1.1)/1.9
+si_wide$Si_24h_1_slope = (si_wide$Si_24h_1.1 - si_wide$Si_24h_0)/1.1
+si_wide$Si_24h_3_1_slope = (si_wide$Si_24h_3 - si_wide$Si_24h_1.1)/1.9
+si_wide$Si_24h_1_slope_CR = (si_wide$Si_CR_1 - si_wide$Si_CR_0)/1.1
+si_wide$Si_24h_3_1_slope_CR = (si_wide$Si_CR_3 - si_wide$Si_CR_1)/1.9
+si_wide$Si_24h_1_slope_dead = (si_wide$Si_dead_1 - si_wide$Si_dead_0)/1.1
+si_wide$Si_24h_3_1_slope_dead = (si_wide$Si_dead_3 - si_wide$Si_dead_1)/1.9
+
+plot_fold_3_RIF_dead = ggplot(si_wide, aes(x = Si_24h_3_1_fold, y = Si_24h_3_fold_dead)) + geom_point() + geom_smooth(method = "lm")
+plot_fold_3_RIF_dead
+# Results: no correlation at all, for anything. Looks like a different, separate metric. Meep! 
+
+# Let's try to add the slopes to the dot plot now!
+si_avg$Fluence_num = as.numeric(as.character(si_avg$Fluence))
+si_avg_1st_slope = si_avg[(si_avg$Fluence != "3"),]
+si_avg_2nd_slope = si_avg[(si_avg$Fluence != "0"),]
+  
+all_plot_dots_si_slopes = ggplot(si_avg, aes(x = Fluence_num, y = avg_nfoci, col = Sex)) + geom_point() + geom_jitter() + 
+  geom_smooth(data = si_avg_1st_slope, method = "glm") +
+  geom_smooth(data = si_avg_2nd_slope, method = "glm")
+facet(all_plot_dots_si_slopes, facet.by = 'Timepoint')
+
+# And the same for CR and cell death graphs
+
+si_cr_dead_long = melt(si_wide, id.vars = c("Sample_ID", "Sex"), measure.vars = c("Si_CR_0", "Si_CR_1", "Si_CR_3", "Si_dead_0", "Si_dead_1", "Si_dead_3"), variable.name = "Metric_detailed", value.name = "Percentage_CR_dead")
+si_cr_dead_long$Metric_detailed = as.character(si_cr_dead_long$Metric_detailed)
+si_cr_dead_long$Metric = "tempo"
+si_cr_dead_long$Fluence = "tempo"
+si_cr_dead_long$Metric[si_cr_dead_long$Metric_detailed == "Si_CR_0" | si_cr_dead_long$Metric_detailed == "Si_CR_1" | si_cr_dead_long$Metric_detailed == "Si_CR_3"] = "ROS"
+si_cr_dead_long$Metric[si_cr_dead_long$Metric_detailed == "Si_dead_0" | si_cr_dead_long$Metric_detailed == "Si_dead_1" | si_cr_dead_long$Metric_detailed == "Si_dead_3"] = "Cell death"
+si_cr_dead_long$Fluence[si_cr_dead_long$Metric_detailed == "Si_CR_0" | si_cr_dead_long$Metric_detailed == "Si_dead_0"] = "0"
+si_cr_dead_long$Fluence[si_cr_dead_long$Metric_detailed == "Si_CR_1" | si_cr_dead_long$Metric_detailed == "Si_dead_1"] = "1.1"
+si_cr_dead_long$Fluence[si_cr_dead_long$Metric_detailed == "Si_CR_3" | si_cr_dead_long$Metric_detailed == "Si_dead_3"] = "3"
+si_cr_dead_long$Fluence_num = as.numeric(si_cr_dead_long$Fluence)
+si_cr_dead_long_1st_slope = si_cr_dead_long[(si_cr_dead_long$Fluence != "3"),]
+si_cr_dead_long_2nd_slope = si_cr_dead_long[(si_cr_dead_long$Fluence != "0"),]
+  
+all_plot_dots_si_slopes_cr_dead = ggplot(si_cr_dead_long, aes(x = Fluence_num, y = Percentage_CR_dead, col = Sex)) + geom_point() + geom_jitter() + 
+  geom_smooth(data = si_cr_dead_long_1st_slope, method = "glm") +
+  geom_smooth(data = si_cr_dead_long_2nd_slope, method = "glm") 
+facet(all_plot_dots_si_slopes_cr_dead, facet.by = 'Metric')
+
+
+# Compare Si RIFs and folds at different time points and in response to different fluences
+plot_1.1_RIF = ggplot(si_wide, aes(x = Si_4h_1.1, y = Si_24h_1.1)) + geom_point() + geom_smooth(method = "lm")
+plot_1.1_RIF
+plot_3_RIF = ggplot(si_wide, aes(x = Si_4h_3, y = Si_24h_3)) + geom_point() + geom_smooth(method = "lm")
+plot_3_RIF
+# Results: strong correlation between timepoints for both 1.1 and 3 fluences.
+
+plot_4h_RIF = ggplot(si_wide, aes(x = Si_4h_1.1, y = Si_4h_3)) + geom_point() + geom_smooth(method = "lm")
+plot_4h_RIF
+plot_24h_RIF = ggplot(si_wide, aes(x = Si_24h_1.1, y = Si_24h_3)) + geom_point() + geom_smooth(method = "lm")
+plot_24h_RIF
+# Results: strong correlation between fluences at each timepoint. 
+
+plot_4h_0_RIF = ggplot(si_wide, aes(x = Si_4h_0, y = Si_4h_3)) + geom_point() + geom_smooth(method = "lm")
+plot_4h_0_RIF
+plot_24h_0_RIF = ggplot(si_wide, aes(x = Si_24h_0, y = Si_24h_3)) + geom_point() + geom_smooth(method = "lm")
+plot_24h_0_RIF
+# Explanation of all the above results: the people who have a lot of RIFs at baseline also have a lot of RIFs afterwards (i.e. if I have 1 RIF at baseline I will have 3 after irradiation, but if you have 10 RIFs at baseline you will have 30 after irradiation. But we are equally sensitive to irradiation, which increases our RIFs 3-fold!)
+
+plot_1_fold = ggplot(si_wide, aes(x = Si_4h_1_fold, y = Si_24h_1_fold)) + geom_point() + geom_smooth(method = "lm")
+plot_1_fold
+plot_3_fold = ggplot(si_wide, aes(x = Si_4h_3_fold, y = Si_24h_3_fold)) + geom_point() + geom_smooth(method = "lm")
+plot_3_fold
+# Results: Fold differences at 1.1 or 3 between 4h and 24h not correlated (i.e. different people are sensitive at 4h and at 24h; most likely because at 24h there's so much repair...)
+
+plot_4h_fold = ggplot(si_wide, aes(x = Si_4h_1_fold, y = Si_4h_3_1_fold, col = Sex)) +
+  geom_point() +
+  xlim(0,10) + ylim(0,10) +
+  geom_vline(xintercept = 1) + geom_hline(yintercept = 1) + geom_abline(intercept = 0, slope = 1)
+plot_4h_fold
+
+plot_4h_slope = ggplot(si_wide, aes(x = Si_4h_1_slope, y = Si_4h_3_1_slope, col = Sex)) +
+  geom_point() +
+  xlim(-0.5,0.5) + ylim(-0.5,0.5) + geom_abline(intercept = 0, slope = 1) + geom_vline(xintercept = 0) + geom_hline(yintercept = 0) 
+plot_4h_slope
+
+plot_24h_fold = ggplot(si_wide, aes(x = Si_24h_1_fold, y = Si_24h_3_1_fold, col = Sex)) +
+  geom_point() +
+  xlim(0,6) + ylim(0,6) +
+  geom_vline(xintercept = 1) + geom_hline(yintercept = 1) + geom_abline(intercept = 0, slope = 1)
+plot_24h_fold
+# Results: These are the pentafigures separating people based on the patterns of their responses to ionizing radiation. 
+
+## Conclusion: for Si,  probably use 4h values - more relevant! At 24h there's too much repair.
+```
+
+```{r}
+## Who is sensitive, who is resistant?
+## Also, how will we define sensitive/resistant?
+
+# For Si, use 4h
+# Bottom quantile in fold 1-0 and bottom quantile in fold 3-0 for resistant
+# Top quantile in fold 1-0 and top quantile in fold 3-0 for resistant
+quant_si_1_0_bottom = quantile(si_wide$Si_4h_1_fold, na.rm = TRUE)[2]
+quant_si_3_1_bottom = quantile(si_wide$Si_4h_3_1_fold, na.rm = TRUE)[2]
+quant_si_1_0_top = quantile(si_wide$Si_4h_1_fold, na.rm = TRUE)[3]
+quant_si_3_1_top = quantile(si_wide$Si_4h_3_1_fold, na.rm = TRUE)[3]
+
+subj_si_1_0_res = si_wide$Sample_ID[si_wide$Si_4h_1_fold < quant_si_1_0_bottom]
+subj_si_3_1_res = si_wide$Sample_ID[si_wide$Si_4h_3_1_fold < quant_si_3_1_bottom]
+subj_si_common_res = intersect(subj_si_1_0_res, subj_si_3_1_res)
+subj_si_common_res
+
+subj_si_1_0_sens = si_wide$Sample_ID[si_wide$Si_4h_1_fold > quant_si_1_0_top]
+subj_si_3_1_sens = si_wide$Sample_ID[si_wide$Si_4h_3_1_fold > quant_si_3_1_top]
+subj_si_common_sens = intersect(subj_si_1_0_sens, subj_si_3_1_sens)
+subj_si_common_sens
+
+# Who are these people?
+desc_subj_si_1_0_res = si_wide[si_wide$Sample_ID %in% subj_si_1_0_res,]
+desc_subj_si_3_1_res = si_wide[si_wide$Sample_ID %in% subj_si_3_1_res,]
+desc_subj_si_1_0_sens = si_wide[si_wide$Sample_ID %in% subj_si_1_0_sens,]
+desc_subj_si_3_1_sens = si_wide[si_wide$Sample_ID %in% subj_si_3_1_sens,]
+
+# Adding the resistance factor for each subject based on quantiles
+# Somewhat clunky, but for/if loop just as clunky...
+si_wide$Si_quantile_res = "Not_resistant_not_sensitive"
+si_wide$Si_quantile_res[si_wide$Sample_ID %in% subj_si_1_0_res] = "Res_quantile_low_dose"
+si_wide$Si_quantile_res[si_wide$Sample_ID %in% subj_si_3_1_res] = "Res_quantile_high_dose"
+si_wide$Si_quantile_res[si_wide$Sample_ID %in% subj_si_common_res] = "Res_quantile_both_doses"
+si_wide$Si_quantile_res[si_wide$Sample_ID %in% subj_si_1_0_sens] = "Sens_quantile_low_dose"
+si_wide$Si_quantile_res[si_wide$Sample_ID %in% subj_si_3_1_sens] = "Sens_quantile_low_dose"
+si_wide$Si_quantile_res[si_wide$Sample_ID %in% subj_si_common_sens] = "Sens_quantile_both_doses"
+
+# What are the patterns based on slope: subjects responding primarily to low doses (low slope >0, high slope <0) and responding to high doses (low slope <0, high slope >0)? 
+subj_si_low = si_wide$Sample_ID[si_wide$Si_4h_1_slope > 0 & si_wide$Si_4h_3_1_slope < 0]
+subj_si_high = si_wide$Sample_ID[si_wide$Si_4h_1_slope < 0 & si_wide$Si_4h_3_1_slope > 0]
+subj_si_low # low dose responders (early sensitivity)
+subj_si_high # high dose responders (late sensitivity)
+
+# Also, the most sensitive people can be considered having significantly higher slope than mean (mean + 2 * sd)
+# The most resistant people will then have significantly lower slope than mean (mean - 2 * sd)
+
+subj_si_1_0_res_slope = si_wide$Sample_ID[si_wide$Si_4h_1_slope < (mean(si_wide$Si_4h_1_slope, na.rm = TRUE) - 2 * sd(si_wide$Si_4h_1_slope, na.rm = TRUE))]
+subj_si_1_0_res_slope
+subj_si_3_1_res_slope = si_wide$Sample_ID[si_wide$Si_4h_3_1_slope < (mean(si_wide$Si_4h_3_1_slope, na.rm = TRUE) - 2 * sd(si_wide$Si_4h_3_1_slope, na.rm = TRUE))]
+subj_si_3_1_res_slope
+subj_si_common_res_slope = intersect(subj_si_1_0_res_slope, subj_si_3_1_res_slope)
+subj_si_common_res_slope
+
+subj_si_1_0_sens_slope = si_wide$Sample_ID[si_wide$Si_4h_1_slope > (mean(si_wide$Si_4h_1_slope, na.rm = TRUE) + 2 * sd(si_wide$Si_4h_1_slope, na.rm = TRUE))]
+subj_si_1_0_sens_slope
+subj_si_3_1_sens_slope = si_wide$Sample_ID[si_wide$Si_4h_3_1_slope > (mean(si_wide$Si_4h_3_1_slope, na.rm = TRUE) + 2 * sd(si_wide$Si_4h_3_1_slope, na.rm = TRUE))]
+subj_si_3_1_sens_slope
+subj_si_common_sens_slope = intersect(subj_si_1_0_sens_slope, subj_si_3_1_sens_slope)
+subj_si_common_sens_slope
+
+# No overlapping: people may be either low or high dose sensitive... 
+# Clearly need a higher N!
+
+# Who are these people?
+desc_subj_si_1_0_res_slope = si_wide[si_wide$Sample_ID %in% subj_si_1_0_res_slope,]
+desc_subj_si_3_1_res_slope = si_wide[si_wide$Sample_ID %in% subj_si_3_1_res_slope,]
+desc_subj_si_1_0_sens_slope = si_wide[si_wide$Sample_ID %in% subj_si_1_0_sens_slope,]
+desc_subj_si_3_1_sens_slope = si_wide[si_wide$Sample_ID %in% subj_si_3_1_sens_slope,]
+
+# Adding the resistance factor for each subject based on slopes
+si_wide$Si_slope_res = "Not_resistant_not_sensitive"
+si_wide$Si_slope_res[si_wide$Sample_ID %in% subj_si_1_0_res_slope] = "Res_slope_low_dose"
+si_wide$Si_slope_res[si_wide$Sample_ID %in% subj_si_3_1_res_slope] = "Res_slope_high_dose"
+si_wide$Si_slope_res[si_wide$Sample_ID %in% subj_si_common_res_slope] = "Res_slope_both_doses"
+si_wide$Si_slope_res[si_wide$Sample_ID %in% subj_si_1_0_sens_slope] = "Sens_slope_low_dose"
+si_wide$Si_slope_res[si_wide$Sample_ID %in% subj_si_3_1_sens_slope] = "Sens_slope_low_dose"
+si_wide$Si_slope_res[si_wide$Sample_ID %in% subj_si_common_sens_slope] = "Sens_slope_both_doses"
+
+write.csv(si_wide, "18B_Si_w_resistance.csv", row.names = FALSE)
+
+# Note: all these sensitivity factors are based on foci at 4 hours!
+```
+
+
+## 01/10/19: adding Fe. 
+
+```{r}
+## Now, comparison with Fe. 
+## First, Fe only data.
+# Read first file in initial array foci, then merge new data into it, then add metadata
+
+## Read first file
+foci_fe_first = data.frame(Plate = fe_plate_nums[1], Plate_well = paste(fe_plate_nums[1], read.csv(paste('/Users/eglecekanaviciute/Desktop/BNL_18B_DNA_damage/Fe-BNL_18B-P355-P378/P', fe_plate_nums[1],'.csv', sep=""), sep=",", header = TRUE)$Well, sep = "_"), read.csv(paste('/Users/eglecekanaviciute/Desktop/BNL_18B_DNA_damage/Fe-BNL_18B-P355-P378/P', fe_plate_nums[1],'.csv', sep=""), sep=",", header = TRUE))
+# Note that: new columns Plate and Plate_well are made. 
+
+## Read all the other files and combine them into a single giant file with ALL the plates and ALL the wells
+# This is for Fe only
+fe_table = foci_fe_first # Not to lose the original first file just in case 
+
+for(ii in 2:fe_plate_count){
+  temp_filename = paste('/Users/eglecekanaviciute/Desktop/BNL_18B_DNA_damage/Fe-BNL_18B-P355-P378/P', fe_plate_nums[ii],'.csv', sep="")
+  temp_table = data.frame(Plate = fe_plate_nums[ii], Plate_well = paste(fe_plate_nums[ii], read.csv(paste('/Users/eglecekanaviciute/Desktop/BNL_18B_DNA_damage/Fe-BNL_18B-P355-P378/P', fe_plate_nums[ii],'.csv', sep=""), sep=",", header = TRUE)$Well, sep = "_"), read.csv(paste('/Users/eglecekanaviciute/Desktop/BNL_18B_DNA_damage/Fe-BNL_18B-P355-P378/P', fe_plate_nums[ii],'.csv', sep=""), sep=",", header = TRUE))
+  fe_table = rbind(fe_table, temp_table)
+}
+
+## Now we will add plate metadata
+fe_table_w_plate_meta = merge(fe_table, plate_meta, by.x = 'Plate', by.y = 'Plate_number', all.x = TRUE, all.y = FALSE)
+
+## Now we will add well metadata
+
+# Wells are different based on sample sets, so we need to make an extra column for Set_Well, and then add well metadata based on it.
+fe_table_w_plate_meta$Set_well = paste(fe_table_w_plate_meta$Sample_sets, fe_table_w_plate_meta$Well, sep = "_")
+fe_table_w_meta = merge(fe_table_w_plate_meta, subject_meta, by.x = 'Set_well', by.y = 'Set_well')
+
+# Clean up: this has Well.x and Well.y, which are duplicates; Sample_sets and Set which are also duplicates.
+fe_table_w_meta$Well = fe_table_w_meta$Well.x
+cols_to_drop = c('Well.x', 'Well.y', 'Sample_sets', 'Plate.1')
+fe_long = fe_table_w_meta[, !colnames(fe_table_w_meta) %in% cols_to_drop]
+
+# This is ALL the data, meaning it includes duplicates. Duplicates should be averaged, but first we should filter the samples with very low number of nuclei. 
+
+# Visualize the data
+# The colname Num_Foci in Fe was called num_nuc in Si. 
+# Similarly, the colname Mean in Fe was called avg_nfoci in Si. 
+# Rename both first. 
+colnames(fe_long)[colnames(fe_long)=="Num_Foci"] = "num_nuc"
+colnames(fe_long)[colnames(fe_long)=="Mean"] = "avg_nfoci"
+hist(fe_long$num_nuc) 
+
+print("How many wells have been read at all?")
+print(c(nrow(fe_long), "out of 2304"))
+
+# Set low bar. This is arbitrary! We will ask for at least 50 imaged nuclei per well to consider that well. 
+# Same as for Si.
+low_bar = 50
+fe_filt = fe_long[fe_long$num_nuc > (low_bar-1),]
+
+print("How many wells are left after filtering?")
+print(c(nrow(fe_filt),"out of", nrow(fe_long), "which is", nrow(fe_filt)/nrow(fe_long)))
+
+# Truncate dataframe to only include the columns of interest
+col_trunc = c("Sample_ID", "Duplicates", "avg_nfoci", "Set", "Rad_type", "Dose_Fluence", "Timepoint", "Age", "Sex", "BMI", "BMI_group")
+fe_trunc = fe_filt[,colnames(fe_filt) %in% col_trunc]
+fe_trunc$ID_Fluence_Timepoint = paste(fe_trunc$Sample_ID, fe_trunc$Dose_Fluence, fe_trunc$Timepoint, sep = "_")
+
+# Now we will need to average A and B duplicates
+fe_avg = ddply(fe_trunc, .(ID_Fluence_Timepoint, Sample_ID, Set, Rad_type, Dose_Fluence, Timepoint, Age, Sex, BMI, BMI_group), summarise, avg_nfoci = mean(avg_nfoci))
+
+print("How many samples do we have now?")
+print(c(nrow(fe_avg), "out of 1152"))
+
+# I don't like calling "Dose_Fluence" when we only have fluence; also it is a factor instead of a number
+colnames(fe_avg)[colnames(fe_avg) == "Dose_Fluence"] = "Fluence"
+fe_avg$Fluence = as.factor(fe_avg$Fluence)
+
+# Also I want my timepoint to go from 4h to 24h in outputs
+fe_avg$Timepoint = factor(fe_avg$Timepoint, levels = c("4h", "24h")) 
+
+# Also I want my BMI group to go from Normal to Overweight to Obese in outputs
+fe_avg$BMI_group = factor(fe_avg$BMI_group, levels = c("Normal", "Overweight", "Obese")) 
+
+# Check: did we keep at least 1 sample of all subjects after averaging and filtering
+if (length(unique(fe_avg$Sample_ID)) == num_subj) {
+  print("All subjects have been retained")
+  } else {
+    print("Entire subjects were lost during averaging and filtering!")
+    print ("Original IDs:")
+    print(num_subj)
+    print("New IDs:")
+    print(unique(fe_avg$Sample_ID))
+  }
+```
+
+
+```{r}
+## Initial analysis: demographics, comparison with different types of data, etc. 
+
+## OK, now we have the dataframe with all the Fe data, after averaging all duplicates. What questions do we want to ask?
+
+## Specifically for Fe at first, then will combine and compare as necessary. 
+
+# First, let's look at it very quickly by dose at 4h and 24h
+quick_sum = ddply(fe_avg, .(Timepoint, Fluence), summarise, mean = mean(avg_nfoci), sd = sd(avg_nfoci))
+quick_sum
+
+# Now plotting everyone in boxplots
+all_plot_fe = ggplot(fe_avg, aes(x = Fluence, y = avg_nfoci, col = Sex)) +
+  geom_boxplot()
+facet(all_plot_fe, facet.by = 'Timepoint')
+
+# Now plotting everyone using individual samples
+all_plot_dots_fe = ggplot(fe_avg, aes(x = Fluence, y = avg_nfoci, col = Sex)) + geom_point() + geom_jitter()
+facet(all_plot_dots_fe, facet.by = 'Timepoint')
+
+# OK no difference by sex. Increase at 4h, not much at 24h. 
+# Other epidemiological variables? 
+
+# BMI?
+all_plot_bmi_fe = ggplot(fe_avg, aes(x = Fluence, y = avg_nfoci, col = Sex)) + 
+  geom_boxplot()
+facet(all_plot_bmi_fe, facet.by = c('Timepoint', 'BMI_group'))
+
+all_plot_bmi2_fe = ggplot(fe_avg, aes(x = Fluence, y = avg_nfoci, col = BMI_group)) + 
+  geom_boxplot()
+facet(all_plot_bmi2_fe, facet.by = c('Timepoint', 'Sex'))
+
+all_plot_bmi3_fe = ggplot(fe_avg, aes(x = BMI, y = avg_nfoci, col = Sex)) + 
+  geom_point() + geom_smooth(method = "lm")
+facet(all_plot_bmi3_fe, facet.by = c('Timepoint', 'Fluence'))
+# No clear difference based on BMI, but worth looking into. 
+
+# Age? 
+all_plot_age_fe = ggplot(fe_avg, aes(x = Age, y = avg_nfoci, col = Sex)) + geom_point() + geom_smooth(method = "lm")
+facet(all_plot_age_fe, facet.by = c('Timepoint','Fluence'))
+# No clear difference by age. 
+
+# Are control (no irradiation) values correlated between 4h and 24h datasets? Sort of a sanity check.
+# To answer that: fe_avg is a looooong table. Make it wide! 
+fe_avg$Fluence_Timepoint = paste("Fe", "_", fe_avg$Timepoint, "_", fe_avg$Fluence, sep = "")
+fe_fluencetime = dcast(fe_avg, Sample_ID ~ Fluence_Timepoint, value.var = "avg_nfoci")
+write.csv(fe_fluencetime, file = "18B_Fe_Fluence_Time.csv", row.names = FALSE)
+
+# Now compare 4h and 24h results.
+plot_0comp_fe = ggplot(fe_fluencetime, aes(x = Fe_4h_0, y = Fe_24h_0)) + geom_point() + geom_smooth(method = "lm")
+plot_0comp_fe
+
+# Add metadata/ROS and cell death data
+fe_wide = merge(fe_fluencetime, subject_meta, by.x. = "SampleID", by.y = "Sample_ID")
+write.csv(fe_wide, file = "18B_Fe.csv", row.names = FALSE)
+
+# Compare absolute values of Fe RIFs, ROS and cell death
+plot_3_RIF_death_fe = ggplot(fe_wide, aes(x = Fe_4h_3, y = Fe_dead_3)) + geom_point() + geom_smooth(method = "lm")
+plot_3_RIF_death_fe
+plot_3_RIF_CR_fe = ggplot(fe_wide, aes(x = Fe_24h_3, y = Fe_CR_3)) + geom_point() + geom_smooth(method = "lm")
+plot_3_RIF_CR_fe
+# Results: 24h CR: 1, 3 - no correlation, 24h death: 1 - anti correlation, 3 - no correlation
+# Results: 4h CR: 1 - no correlation, 3 - a bit of anti correlation, 4h death: 1- no correlation, 3 - anti correlation
+
+# Compare fold values of Si RIFs, ROS and cell death
+fe_wide$Fe_4h_1_fold = fe_wide$Fe_4h_1.1 / fe_wide$Fe_4h_0
+fe_wide$Fe_4h_3_fold = fe_wide$Fe_4h_3 / fe_wide$Fe_4h_0
+fe_wide$Fe_4h_3_1_fold = fe_wide$Fe_4h_3 / fe_wide$Fe_4h_1.1
+fe_wide$Fe_24h_1_fold = fe_wide$Fe_24h_1.1 / fe_wide$Fe_24h_0
+fe_wide$Fe_24h_3_fold = fe_wide$Fe_24h_3 / fe_wide$Fe_24h_0
+fe_wide$Fe_24h_3_1_fold = fe_wide$Fe_24h_3 / fe_wide$Fe_24h_1.1
+fe_wide$Fe_24h_1_fold_CR = fe_wide$Fe_CR_1 / fe_wide$Fe_CR_0
+fe_wide$Fe_24h_3_fold_CR = fe_wide$Fe_CR_3 / fe_wide$Fe_CR_0
+fe_wide$Fe_24h_1_fold_dead = fe_wide$Fe_dead_1 / fe_wide$Fe_dead_0
+fe_wide$Fe_24h_3_fold_dead = fe_wide$Fe_dead_3 / fe_wide$Fe_dead_0
+fe_wide$Fe_24h_3_1_fold_dead = fe_wide$Fe_dead_3 / fe_wide$Fe_dead_1
+fe_wide$Fe_24h_3_1_fold_CR = fe_wide$Fe_CR_3 / fe_wide$Fe_CR_1
+
+# Add slope values of Fe RIFs
+# Note: here all the slope values are based on fluence (NOT dose!) We can recalculate them based on dose for comparisons if necessary. 
+fe_wide$Fe_4h_1_slope = (fe_wide$Fe_4h_1.1 - fe_wide$Fe_4h_0)/1.1
+fe_wide$Fe_4h_3_1_slope = (fe_wide$Fe_4h_3 - fe_wide$Fe_4h_1.1)/1.9
+fe_wide$Fe_24h_1_slope = (fe_wide$Fe_24h_1.1 - fe_wide$Fe_24h_0)/1.1
+fe_wide$Fe_24h_3_1_slope = (fe_wide$Fe_24h_3 - fe_wide$Fe_24h_1.1)/1.9
+fe_wide$Fe_24h_1_slope_CR = (fe_wide$Fe_CR_1 - fe_wide$Fe_CR_0)/1.1
+fe_wide$Fe_24h_3_1_slope_CR = (fe_wide$Fe_CR_3 - fe_wide$Fe_CR_1)/1.9
+fe_wide$Fe_24h_1_slope_dead = (fe_wide$Fe_dead_1 - fe_wide$Fe_dead_0)/1.1
+fe_wide$Fe_24h_3_1_slope_dead = (fe_wide$Fe_dead_3 - fe_wide$Fe_dead_1)/1.9
+
+# Let's try to add the slopes to the dot plot now!
+fe_avg$Fluence_num = as.numeric(as.character(fe_avg$Fluence))
+fe_avg_1st_slope = fe_avg[(fe_avg$Fluence != "3"),]
+fe_avg_2nd_slope = fe_avg[(fe_avg$Fluence != "0"),]
+  
+all_plot_dots_fe_slopes = ggplot(fe_avg, aes(x = Fluence_num, y = avg_nfoci, col = Sex)) + geom_point() + geom_jitter() + 
+  geom_smooth(data = fe_avg_1st_slope, method = "glm") +
+  geom_smooth(data = fe_avg_2nd_slope, method = "glm")
+facet(all_plot_dots_fe_slopes, facet.by = 'Timepoint')
+
+# And repeat for CR and cell death
+fe_cr_dead_long = melt(fe_wide, id.vars = c("Sample_ID", "Sex"), measure.vars = c("Fe_CR_0", "Fe_CR_1", "Fe_CR_3", "Fe_dead_0", "Fe_dead_1", "Fe_dead_3"), variable.name = "Metric_detailed", value.name = "Percentage_CR_dead")
+fe_cr_dead_long$Metric_detailed = as.character(fe_cr_dead_long$Metric_detailed)
+fe_cr_dead_long$Metric = "tempo"
+fe_cr_dead_long$Fluence = "tempo"
+fe_cr_dead_long$Metric[fe_cr_dead_long$Metric_detailed == "Fe_CR_0" | fe_cr_dead_long$Metric_detailed == "Fe_CR_1" | fe_cr_dead_long$Metric_detailed == "Fe_CR_3"] = "ROS"
+fe_cr_dead_long$Metric[fe_cr_dead_long$Metric_detailed == "Fe_dead_0" | fe_cr_dead_long$Metric_detailed == "Fe_dead_1" | fe_cr_dead_long$Metric_detailed == "Fe_dead_3"] = "Cell death"
+fe_cr_dead_long$Fluence[fe_cr_dead_long$Metric_detailed == "Fe_CR_0" | fe_cr_dead_long$Metric_detailed == "Fe_dead_0"] = "0"
+fe_cr_dead_long$Fluence[fe_cr_dead_long$Metric_detailed == "Fe_CR_1" | fe_cr_dead_long$Metric_detailed == "Fe_dead_1"] = "1.1"
+fe_cr_dead_long$Fluence[fe_cr_dead_long$Metric_detailed == "Fe_CR_3" | fe_cr_dead_long$Metric_detailed == "Fe_dead_3"] = "3"
+fe_cr_dead_long$Fluence = as.numeric(fe_cr_dead_long$Fluence)
+
+fe_cr_dead_long_1st_slope = fe_cr_dead_long[(fe_cr_dead_long$Fluence != "3"),]
+fe_cr_dead_long_2nd_slope = fe_cr_dead_long[(fe_cr_dead_long$Fluence != "0"),]
+  
+all_plot_dots_fe_slopes_cr_dead = ggplot(fe_cr_dead_long, aes(x = Fluence, y = Percentage_CR_dead, col = Sex)) + geom_point() + geom_jitter() + 
+  geom_smooth(data = fe_cr_dead_long_1st_slope, method = "glm") +
+  geom_smooth(data = fe_cr_dead_long_2nd_slope, method = "glm") 
+facet(all_plot_dots_fe_slopes_cr_dead, facet.by = 'Metric')
+ggsave("Fe_slopes_CR_dead.pdf", width = 5, height = 5, units = "in")
+
+# Now comparison plots of fold values
+
+plot_fold_1_RIF_CR_fe = ggplot(fe_wide, aes(x = Fe_24h_1_fold, y = Fe_24h_1_fold_CR)) + geom_point() + geom_smooth(method = "lm")
+plot_fold_1_RIF_CR_fe
+
+# Comparing with 24h:
+# Results: dead: 1 is anti correlated, 3 is correlated (slightly)
+# Results: CR: 1 is not correlated, 3 is correlated (slightly)
+
+# Compare Fe RIFs and folds at different time points and in response to different fluences
+plot_1.1_RIF_fe = ggplot(fe_wide, aes(x = Fe_4h_1.1, y = Fe_24h_1.1)) + geom_point() + geom_smooth(method = "lm")
+plot_1.1_RIF_fe
+plot_3_RIF_fe = ggplot(fe_wide, aes(x = Fe_4h_3, y = Fe_24h_3)) + geom_point() + geom_smooth(method = "lm")
+plot_3_RIF_fe
+# Results: strong correlation between timepoints at 1.1, but not 3 fluence!
+
+plot_4h_RIF_fe = ggplot(fe_wide, aes(x = Fe_4h_1.1, y = Fe_4h_3)) + geom_point() + geom_smooth(method = "lm")
+plot_4h_RIF_fe
+plot_24h_RIF_fe = ggplot(fe_wide, aes(x = Fe_24h_1.1, y = Fe_24h_3)) + geom_point() + geom_smooth(method = "lm")
+plot_24h_RIF_fe
+# Results: strong correlation between fluences at 4h, weak at 24h
+
+plot_4h_0_RIF_fe = ggplot(fe_wide, aes(x = Fe_4h_0, y = Fe_4h_1.1)) + geom_point() + geom_smooth(method = "lm")
+plot_4h_0_RIF_fe
+plot_24h_0_RIF_fe = ggplot(fe_wide, aes(x = Fe_24h_0, y = Fe_24h_1.1)) + geom_point() + geom_smooth(method = "lm")
+plot_24h_0_RIF_fe
+# Still correlated, but not at 1.1 at 4h, and much weaker than Si.
+# Explanation: some response depends on the subject, and some - on irradiation; the subject is less important than the irradiation. 
+
+plot_1_fold_fe = ggplot(fe_wide, aes(x = Fe_4h_1_fold, y = Fe_24h_1_fold)) + geom_point() + geom_smooth(method = "lm")
+plot_1_fold_fe
+plot_3_fold_fe = ggplot(fe_wide, aes(x = Fe_4h_3_1_fold, y = Fe_24h_3_1_fold)) + geom_point() + geom_smooth(method = "lm")
+plot_3_fold_fe
+# Results: Fold differences at 1.1 between 4h and 24h are not correlated (i.e. different people are sensitive at 4h and at 24h; most likely because at 24h there's so much repair...), but at 3 are somewhat anti correlated --> i.e. the people who are not sensitive at 4h are sensitive at 24h, and vice versa (probably because for the sensitive people, their cells are dead by 24h...unclear though)
+
+```
+
+
+```{r}
+## Who is sensitive, who is resistant?
+## Also, how will we define sensitive/resistant?
+
+# For Fe, use 4h (same as for Si)
+# Bottom quantile in fold 1-0 and bottom quantile in fold 3-0 for resistant
+# Top quantile in fold 1-0 and top quantile in fold 3-0 for resistant
+quant_fe_1_0_bottom = quantile(fe_wide$Fe_4h_1_fold, na.rm = TRUE)[2]
+quant_fe_3_1_bottom = quantile(fe_wide$Fe_4h_3_1_fold, na.rm = TRUE)[2]
+quant_fe_1_0_top = quantile(fe_wide$Fe_4h_1_fold, na.rm = TRUE)[3]
+quant_fe_3_1_top = quantile(fe_wide$Fe_4h_3_1_fold, na.rm = TRUE)[3]
+
+subj_fe_1_0_res = fe_wide$Sample_ID[fe_wide$Fe_4h_1_fold < quant_fe_1_0_bottom]
+subj_fe_3_1_res = fe_wide$Sample_ID[fe_wide$Fe_4h_3_1_fold < quant_fe_3_1_bottom]
+subj_fe_common_res = intersect(subj_fe_1_0_res, subj_fe_3_1_res)
+subj_fe_common_res
+subj_fe_si_common_res = intersect(subj_fe_common_res, subj_si_common_res)
+subj_fe_si_common_res
+subj_fe_si_1_0_res = intersect(subj_fe_1_0_res, subj_si_1_0_res)
+subj_fe_si_1_0_res
+subj_fe_si_3_1_res = intersect(subj_fe_3_1_res, subj_si_3_1_res)
+subj_fe_si_3_1_res
+
+subj_fe_1_0_sens = fe_wide$Sample_ID[fe_wide$Fe_4h_1_fold > quant_fe_1_0_top]
+subj_fe_3_1_sens = fe_wide$Sample_ID[fe_wide$Fe_4h_3_1_fold > quant_fe_3_1_top]
+subj_fe_common_sens = intersect(subj_fe_1_0_sens, subj_fe_3_1_sens)
+subj_fe_common_sens
+subj_fe_si_common_sens = intersect(subj_fe_common_sens, subj_si_common_sens)
+subj_fe_si_common_sens
+subj_fe_si_1_0_sens = intersect(subj_fe_1_0_sens, subj_si_1_0_sens)
+subj_fe_si_1_0_sens
+subj_fe_si_3_1_sens = intersect(subj_fe_3_1_sens, subj_si_3_1_sens)
+subj_fe_si_3_1_sens
+
+# Adding the resistance factor for each subject based on quantiles
+# Somewhat clunky, but for/if loop just as clunky...
+fe_wide$fe_quantile_res = "Not_resistant_not_sensitive"
+fe_wide$fe_quantile_res[fe_wide$Sample_ID %in% subj_fe_1_0_res] = "Res_quantile_low_dose"
+fe_wide$fe_quantile_res[fe_wide$Sample_ID %in% subj_fe_3_1_res] = "Res_quantile_high_dose"
+fe_wide$fe_quantile_res[fe_wide$Sample_ID %in% subj_fe_common_res] = "Res_quantile_both_doses"
+fe_wide$fe_quantile_res[fe_wide$Sample_ID %in% subj_fe_1_0_sens] = "Sens_quantile_low_dose"
+fe_wide$fe_quantile_res[fe_wide$Sample_ID %in% subj_fe_3_1_sens] = "Sens_quantile_low_dose"
+fe_wide$fe_quantile_res[fe_wide$Sample_ID %in% subj_fe_common_sens] = "Sens_quantile_both_doses"
+
+# Alternative way to measure sensitivity.
+
+# What are the patterns based on slope: subjects responding primarily to low doses (low slope >0, high slope <0) and responding to high doses (low slope <0, high slope >0)? 
+subj_fe_low = fe_wide$Sample_ID[fe_wide$Fe_4h_1_slope > 0 & fe_wide$Fe_4h_3_1_slope < 0]
+subj_fe_high = fe_wide$Sample_ID[fe_wide$Fe_4h_1_slope < 0 & fe_wide$Fe_4h_3_1_slope > 0]
+subj_fe_low # low dose responders (early sensitivity)
+subj_fe_high # high dose responders (late sensitivity)
+
+# Also, the most sensitive people can be considered having significantly higher slope than mean (mean + 2 * sd)
+# The most resistant people will then have significantly lower slope than mean (mean - 2 * sd)
+
+subj_fe_1_0_res_slope = fe_wide$Sample_ID[fe_wide$Fe_4h_1_slope < (mean(fe_wide$Fe_4h_1_slope, na.rm = TRUE) - 2 * sd(fe_wide$Fe_4h_1_slope, na.rm = TRUE))]
+subj_fe_1_0_res_slope
+subj_fe_3_1_res_slope = fe_wide$Sample_ID[fe_wide$Fe_4h_3_1_slope < (mean(fe_wide$Fe_4h_3_1_slope, na.rm = TRUE) - 2 * sd(fe_wide$Fe_4h_3_1_slope, na.rm = TRUE))]
+subj_fe_3_1_res_slope
+subj_fe_common_res_slope = intersect(subj_fe_1_0_res_slope, subj_fe_3_1_res_slope)
+subj_fe_common_res_slope
+
+subj_fe_1_0_sens_slope = fe_wide$Sample_ID[fe_wide$Fe_4h_1_slope > (mean(fe_wide$Fe_4h_1_slope, na.rm = TRUE) + 2 * sd(fe_wide$Fe_4h_1_slope, na.rm = TRUE))]
+subj_fe_1_0_sens_slope
+subj_fe_3_1_sens_slope = fe_wide$Sample_ID[fe_wide$Fe_4h_3_1_slope > (mean(fe_wide$Fe_4h_3_1_slope, na.rm = TRUE) + 2 * sd(fe_wide$Fe_4h_3_1_slope, na.rm = TRUE))]
+subj_fe_3_1_sens_slope
+subj_fe_common_sens_slope = intersect(subj_fe_1_0_sens_slope, subj_fe_3_1_sens_slope)
+subj_fe_common_sens_slope
+
+# No overlapping between doses: people may be either low or high dose sensitive... 
+# Also no overlap between Fe and Si, sensitive or resistant
+# Clearly need a higher N!
+
+# Adding the resistance factor for each subject based on slopes
+fe_wide$Fe_slope_res = "Not_resistant_not_sensitive"
+fe_wide$Fe_slope_res[fe_wide$Sample_ID %in% subj_fe_1_0_res_slope] = "Res_slope_low_dose"
+fe_wide$Fe_slope_res[fe_wide$Sample_ID %in% subj_fe_3_1_res_slope] = "Res_slope_high_dose"
+fe_wide$Fe_slope_res[fe_wide$Sample_ID %in% subj_fe_common_res_slope] = "Res_slope_both_doses"
+fe_wide$Fe_slope_res[fe_wide$Sample_ID %in% subj_fe_1_0_sens_slope] = "Sens_slope_low_dose"
+fe_wide$Fe_slope_res[fe_wide$Sample_ID %in% subj_fe_3_1_sens_slope] = "Sens_slope_low_dose"
+fe_wide$Fe_slope_res[fe_wide$Sample_ID %in% subj_fe_common_sens_slope] = "Sens_slope_both_doses"
+
+write.csv(fe_wide, "18B_Fe_w_resistance.csv", row.names = FALSE)
+
+```
+
+## Combining Si and Fe and comparing responses to Si and Fe!
+
+```{r}
+## Compare Si and Fe responses
+
+# First, let's combine both long and wide tables
+# No need to duplicate columns
+colnames_common = intersect(colnames(si_wide), colnames(fe_wide))
+colnames_common = colnames_common[colnames_common !="Sample_ID"]
+fe_wide_new = fe_wide[,!(colnames(fe_wide) %in% colnames_common)]
+si_fe_wide = merge(si_wide, fe_wide_new, by.x = "Sample_ID", by.y = "Sample_ID") ## This is the combined wide table
+si_fe_long = rbind(si_avg, fe_avg) ## This is the combined long table
+#write.csv(si_fe_wide, "BNL_18B_Si_Fe_wide.csv", row.names = FALSE)
+#write.csv(si_fe_long, "BNL_18B_Si_Fe_long.csv", row.names = FALSE)
+
+# First, let's look at the absolute values.
+# Do subjects who have more RIFs in response to Si also have more RIFs in response to Fe? 
+
+# First, calculate correlations, their p values and Benjamini-Hochberg adjusted p values
+colnames_abs_si_fe_wide = as.character(read.csv("Si_Fe_list_abs_val.csv", sep = ",", header = FALSE)[,1])
+si_fe_wide_abs = si_fe_wide[,colnames(si_fe_wide) %in% colnames_abs_si_fe_wide]
+si_fe_abs_cor = cor(si_fe_wide_abs, method = "pearson", use = "complete.obs")
+si_fe_abs_cor_p = cor.mtest(as.matrix(si_fe_wide_abs))$p
+colnames(si_fe_abs_cor_p) = colnames(si_fe_abs_cor)
+rownames(si_fe_abs_cor_p) = rownames(si_fe_abs_cor)
+si_fe_abs_cor_padj = p.adjust(si_fe_abs_cor_p, method = "fdr")
+# Now plot it!
+dev.new() ## Remember to run this from CONSOLE!! For whatever reason doesn't work as a chunk.
+pdf(file = "Si_Fe_abs_corrplot.pdf")
+corrplot(si_fe_abs_cor, type = "upper",
+         tl.col = "black", tl.srt = 45, tl.cex = 0.7, order = "alphabet", p.mat = si_fe_abs_cor_p, sig.level = .05, number.cex = 0.5, insig = "blank")
+dev.off() ## Remember to run this from CONSOLE!! For whatever reason doesn't work as a chunk.
+
+# Now only for RIFs, no ROS or cell death
+si_fe_wide_abs_rifs = si_fe_wide_abs[,colnames(si_fe_wide_abs) %in% c("Si_4h_0", "Si_4h_1.1", "Si_4h_3", "Si_24h_0", "Si_24h_1.1", "Si_24h_3", "Fe_4h_0", "Fe_4h_1.1", "Fe_4h_3", "Fe_24h_0", "Fe_24h_1.1", "Fe_24h_3")] 
+si_fe_abs_rifs_cor = cor(si_fe_wide_abs_rifs, method = "pearson", use = "complete.obs")
+si_fe_abs_rifs_cor_p = cor.mtest(as.matrix(si_fe_wide_abs_rifs))$p
+colnames(si_fe_abs_rifs_cor_p) = colnames(si_fe_abs_rifs_cor)
+rownames(si_fe_abs_rifs_cor_p) = rownames(si_fe_abs_rifs_cor)
+si_fe_abs_rifs_cor_padj = p.adjust(si_fe_abs_rifs_cor_p, method = "fdr")
+# Now plot it!
+
+dev.new() ## Remember to run this from CONSOLE!! For whatever reason doesn't work as a chunk.
+pdf(file = "Si_Fe_abs_RIFS_corrplot.pdf")
+corrplot(si_fe_abs_rifs_cor, type = "upper",
+         tl.col = "black", tl.srt = 45, tl.cex = 0.7, order = "alphabet", p.mat = si_fe_abs_cor_p, sig.level = .05, number.cex = 0.5, insig = "blank")
+dev.off() ## Remember to run this from CONSOLE!! For whatever reason doesn't work as a chunk.
+
+# Then, let's compare fold changes.
+# Do subjects who have a higher fold change in response to Si also have higher fold change in response to Fe?
+# Here we should probably use slopes for dose and **not** for fluence, because we are matching the two! 
+# In individual differences, it matters less because we are dividing everyone by the same denominator and looking for outliers. Unless we are looking for common Fe/Si sensitive people, in which case it may help to stick to the same 4h and the same 0.3Gy dose value (instead of fluence), if at all... 
+
+si_fe_wide_abs$Fe_4h_1_slope_Gy = (si_fe_wide_abs$Fe_4h_1.1 - si_fe_wide_abs$Fe_4h_0)/0.3
+si_fe_wide_abs$Fe_4h_3_slope_Gy = (si_fe_wide_abs$Fe_4h_3 - si_fe_wide_abs$Fe_4h_1.1)/0.52
+si_fe_wide_abs$Fe_24h_1_slope_Gy = (si_fe_wide_abs$Fe_24h_1.1 - si_fe_wide_abs$Fe_24h_0)/0.3
+si_fe_wide_abs$Fe_24h_3_slope_Gy = (si_fe_wide_abs$Fe_24h_3 - si_fe_wide_abs$Fe_24h_1.1)/0.52
+si_fe_wide_abs$Si_4h_1_slope_Gy = (si_fe_wide_abs$Si_4h_1.1 - si_fe_wide_abs$Si_4h_0)/0.1
+si_fe_wide_abs$Si_4h_3_slope_Gy = (si_fe_wide_abs$Si_4h_3 - si_fe_wide_abs$Si_4h_1.1)/0.2
+si_fe_wide_abs$Si_24h_1_slope_Gy = (si_fe_wide_abs$Si_24h_1.1 - si_fe_wide_abs$Si_24h_0)/0.1
+si_fe_wide_abs$Si_24h_3_slope_Gy = (si_fe_wide_abs$Si_24h_3 - si_fe_wide_abs$Si_24h_1.1)/0.2
+
+si_fe_wide_abs$Fe_24h_1_slope_CR = (si_fe_wide_abs$Fe_CR_1 - si_fe_wide_abs$Fe_CR_0)/0.3
+si_fe_wide_abs$Fe_24h_3_slope_CR = (si_fe_wide_abs$Fe_CR_3 - si_fe_wide_abs$Fe_CR_1)/0.52
+si_fe_wide_abs$Fe_24h_1_slope_dead = (si_fe_wide_abs$Fe_dead_1 - si_fe_wide_abs$Fe_dead_0)/0.3
+si_fe_wide_abs$Fe_24h_3_slope_dead = (si_fe_wide_abs$Fe_dead_3 - si_fe_wide_abs$Fe_dead_1)/0.52
+si_fe_wide_abs$Si_24h_1_slope_CR = (si_fe_wide_abs$Si_CR_1 - si_fe_wide_abs$Si_CR_0)/0.1
+si_fe_wide_abs$Si_24h_3_slope_CR = (si_fe_wide_abs$Si_CR_3 - si_fe_wide_abs$Si_CR_1)/0.2
+si_fe_wide_abs$Si_24h_1_slope_dead = (si_fe_wide_abs$Si_dead_1 - si_fe_wide_abs$Si_dead_0)/0.1
+si_fe_wide_abs$Si_24h_3_slope_dead = (si_fe_wide_abs$Si_dead_3 - si_fe_wide_abs$Si_dead_1)/0.2
+
+si_fe_wide_slope = si_fe_wide_abs[,grep("slope", colnames(si_fe_wide_abs))]
+si_fe_wide_slope_rifs = si_fe_wide_abs[,grep("slope_Gy", colnames(si_fe_wide_abs))]
+
+si_fe_slope_cor = cor(si_fe_wide_slope, method = "pearson", use = "complete.obs")
+si_fe_slope_cor_p = cor.mtest(as.matrix(si_fe_wide_slope))$p
+colnames(si_fe_slope_cor_p) = colnames(si_fe_slope_cor)
+rownames(si_fe_slope_cor_p) = rownames(si_fe_slope_cor)
+si_fe_slope_cor_padj = p.adjust(si_fe_slope_cor_p, method = "fdr")
+# Now plot it!
+corrplot(si_fe_slope_cor, type = "upper",
+         tl.col = "black", tl.srt = 45, tl.cex = 0.7, order = "alphabet", p.mat = si_fe_slope_cor_p, sig.level = .05, number.cex = 0.5, insig = "blank")
+
+# Now only for RIFs, no ROS or cell death
+si_fe_slope_rifs_cor = cor(si_fe_wide_slope_rifs, method = "pearson", use = "complete.obs")
+si_fe_slope_rifs_cor_p = cor.mtest(as.matrix(si_fe_wide_slope_rifs))$p
+colnames(si_fe_slope_rifs_cor_p) = colnames(si_fe_slope_rifs_cor)
+rownames(si_fe_slope_rifs_cor_p) = rownames(si_fe_slope_rifs_cor)
+si_fe_slope_rifs_cor_padj = p.adjust(si_fe_slope_rifs_cor_p, method = "fdr")
+# Now plot it!
+corrplot(si_fe_slope_rifs_cor, type = "upper",
+         tl.col = "black", tl.srt = 45, tl.cex = 0.7, order = "alphabet", p.mat = si_fe_slope_cor_p, sig.level = .05, number.cex = 0.5, insig = "blank")
+```
+
+
+```{r}
+
+# Turn both into doses and plot together? (Doses are basically fluences adjusted for LET...0.1/0.3 Gy for Si and 0.3/0.82 Gy for Fe)
+# will need looong dataframes again (from wide)
+
+si_fe_long$Dose = "tempo"
+si_fe_long$Dose[si_fe_long$Fluence == "0"] = "0"
+si_fe_long$Dose[(si_fe_long$Rad_type == "Si" & si_fe_long$Fluence == "1.1")] = "0.1"
+si_fe_long$Dose[(si_fe_long$Rad_type == "Si" & si_fe_long$Fluence == "3")] = "0.3"
+si_fe_long$Dose[(si_fe_long$Rad_type == "Fe" & si_fe_long$Fluence == "1.1")] = "0.3"
+si_fe_long$Dose[(si_fe_long$Rad_type == "Fe" & si_fe_long$Fluence == "3")] = "0.82"
+si_fe_long$Dose_Gy = as.numeric(si_fe_long$Dose)
+
+dose_plot = ggplot(si_fe_long, aes(x = Dose_Gy, y = avg_nfoci, col = Rad_type)) + geom_point() + geom_jitter() 
+facet(dose_plot, facet.by = 'Timepoint')
+
+## This is non normalized. Add normalization
+si_fe_wide_norm = dcast(si_fe_long, Sample_ID ~ Fluence_Timepoint, value.var = "avg_nfoci")
+si_fe_wide_norm$Fe_4h_0_norm = si_fe_wide_norm$Fe_4h_0 - mean(si_fe_wide_norm$Fe_4h_0, na.rm = TRUE)
+si_fe_wide_norm$Si_4h_0_norm = si_fe_wide_norm$Si_4h_0 - mean(si_fe_wide_norm$Si_4h_0, na.rm = TRUE)
+si_fe_wide_norm$Fe_24h_0_norm = si_fe_wide_norm$Fe_24h_0 - mean(si_fe_wide_norm$Fe_24h_0, na.rm = TRUE)
+si_fe_wide_norm$Si_24h_0_norm = si_fe_wide_norm$Si_24h_0 - mean(si_fe_wide_norm$Si_24h_0, na.rm = TRUE)
+si_fe_wide_norm$Fe_4h_1.1_norm = si_fe_wide_norm$Fe_4h_1.1 - si_fe_wide_norm$Fe_4h_0
+si_fe_wide_norm$Fe_4h_3_norm = si_fe_wide_norm$Fe_4h_3 - si_fe_wide_norm$Fe_4h_0
+si_fe_wide_norm$Fe_24h_1.1_norm = si_fe_wide_norm$Fe_24h_1.1 - si_fe_wide_norm$Fe_24h_0
+si_fe_wide_norm$Fe_24h_3_norm = si_fe_wide_norm$Fe_24h_3 - si_fe_wide_norm$Fe_24h_0
+si_fe_wide_norm$Si_4h_1.1_norm = si_fe_wide_norm$Si_4h_1.1 - si_fe_wide_norm$Si_4h_0
+si_fe_wide_norm$Si_4h_3_norm = si_fe_wide_norm$Si_4h_3 - si_fe_wide_norm$Si_4h_0
+si_fe_wide_norm$Si_24h_1.1_norm = si_fe_wide_norm$Si_24h_1.1 - si_fe_wide_norm$Si_24h_0
+si_fe_wide_norm$Si_24h_3_norm = si_fe_wide_norm$Si_24h_3 - si_fe_wide_norm$Si_24h_0
+
+si_fe_long_norm_only = melt(si_fe_wide_norm, id.vars = "Sample_ID", measure.vars = c("Si_4h_1.1_norm", "Si_4h_3_norm", "Si_24h_1.1_norm", "Si_24h_3_norm", "Fe_4h_1.1_norm", "Fe_4h_3_norm", "Fe_24h_1.1_norm", "Fe_24h_3_norm", "Si_4h_0_norm", "Si_24h_0_norm", "Fe_4h_0_norm", "Fe_24h_0_norm"), variable.name = "Normalized_metric", value.name = "norm_avg_nfoci")
+
+si_fe_long_norm_only$ID_metric = paste(si_fe_long_norm_only$Sample_ID, si_fe_long_norm_only$Normalized_metric, sep = "_")
+
+si_fe_long$ID_Fluence_Timepoint_norm_to_merge = paste(si_fe_long$Sample_ID, si_fe_long$Rad_type, si_fe_long$Timepoint, si_fe_long$Fluence, "norm", sep = "_")
+
+si_fe_long_norm = merge(si_fe_long, si_fe_long_norm_only, by.x = "ID_Fluence_Timepoint_norm_to_merge", by.y = "ID_metric")
+
+si_fe_long_norm_no_Fe3 = si_fe_long_norm[(si_fe_long_norm$Dose_Gy != "0.82"),]
+si_fe_long_norm_Fe3_only = si_fe_long_norm[(si_fe_long_norm$Dose_Gy != "0" & si_fe_long_norm$Rad_type == "Fe"),]
+
+dose_plot_norm = ggplot(si_fe_long_norm, aes(x = Dose_Gy, y = norm_avg_nfoci, col = Rad_type)) + geom_jitter(aes(shape = ".", alpha = 0.5)) +
+  geom_smooth(data = si_fe_long_norm_no_Fe3, aes(col = Rad_type), method = "glm") + 
+  geom_smooth(data = si_fe_long_norm_Fe3_only, aes(col = Rad_type), method = "glm") +
+  ylim(-2,5)
+facet(dose_plot_norm, facet.by = 'Timepoint')
+ggsave("normalized_by_dose_NOT_delta.pdf", width = 10, height = 10, units = "in")
+
+## Now, add normalization by "delta RIF/RIF"
+si_fe_wide_norm = dcast(si_fe_long, Sample_ID ~ Fluence_Timepoint, value.var = "avg_nfoci")
+si_fe_wide_norm$Fe_4h_0_norm_delta = (si_fe_wide_norm$Fe_4h_0 - mean(si_fe_wide_norm$Fe_4h_0, na.rm = TRUE))/mean(si_fe_wide_norm$Fe_4h_0, na.rm = TRUE)
+si_fe_wide_norm$Si_4h_0_norm_delta = (si_fe_wide_norm$Si_4h_0 - mean(si_fe_wide_norm$Si_4h_0, na.rm = TRUE))/mean(si_fe_wide_norm$Si_4h_0, na.rm = TRUE)
+si_fe_wide_norm$Fe_24h_0_norm_delta = (si_fe_wide_norm$Fe_24h_0 - mean(si_fe_wide_norm$Fe_24h_0, na.rm = TRUE))/mean(si_fe_wide_norm$Fe_24h_0, na.rm = TRUE)
+si_fe_wide_norm$Si_24h_0_norm_delta = (si_fe_wide_norm$Si_24h_0 - mean(si_fe_wide_norm$Si_24h_0, na.rm = TRUE))/mean(si_fe_wide_norm$Si_24h_0, na.rm = TRUE)
+si_fe_wide_norm$Fe_4h_1.1_norm_delta = (si_fe_wide_norm$Fe_4h_1.1 - si_fe_wide_norm$Fe_4h_0)/si_fe_wide_norm$Fe_4h_0
+si_fe_wide_norm$Fe_4h_3_norm_delta = (si_fe_wide_norm$Fe_4h_3 - si_fe_wide_norm$Fe_4h_0)/si_fe_wide_norm$Fe_4h_0
+si_fe_wide_norm$Fe_24h_1.1_norm_delta = (si_fe_wide_norm$Fe_24h_1.1 - si_fe_wide_norm$Fe_24h_0)/si_fe_wide_norm$Fe_24h_0
+si_fe_wide_norm$Fe_24h_3_norm_delta = (si_fe_wide_norm$Fe_24h_3 - si_fe_wide_norm$Fe_24h_0)/si_fe_wide_norm$Fe_24h_0
+si_fe_wide_norm$Si_4h_1.1_norm_delta = (si_fe_wide_norm$Si_4h_1.1 - si_fe_wide_norm$Si_4h_0)/si_fe_wide_norm$Si_4h_0
+si_fe_wide_norm$Si_4h_3_norm_delta = (si_fe_wide_norm$Si_4h_3 - si_fe_wide_norm$Si_4h_0)/si_fe_wide_norm$Si_4h_0
+si_fe_wide_norm$Si_24h_1.1_norm_delta = (si_fe_wide_norm$Si_24h_1.1 - si_fe_wide_norm$Si_24h_0)/si_fe_wide_norm$Si_24h_0
+si_fe_wide_norm$Si_24h_3_norm_delta = (si_fe_wide_norm$Si_24h_3 - si_fe_wide_norm$Si_24h_0)/si_fe_wide_norm$Si_24h_0
+
+si_fe_long_norm_only_delta = melt(si_fe_wide_norm, id.vars = "Sample_ID", measure.vars = c("Si_4h_1.1_norm_delta", "Si_4h_3_norm_delta", "Si_24h_1.1_norm_delta", "Si_24h_3_norm_delta", "Fe_4h_1.1_norm_delta", "Fe_4h_3_norm_delta", "Fe_24h_1.1_norm_delta", "Fe_24h_3_norm_delta", "Si_4h_0_norm_delta", "Si_24h_0_norm_delta", "Fe_4h_0_norm_delta", "Fe_24h_0_norm_delta"), variable.name = "Normalized_metric_delta", value.name = "norm_avg_nfoci_delta")
+
+si_fe_long_norm_only_delta$ID_metric_delta = paste(si_fe_long_norm_only_delta$Sample_ID, si_fe_long_norm_only_delta$Normalized_metric_delta, sep = "_")
+
+si_fe_long$ID_Fluence_Timepoint_norm_to_merge_delta = paste(si_fe_long$Sample_ID, si_fe_long$Rad_type, si_fe_long$Timepoint, si_fe_long$Fluence, "norm", "delta", sep = "_")
+
+si_fe_long_norm_delta = merge(si_fe_long, si_fe_long_norm_only_delta, by.x = "ID_Fluence_Timepoint_norm_to_merge_delta", by.y = "ID_metric_delta")
+
+si_fe_long_norm_delta_no_Fe3 = si_fe_long_norm_delta[(si_fe_long_norm_delta$Dose_Gy != "0.82"),]
+si_fe_long_norm_delta_Fe3_only = si_fe_long_norm_delta[(si_fe_long_norm_delta$Dose_Gy != "0" & si_fe_long_norm_delta$Rad_type == "Fe"),]
+
+dose_plot_norm_delta = ggplot(si_fe_long_norm_delta, aes(x = Dose_Gy, y = norm_avg_nfoci_delta, col = Rad_type)) + geom_jitter(aes(alpha = 0.5)) +
+  geom_smooth(data = si_fe_long_norm_delta_no_Fe3, aes(col = Rad_type), method = "glm") + 
+  geom_smooth(data = si_fe_long_norm_delta_Fe3_only, aes(col = Rad_type), method = "glm") +
+  ylim(-1.5,4)
+facet(dose_plot_norm_delta, facet.by = 'Timepoint')
+ggsave("normalized_by_dose.pdf", width = 5, height = 5, units = "in")
+```
+
+```{r}
+## Who is sensitive, who is resistant? Let's consider both...
+plot_4h_slope_fe = ggplot(si_fe_wide_abs, aes(x = Fe_4h_1_slope_Gy, y = Fe_4h_3_slope_Gy)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1) + geom_vline(xintercept = 0) + geom_hline(yintercept = 0) 
+plot_4h_slope_fe
+
+plot_24h_slope_fe = ggplot(si_fe_wide_abs, aes(x = Fe_24h_1_slope_Gy, y = Fe_24h_3_slope_Gy)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1) + geom_vline(xintercept = 0) + geom_hline(yintercept = 0)
+plot_24h_slope_fe
+
+plot_4h_slope_si = ggplot(si_fe_wide_abs, aes(x = Si_4h_1_slope_Gy, y = Si_4h_3_slope_Gy)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1) + geom_vline(xintercept = 0) + geom_hline(yintercept = 0) 
+plot_4h_slope_si
+
+plot_24h_slope_si = ggplot(si_fe_wide_abs, aes(x = Si_24h_1_slope_Gy, y = Si_24h_3_slope_Gy)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1) + geom_vline(xintercept = 0) + geom_hline(yintercept = 0)
+plot_24h_slope_si
+
+plot_grid(plot_4h_slope_fe, plot_24h_slope_fe, plot_4h_slope_si, plot_24h_slope_si, align  = "h")
+ggsave("all_pentafigures.pdf", width = 10, height = 10, units = "in")
+
+# Results: These are the pentafigures separating people based on the patterns of their responses to ionizing radiation. Slopes calculated based on DOSE, not fluence.
+```
