@@ -1,0 +1,544 @@
+---
+title: "Batch_correction_by_phenotypes"
+author: "Margaux P."
+date: "15/04/2020"
+---
+```{r}
+library(devtools)
+#install_github("vqv/ggbiplot")
+library(ggbiplot)
+require('lattice')
+require('ggplot2')
+require('polynom')
+require('corrplot')
+require('plyr')
+require('reshape2')
+require('stringr')
+library(IDPmisc)
+library(nlme)
+library(corpcor)
+library(mgcv)
+library('sva')
+library(dplyr)
+# install.packages("plotly")
+library(plotly)
+#install.packages("rgl")
+library(rgl)
+library("gridExtra")
+```
+
+
+```{r}
+setwd(getwd())
+All_Data <- read.csv('Data_All_Phenotypes_Raw_04152020.csv', header = TRUE, sep = ";", quote = "\"", dec = ".")
+
+DNA_Damage_w_meta = All_Data[,grep("_nfoci|Age|Sample_ID|Batch.1|Batch.2|BMI|Gender",colnames(All_Data))]
+Oxidative_Stress_w_meta = All_Data[,grep("_Live_CR_mean|Age|Sample_ID|Batch.1|Batch.2|BMI|Gender",colnames(All_Data))]
+Cell_Death_w_meta = All_Data[,grep("_Dead_percentage|Age|Sample_ID|Batch.1|Batch.2|BMI|Gender",colnames(All_Data))]
+
+save_metadata= All_Data[,grep("Age|Sample_ID|Batch.1|Batch.2|BMI|Gender|BMI_Group",colnames(All_Data))]
+
+### Separation of time point (to maximise the number of individuals while removing all NA for ComBat)
+DNA_Damage_w_meta_4h = DNA_Damage_w_meta[,grep("_4h|Age|Sample_ID|Batch.1|Batch.2|BMI|Gender",colnames(DNA_Damage_w_meta))]
+Oxidative_Stress_w_meta_4h=Oxidative_Stress_w_meta[,grep("_4h|Age|Sample_ID|Batch.1|Batch.2|BMI|Gender",colnames(Oxidative_Stress_w_meta))]
+Cell_Death_w_meta_4h = Cell_Death_w_meta[,grep("_4h|Age|Sample_ID|Batch.1|Batch.2|BMI|Gender",colnames(Cell_Death_w_meta))]
+DNA_Damage_w_meta_24h = DNA_Damage_w_meta[,grep("_24h|Age|Sample_ID|Batch.1|Batch.2|BMI|Gender",colnames(DNA_Damage_w_meta))]
+Oxidative_Stress_w_meta_24h = Oxidative_Stress_w_meta[,grep("_24h|Age|Sample_ID|Batch.1|Batch.2|BMI|Gender",colnames(Oxidative_Stress_w_meta))]
+Cell_Death_w_meta_24h = Cell_Death_w_meta[,grep("_24h|Age|Sample_ID|Batch.1|Batch.2|BMI|Gender",colnames(Cell_Death_w_meta))]
+
+DNA_Damage_w_meta_4h=NaRV.omit(DNA_Damage_w_meta_4h)
+Oxidative_Stress_w_meta_4h=NaRV.omit(Oxidative_Stress_w_meta_4h)
+Cell_Death_w_meta_4h=NaRV.omit(Cell_Death_w_meta_4h)
+DNA_Damage_w_meta_24h=NaRV.omit(DNA_Damage_w_meta_24h)
+Oxidative_Stress_w_meta_24h=NaRV.omit(Oxidative_Stress_w_meta_24h)
+Cell_Death_w_meta_24h=NaRV.omit(Cell_Death_w_meta_24h)
+
+
+```
+
+
+```{r}
+#### Batch correction with ComBat 
+#edata = all radiative response data without metadata and transposed compared to the original table
+#pheno = metadata without the confounding factor, which will be stored in the variable named batch 
+
+### Batch correction at time point 4h 
+
+# DNA damage 
+metadata_storage = DNA_Damage_w_meta_4h[,grep("Sample_ID|Batch.1|Age|BMI|Gender",colnames(DNA_Damage_w_meta_4h))]
+pheno = DNA_Damage_w_meta_4h[,grep("Age|BMI|Gender",colnames(DNA_Damage_w_meta_4h))]
+edata= DNA_Damage_w_meta_4h[,grep("_nfoci",colnames(DNA_Damage_w_meta_4h))]
+edata=t(edata)
+
+modcombat = model.matrix(~1, data=pheno) 
+batch = DNA_Damage_w_meta_4h$Batch.2
+combat_edata = ComBat(edata, batch=batch, mod=modcombat)
+combat_edata_t=t(combat_edata)
+combat_edata_t=data.frame(combat_edata_t)
+
+DNA_damage_4h_corrected = cbind(Sample_ID=metadata_storage$Sample_ID, combat_edata_t)
+
+
+# Oxidative Stress 
+metadata_storage = Oxidative_Stress_w_meta_4h[,grep("Sample_ID|Batch.1|Age|BMI|Gender",colnames(Oxidative_Stress_w_meta_4h))]
+pheno = Oxidative_Stress_w_meta_4h[,grep("Age|BMI|Gender",colnames(Oxidative_Stress_w_meta_4h))]
+edata= Oxidative_Stress_w_meta_4h[,grep("_CR",colnames(Oxidative_Stress_w_meta_4h))]
+edata=t(edata)
+
+modcombat = model.matrix(~1, data=pheno) 
+batch = Oxidative_Stress_w_meta_4h$Batch.2
+combat_edata = ComBat(edata, batch=batch, mod=modcombat)
+combat_edata_t=t(combat_edata)
+combat_edata_t=data.frame(combat_edata_t)
+
+Oxidative_Stress_4h_corrected = cbind(Sample_ID=metadata_storage$Sample_ID, combat_edata_t)
+
+# Cell Death 
+metadata_storage = Cell_Death_w_meta_4h[,grep("Sample_ID|Batch.1|Age|BMI|Gender",colnames(Cell_Death_w_meta_4h))]
+pheno = Cell_Death_w_meta_4h[,grep("Age|BMI|Gender",colnames(Cell_Death_w_meta_4h))]
+edata= Cell_Death_w_meta_4h[,grep("_Dead",colnames(Cell_Death_w_meta_4h))]
+edata=t(edata)
+
+modcombat = model.matrix(~1, data=pheno) 
+batch = Cell_Death_w_meta_4h$Batch.2
+combat_edata = ComBat(edata, batch=batch, mod=modcombat)
+combat_edata_t=t(combat_edata)
+combat_edata_t=data.frame(combat_edata_t)
+
+Cell_Death_4h_corrected = cbind(Sample_ID=metadata_storage$Sample_ID, combat_edata_t)
+
+
+### Batch correction at time point 24h 
+
+# DNA damage 
+metadata_storage = DNA_Damage_w_meta_24h[,grep("Sample_ID|Batch.1|Age|BMI|Gender",colnames(DNA_Damage_w_meta_24h))]
+pheno = DNA_Damage_w_meta_24h[,grep("Age|BMI|Gender",colnames(DNA_Damage_w_meta_24h))]
+edata= DNA_Damage_w_meta_24h[,grep("_nfoci",colnames(DNA_Damage_w_meta_24h))]
+edata=t(edata)
+
+modcombat = model.matrix(~1, data=pheno) 
+batch = DNA_Damage_w_meta_24h$Batch.2
+combat_edata = ComBat(edata, batch=batch, mod=modcombat)
+combat_edata_t=t(combat_edata)
+combat_edata_t=data.frame(combat_edata_t)
+
+DNA_damage_24h_corrected = cbind(Sample_ID=metadata_storage$Sample_ID, combat_edata_t)
+
+
+# Oxidative Stress 
+metadata_storage = Oxidative_Stress_w_meta_24h[,grep("Sample_ID|Batch.1|Age|BMI|Gender",colnames(Oxidative_Stress_w_meta_24h))]
+pheno = Oxidative_Stress_w_meta_24h[,grep("Age|BMI|Gender",colnames(Oxidative_Stress_w_meta_24h))]
+edata= Oxidative_Stress_w_meta_24h[,grep("_CR",colnames(Oxidative_Stress_w_meta_24h))]
+edata=t(edata)
+
+modcombat = model.matrix(~1, data=pheno) 
+batch = Oxidative_Stress_w_meta_24h$Batch.2
+combat_edata = ComBat(edata, batch=batch, mod=modcombat)
+combat_edata_t=t(combat_edata)
+combat_edata_t=data.frame(combat_edata_t)
+
+Oxidative_Stress_24h_corrected = cbind(Sample_ID=metadata_storage$Sample_ID, combat_edata_t)
+
+# Cell Death 
+metadata_storage = Cell_Death_w_meta_24h[,grep("Sample_ID|Batch.1|Age|BMI|Gender",colnames(Cell_Death_w_meta_24h))]
+pheno = Cell_Death_w_meta_24h[,grep("Age|BMI|Gender",colnames(Cell_Death_w_meta_24h))]
+edata= Cell_Death_w_meta_24h[,grep("_Dead",colnames(Cell_Death_w_meta_24h))]
+edata=t(edata)
+
+modcombat = model.matrix(~1, data=pheno) 
+batch = Cell_Death_w_meta_24h$Batch.2
+combat_edata = ComBat(edata, batch=batch, mod=modcombat)
+combat_edata_t=t(combat_edata)
+combat_edata_t=data.frame(combat_edata_t)
+
+Cell_Death_24h_corrected = cbind(Sample_ID=metadata_storage$Sample_ID, combat_edata_t)
+
+```
+```{r}
+
+#### reassemble all corrected data 
+Phenotypes_corrected_data=merge(DNA_damage_4h_corrected, DNA_damage_24h_corrected, by.x = 'Sample_ID', by.y = 'Sample_ID', all.x = TRUE, all.y = TRUE)
+Phenotypes_corrected_data=merge(Phenotypes_corrected_data, Oxidative_Stress_4h_corrected, by.x = 'Sample_ID', by.y = 'Sample_ID', all.x = TRUE, all.y = TRUE)
+Phenotypes_corrected_data=merge(Phenotypes_corrected_data, Oxidative_Stress_24h_corrected, by.x = 'Sample_ID', by.y = 'Sample_ID', all.x = TRUE, all.y = TRUE)
+Phenotypes_corrected_data=merge(Phenotypes_corrected_data, Cell_Death_4h_corrected, by.x = 'Sample_ID', by.y = 'Sample_ID', all.x = TRUE, all.y =TRUE)
+Phenotypes_corrected_data=merge(Phenotypes_corrected_data, Cell_Death_24h_corrected, by.x = 'Sample_ID', by.y = 'Sample_ID', all.x = TRUE, all.y = TRUE)
+Phenotypes_corrected_data=merge(Phenotypes_corrected_data, save_metadata, by.x = 'Sample_ID', by.y = 'Sample_ID', all.x = TRUE, all.y = TRUE)
+
+
+### After correction negative values can appear, therefore we fix all negative values to zero
+ Phenotypes_corrected_data$Fe_avg_nfoci_0_4h[Phenotypes_corrected_data$Fe_avg_nfoci_0_4h < 0] <- 0
+ Phenotypes_corrected_data$Fe_avg_nfoci_1_4h[Phenotypes_corrected_data$Fe_avg_nfoci_1_4h< 0] <- 0
+ Phenotypes_corrected_data$Fe_avg_nfoci_3_4h[Phenotypes_corrected_data$Fe_avg_nfoci_3_4h< 0] <- 0
+ Phenotypes_corrected_data$Fe_avg_nfoci_0_24h[Phenotypes_corrected_data$Fe_avg_nfoci_0_24h< 0] <- 0
+ Phenotypes_corrected_data$Fe_avg_nfoci_1_24h[Phenotypes_corrected_data$Fe_avg_nfoci_1_24h< 0] <- 0
+ Phenotypes_corrected_data$Fe_avg_nfoci_3_24h[Phenotypes_corrected_data$Fe_avg_nfoci_3_24h< 0] <- 0
+
+ Phenotypes_corrected_data$Si_avg_nfoci_0_4h[Phenotypes_corrected_data$Si_avg_nfoci_0_4h< 0] <- 0
+ Phenotypes_corrected_data$Si_avg_nfoci_1_4h[Phenotypes_corrected_data$Si_avg_nfoci_1_4h< 0] <- 0
+ Phenotypes_corrected_data$Si_avg_nfoci_3_4h[Phenotypes_corrected_data$Si_avg_nfoci_3_4h< 0] <- 0
+ Phenotypes_corrected_data$Si_avg_nfoci_0_24h[Phenotypes_corrected_data$Si_avg_nfoci_0_24h< 0] <- 0
+ Phenotypes_corrected_data$Si_avg_nfoci_1_24h[Phenotypes_corrected_data$Si_avg_nfoci_1_24h< 0] <- 0
+ Phenotypes_corrected_data$Si_avg_nfoci_3_24h[Phenotypes_corrected_data$Si_avg_nfoci_3_24h< 0] <- 0
+
+ Phenotypes_corrected_data$Ar_avg_nfoci_0_4h[Phenotypes_corrected_data$Ar_avg_nfoci_0_4h< 0] <- 0
+ Phenotypes_corrected_data$Ar_avg_nfoci_1_4h[Phenotypes_corrected_data$Ar_avg_nfoci_1_4h< 0] <- 0
+ Phenotypes_corrected_data$Ar_avg_nfoci_3_4h[Phenotypes_corrected_data$Ar_avg_nfoci_3_4h< 0] <- 0
+ Phenotypes_corrected_data$Ar_avg_nfoci_0_24h[Phenotypes_corrected_data$Ar_avg_nfoci_0_24h< 0] <- 0
+ Phenotypes_corrected_data$Ar_avg_nfoci_1_24h[Phenotypes_corrected_data$Ar_avg_nfoci_1_24h< 0] <- 0
+ Phenotypes_corrected_data$Ar_avg_nfoci_3_24h[Phenotypes_corrected_data$Ar_avg_nfoci_3_24h< 0] <- 0
+
+ Phenotypes_corrected_data$Gamma_avg_nfoci_0_4h[Phenotypes_corrected_data$Gamma_avg_nfoci_0_4h< 0] <- 0
+ Phenotypes_corrected_data$Gamma_avg_nfoci_0.1_4h[Phenotypes_corrected_data$Gamma_avg_nfoci_0.1_4h< 0] <- 0
+ Phenotypes_corrected_data$Gamma_avg_nfoci_1_4h[Phenotypes_corrected_data$Gamma_avg_nfoci_1_4h< 0] <- 0
+ Phenotypes_corrected_data$Gamma_avg_nfoci_0_24h[Phenotypes_corrected_data$Gamma_avg_nfoci_0_24h< 0] <- 0
+ Phenotypes_corrected_data$Gamma_avg_nfoci_0.1_24h[Phenotypes_corrected_data$Gamma_avg_nfoci_0.1_24h< 0] <- 0
+ Phenotypes_corrected_data$Gamma_avg_nfoci_1_24h[Phenotypes_corrected_data$Gamma_avg_nfoci_1_24h< 0] <- 0
+
+ Phenotypes_corrected_data$Fe_Live_CR_mean_0_4h[Phenotypes_corrected_data$Fe_Live_CR_mean_0_4h< 0] <- 0
+ Phenotypes_corrected_data$Fe_Live_CR_mean_1_4h[Phenotypes_corrected_data$Fe_Live_CR_mean_1_4h< 0] <- 0
+ Phenotypes_corrected_data$Fe_Live_CR_mean_3_4h[Phenotypes_corrected_data$Fe_Live_CR_mean_3_4h< 0] <- 0
+ Phenotypes_corrected_data$Fe_Live_CR_mean_0_24h[Phenotypes_corrected_data$Fe_Live_CR_mean_0_24h< 0] <- 0
+ Phenotypes_corrected_data$Fe_Live_CR_mean_1_24h[Phenotypes_corrected_data$Fe_Live_CR_mean_1_24h< 0] <- 0
+ Phenotypes_corrected_data$Fe_Live_CR_mean_3_24h[Phenotypes_corrected_data$Fe_Live_CR_mean_3_24h< 0] <- 0
+
+ Phenotypes_corrected_data$Si_Live_CR_mean_0_4h[Phenotypes_corrected_data$Si_Live_CR_mean_0_4h< 0] <- 0
+ Phenotypes_corrected_data$Si_Live_CR_mean_1_4h[Phenotypes_corrected_data$Si_Live_CR_mean_1_4h< 0] <- 0
+ Phenotypes_corrected_data$Si_Live_CR_mean_3_4h[Phenotypes_corrected_data$Si_Live_CR_mean_3_4h< 0] <- 0
+ Phenotypes_corrected_data$Si_Live_CR_mean_0_24h[Phenotypes_corrected_data$Si_Live_CR_mean_0_24h< 0] <- 0
+ Phenotypes_corrected_data$Si_Live_CR_mean_1_24h[Phenotypes_corrected_data$Si_Live_CR_mean_1_24h< 0] <- 0
+ Phenotypes_corrected_data$Si_Live_CR_mean_3_24h[Phenotypes_corrected_data$Si_Live_CR_mean_3_24h< 0] <- 0
+
+ Phenotypes_corrected_data$Ar_Live_CR_mean_0_4h[Phenotypes_corrected_data$Ar_Live_CR_mean_0_4h< 0] <- 0
+ Phenotypes_corrected_data$Ar_Live_CR_mean_1_4h[Phenotypes_corrected_data$Ar_Live_CR_mean_1_4h< 0] <- 0
+ Phenotypes_corrected_data$Ar_Live_CR_mean_3_4h[Phenotypes_corrected_data$Ar_Live_CR_mean_3_4h< 0] <- 0
+ Phenotypes_corrected_data$Ar_Live_CR_mean_0_24h[Phenotypes_corrected_data$Ar_Live_CR_mean_0_24h< 0] <- 0
+ Phenotypes_corrected_data$Ar_Live_CR_mean_1_24h[Phenotypes_corrected_data$Ar_Live_CR_mean_1_24h< 0] <- 0
+ Phenotypes_corrected_data$Ar_Live_CR_mean_3_24h[Phenotypes_corrected_data$Ar_Live_CR_mean_3_24h< 0] <- 0
+
+ Phenotypes_corrected_data$Gamma_Live_CR_mean_0_4h[Phenotypes_corrected_data$Gamma_Live_CR_mean_0_4h< 0] <- 0
+ Phenotypes_corrected_data$Gamma_Live_CR_mean_0.1_4h[Phenotypes_corrected_data$Gamma_Live_CR_mean_0.1_4h< 0] <- 0
+ Phenotypes_corrected_data$Gamma_Live_CR_mean_1_4h[Phenotypes_corrected_data$Gamma_Live_CR_mean_1_4h< 0] <- 0
+ Phenotypes_corrected_data$Gamma_Live_CR_mean_0_24h[Phenotypes_corrected_data$Gamma_Live_CR_mean_0_24h< 0] <- 0
+ Phenotypes_corrected_data$Gamma_Live_CR_mean_0.1_24h[Phenotypes_corrected_data$Gamma_Live_CR_mean_0.1_24h< 0] <- 0
+ Phenotypes_corrected_data$Gamma_Live_CR_mean_1_24h[Phenotypes_corrected_data$Gamma_Live_CR_mean_1_24h< 0] <- 0
+
+
+ Phenotypes_corrected_data$Fe_Dead_percentage_0_4h[Phenotypes_corrected_data$Fe_Dead_percentage_0_4h< 0] <- 0
+ Phenotypes_corrected_data$Fe_Dead_percentage_1_4h[Phenotypes_corrected_data$Fe_Dead_percentage_1_4h< 0] <- 0
+ Phenotypes_corrected_data$Fe_Dead_percentage_3_4h[Phenotypes_corrected_data$Fe_Dead_percentage_3_4h< 0] <- 0
+ Phenotypes_corrected_data$Fe_Dead_percentage_0_24h[Phenotypes_corrected_data$Fe_Dead_percentage_0_24h< 0] <- 0
+ Phenotypes_corrected_data$Fe_Dead_percentage_1_24h[Phenotypes_corrected_data$Fe_Dead_percentage_1_24h< 0] <- 0
+ Phenotypes_corrected_data$Fe_Dead_percentage_3_24h[Phenotypes_corrected_data$Fe_Dead_percentage_3_24h< 0] <- 0
+
+ Phenotypes_corrected_data$Si_Dead_percentage_0_4h[Phenotypes_corrected_data$Si_Dead_percentage_0_4h< 0] <- 0
+ Phenotypes_corrected_data$Si_Dead_percentage_1_4h[Phenotypes_corrected_data$Si_Dead_percentage_1_4h< 0] <- 0
+ Phenotypes_corrected_data$Si_Dead_percentage_3_4h[Phenotypes_corrected_data$Si_Dead_percentage_3_4h< 0] <- 0
+ Phenotypes_corrected_data$Si_Dead_percentage_0_24h[Phenotypes_corrected_data$Si_Dead_percentage_0_24h< 0] <- 0
+ Phenotypes_corrected_data$Si_Dead_percentage_1_24h[Phenotypes_corrected_data$Si_Dead_percentage_1_24h< 0] <- 0
+ Phenotypes_corrected_data$Si_Dead_percentage_3_24h[Phenotypes_corrected_data$Si_Dead_percentage_3_24h< 0] <- 0
+
+ Phenotypes_corrected_data$Ar_Dead_percentage_0_4h[Phenotypes_corrected_data$Ar_Dead_percentage_0_4h< 0] <- 0
+ Phenotypes_corrected_data$Ar_Dead_percentage_1_4h[Phenotypes_corrected_data$Ar_Dead_percentage_1_4h< 0] <- 0
+ Phenotypes_corrected_data$Ar_Dead_percentage_3_4h[Phenotypes_corrected_data$Ar_Dead_percentage_3_4h< 0] <- 0
+Phenotypes_corrected_data$Ar_Dead_percentage_0_24h[Phenotypes_corrected_data$Ar_Dead_percentage_0_24h< 0] <- 0
+ Phenotypes_corrected_data$Ar_Dead_percentage_1_24h[Phenotypes_corrected_data$Ar_Dead_percentage_1_24h< 0] <- 0
+ Phenotypes_corrected_data$Ar_Dead_percentage_3_24h[Phenotypes_corrected_data$Ar_Dead_percentage_3_24h< 0] <- 0
+
+ Phenotypes_corrected_data$Gamma_Dead_percentage_0_4h[Phenotypes_corrected_data$Gamma_Dead_percentage_0_4h< 0] <- 0
+ Phenotypes_corrected_data$Gamma_Dead_percentage_0.1_4h[Phenotypes_corrected_data$Gamma_Dead_percentage_0.1_4h< 0] <- 0
+ Phenotypes_corrected_data$Gamma_Dead_percentage_1_4h[Phenotypes_corrected_data$Gamma_Dead_percentage_1_4h< 0] <- 0
+ Phenotypes_corrected_data$Gamma_Dead_percentage_0_24h[Phenotypes_corrected_data$Gamma_Dead_percentage_0_24h< 0] <- 0
+ Phenotypes_corrected_data$Gamma_Dead_percentage_0.1_24h[Phenotypes_corrected_data$Gamma_Dead_percentage_0.1_24h< 0] <- 0
+ Phenotypes_corrected_data$Gamma_Dead_percentage_1_24h[Phenotypes_corrected_data$Gamma_Dead_percentage_1_24h< 0] <- 0
+ 
+ 
+ write.csv(Phenotypes_corrected_data, "Phenotypes_corrected_data_without_neg_values.csv")
+```
+
+
+
+```{r}
+### Plots
+### for each phenotypes and time points 
+
+#DNA damage 4h
+#Fe
+Fig_DNA_Fe_4h <- plot_ly(data=DNA_damage_4h_corrected, 
+               y = ~ Fe_avg_nfoci_0_4h, 
+               name = "Control", 
+               type = "box", boxpoints = "all")
+Fig_DNA_Fe_4h <- Fig_DNA_Fe_4h %>% add_trace(y = ~  Fe_avg_nfoci_1_4h, name= "Fluence 1.1")
+Fig_DNA_Fe_4h <- Fig_DNA_Fe_4h %>% add_trace(y = ~  Fe_avg_nfoci_3_4h, name= "Fluence 3")             
+Fig_DNA_Fe_4h <- Fig_DNA_Fe_4h %>% layout(title = "DNA damage for Iron at 4h")
+#print(Fig_DNA_Fe_4h)
+               
+
+#Si
+Fig_DNA_Si_4h <- plot_ly(data=DNA_damage_4h_corrected, 
+               y = ~ Si_avg_nfoci_0_4h, 
+               name = "Control", 
+               type = "box", boxpoints = "all")
+Fig_DNA_Si_4h <- Fig_DNA_Si_4h %>% add_trace(y = ~  Si_avg_nfoci_1_4h, name= "Fluence 1.1")
+Fig_DNA_Si_4h <- Fig_DNA_Si_4h %>% add_trace(y = ~  Si_avg_nfoci_3_4h, name= "Fluence 3")             
+Fig_DNA_Si_4h <- Fig_DNA_Si_4h %>% layout(title = "DNA damage for Silicon at 4h")
+#print(Fig_DNA_Si_4h)
+
+#Ar
+Fig_DNA_Ar_4h <- plot_ly(data=DNA_damage_4h_corrected, 
+               y = ~ Ar_avg_nfoci_0_4h, 
+               name = "Control", 
+               type = "box", boxpoints = "all")
+Fig_DNA_Ar_4h <- Fig_DNA_Ar_4h %>% add_trace(y = ~  Ar_avg_nfoci_1_4h, name= "Fluence 1.1")
+Fig_DNA_Ar_4h <- Fig_DNA_Ar_4h %>% add_trace(y = ~  Ar_avg_nfoci_3_4h, name= "Fluence 3")             
+Fig_DNA_Ar_4h <- Fig_DNA_Ar_4h %>% layout(title = "DNA damage for Argon at 4h")
+#print(Fig_DNA_Ar_4h)
+
+
+#Gamma
+Fig_DNA_Gamma_4h <- plot_ly(data=DNA_damage_4h_corrected, 
+               y = ~ Gamma_avg_nfoci_0_4h, 
+               name = "Control", 
+               type = "box", boxpoints = "all")
+Fig_DNA_Gamma_4h <- Fig_DNA_Gamma_4h %>% add_trace(y = ~  Gamma_avg_nfoci_0.1_4h, name= "0.1 Gy")
+Fig_DNA_Gamma_4h <- Fig_DNA_Gamma_4h %>% add_trace(y = ~  Gamma_avg_nfoci_1_4h, name= "1 Gy")             
+Fig_DNA_Gamma_4h <- Fig_DNA_Gamma_4h %>% layout(title = "DNA damage for Gamma at 4h")
+#print(Fig_DNA_Gamma_4h)
+
+#DNA damage 24h
+#Fe
+Fig_DNA_Fe_24h <- plot_ly(data=DNA_damage_24h_corrected, 
+               y = ~ Fe_avg_nfoci_0_24h, 
+               name = "Control", 
+               type = "box", boxpoints = "all")
+Fig_DNA_Fe_24h <- Fig_DNA_Fe_24h %>% add_trace(y = ~  Fe_avg_nfoci_1_24h, name= "Fluence 1.1")
+Fig_DNA_Fe_24h <- Fig_DNA_Fe_24h %>% add_trace(y = ~  Fe_avg_nfoci_3_24h, name= "Fluence 3")             
+Fig_DNA_Fe_24h <- Fig_DNA_Fe_24h %>% layout(title = "DNA damage for Iron at 24h")
+#print(Fig_DNA_Fe_24h)
+               
+
+#Si
+Fig_DNA_Si_24h <- plot_ly(data=DNA_damage_24h_corrected, 
+               y = ~ Si_avg_nfoci_0_24h, 
+               name = "Control", 
+               type = "box", boxpoints = "all")
+Fig_DNA_Si_24h <- Fig_DNA_Si_24h %>% add_trace(y = ~  Si_avg_nfoci_1_24h, name= "Fluence 1.1")
+Fig_DNA_Si_24h <- Fig_DNA_Si_24h %>% add_trace(y = ~  Si_avg_nfoci_3_24h, name= "Fluence 3")             
+Fig_DNA_Si_24h <- Fig_DNA_Si_24h %>% layout(title = "DNA damage for Silicon at 24h")
+#print(Fig_DNA_Si_24h)
+
+#Ar
+Fig_DNA_Ar_24h <- plot_ly(data=DNA_damage_24h_corrected, 
+               y = ~ Ar_avg_nfoci_0_24h, 
+               name = "Control", 
+               type = "box", boxpoints = "all")
+Fig_DNA_Ar_24h <- Fig_DNA_Ar_24h %>% add_trace(y = ~  Ar_avg_nfoci_1_24h, name= "Fluence 1.1")
+Fig_DNA_Ar_24h <- Fig_DNA_Ar_24h %>% add_trace(y = ~  Ar_avg_nfoci_3_24h, name= "Fluence 3")             
+Fig_DNA_Ar_24h <- Fig_DNA_Ar_24h %>% layout(title = "DNA damage for Argon at 24h")
+#print(Fig_DNA_Ar_24h)
+
+
+#Gamma
+Fig_DNA_Gamma_24h <- plot_ly(data=DNA_damage_24h_corrected, 
+               y = ~ Gamma_avg_nfoci_0_24h, 
+               name = "Control", 
+               type = "box", boxpoints = "all")
+Fig_DNA_Gamma_24h <- Fig_DNA_Gamma_24h %>% add_trace(y = ~  Gamma_avg_nfoci_0.1_24h, name= "0.1 Gy")
+Fig_DNA_Gamma_24h<- Fig_DNA_Gamma_24h %>% add_trace(y = ~  Gamma_avg_nfoci_1_24h, name= "1 Gy")             
+Fig_DNA_Gamma_24h <- Fig_DNA_Gamma_24h %>% layout(title = "DNA damage for Gamma at 24h")
+#print(Fig_DNA_Gamma_24h)
+
+
+#Oxidative Stress 4h
+#Fe
+Fig_OxStress_Fe_4h <- plot_ly(data=Oxidative_Stress_4h_corrected, 
+               y = ~ Fe_Live_CR_mean_0_4h, 
+               name = "Control", 
+               type = "box", boxpoints = "all")
+Fig_OxStress_Fe_4h <- Fig_OxStress_Fe_4h %>% add_trace(y = ~  Fe_Live_CR_mean_1_4h, name= "Fluence 1.1")
+Fig_OxStress_Fe_4h <- Fig_OxStress_Fe_4h %>% add_trace(y = ~  Fe_Live_CR_mean_3_4h, name= "Fluence 3")             
+Fig_OxStress_Fe_4h <- Fig_OxStress_Fe_4h %>% layout(title = "Oxidative Stress for Iron at 4h")
+#print(Fig_OxStress_Fe_4h)
+               
+
+#Si
+Fig_OxStress_Si_4h <- plot_ly(data=Oxidative_Stress_4h_corrected, 
+               y = ~ Si_Live_CR_mean_0_4h, 
+               name = "Control", 
+               type = "box", boxpoints = "all")
+Fig_OxStress_Si_4h <- Fig_OxStress_Si_4h %>% add_trace(y = ~  Si_Live_CR_mean_1_4h, name= "Fluence 1.1")
+Fig_OxStress_Si_4h <- Fig_OxStress_Si_4h %>% add_trace(y = ~  Si_Live_CR_mean_3_4h, name= "Fluence 3")             
+Fig_OxStress_Si_4h <- Fig_OxStress_Si_4h %>% layout(title = "Oxidative Stress for Silicon at 4h")
+#print(Fig_OxStress_Si_4h)
+
+#Ar
+Fig_OxStress_Ar_4h <- plot_ly(data=Oxidative_Stress_4h_corrected, 
+               y = ~ Ar_Live_CR_mean_0_4h, 
+               name = "Control", 
+               type = "box", boxpoints = "all")
+Fig_OxStress_Ar_4h <- Fig_OxStress_Ar_4h %>% add_trace(y = ~  Ar_Live_CR_mean_1_4h, name= "Fluence 1.1")
+Fig_OxStress_Ar_4h <- Fig_OxStress_Ar_4h %>% add_trace(y = ~  Ar_Live_CR_mean_3_4h, name= "Fluence 3")             
+Fig_OxStress_Ar_4h <- Fig_OxStress_Ar_4h %>% layout(title = "Oxidative Stress for Argon at 4h")
+#print(Fig_OxStress_Ar_4h)
+
+
+#Gamma
+Fig_OxStress_Gamma_4h <- plot_ly(data=Oxidative_Stress_4h_corrected, 
+               y = ~ Gamma_Live_CR_mean_0_4h, 
+               name = "Control", 
+               type = "box", boxpoints = "all")
+Fig_OxStress_Gamma_4h <- Fig_OxStress_Gamma_4h %>% add_trace(y = ~  Gamma_Live_CR_mean_0.1_4h, name= "0.1 Gy")
+Fig_OxStress_Gamma_4h <- Fig_OxStress_Gamma_4h %>% add_trace(y = ~  Gamma_Live_CR_mean_1_4h, name= "1 Gy")             
+Fig_OxStress_Gamma_4h <- Fig_OxStress_Gamma_4h %>% layout(title = "Oxidative Stress for Gamma at 4h")
+#print(Fig_OxStress_Gamma_4h)
+
+#Oxidative Stress 24h
+#Fe
+Fig_OxStress_Fe_24h <- plot_ly(data=Oxidative_Stress_24h_corrected, 
+               y = ~ Fe_Live_CR_mean_0_24h, 
+               name = "Control", 
+               type = "box", boxpoints = "all")
+Fig_OxStress_Fe_24h <- Fig_OxStress_Fe_24h %>% add_trace(y = ~  Fe_Live_CR_mean_1_24h, name= "Fluence 1.1")
+Fig_OxStress_Fe_24h <- Fig_OxStress_Fe_24h %>% add_trace(y = ~  Fe_Live_CR_mean_3_24h, name= "Fluence 3")             
+Fig_OxStress_Fe_24h <- Fig_OxStress_Fe_24h %>% layout(title = "Oxidative Stress for Iron at 24h")
+#print(Fig_OxStress_Fe_24h)
+               
+
+#Si
+Fig_OxStress_Si_24h <- plot_ly(data=Oxidative_Stress_24h_corrected, 
+               y = ~ Si_Live_CR_mean_0_24h, 
+               name = "Control", 
+               type = "box", boxpoints = "all")
+Fig_OxStress_Si_24h <- Fig_OxStress_Si_24h %>% add_trace(y = ~  Si_Live_CR_mean_1_24h, name= "Fluence 1.1")
+Fig_OxStress_Si_24h <- Fig_OxStress_Si_24h %>% add_trace(y = ~  Si_Live_CR_mean_3_24h, name= "Fluence 3")             
+Fig_OxStress_Si_24h <- Fig_OxStress_Si_24h %>% layout(title = "Oxidative Stress for Silicon at 24h")
+#print(Fig_OxStress_Si_24h)
+
+#Ar
+Fig_OxStress_Ar_24h <- plot_ly(data=Phenotypes_corrected_data, 
+               y = ~ Ar_Live_CR_mean_0_24h, 
+               name = "Control", 
+               type = "box", boxpoints = "all")
+Fig_OxStress_Ar_24h <- Fig_OxStress_Ar_24h %>% add_trace(y = ~  Ar_Live_CR_mean_1_24h, name= "Fluence 1.1")
+Fig_OxStress_Ar_24h <- Fig_OxStress_Ar_24h %>% add_trace(y = ~  Ar_Live_CR_mean_3_24h, name= "Fluence 3")             
+Fig_OxStress_Ar_24h <- Fig_OxStress_Ar_24h %>% layout(title = "Oxidative Stress for Argon at 24h")
+#print(Fig_OxStress_Ar_24h)
+
+
+#Gamma
+Fig_OxStress_Gamma_24h <- plot_ly(data=Oxidative_Stress_24h_corrected, 
+               y = ~ Gamma_Live_CR_mean_0_24h, 
+               name = "Control", 
+               type = "box", boxpoints = "all")
+Fig_OxStress_Gamma_24h <- Fig_OxStress_Gamma_24h %>% add_trace(y = ~  Gamma_Live_CR_mean_0.1_24h, name= "0.1 Gy")
+Fig_OxStress_Gamma_24h <- Fig_OxStress_Gamma_24h %>% add_trace(y = ~  Gamma_Live_CR_mean_1_24h, name= "1 Gy")             
+Fig_OxStress_Gamma_24h <- Fig_OxStress_Gamma_24h %>% layout(title = "Oxidative Stress for Gamma at 24h")
+#print(Fig_OxStress_Gamma_24h)
+
+
+#Cell Death 4h
+#Fe
+Fig_CellD_Fe_4h <- plot_ly(data=Cell_Death_4h_corrected, 
+               y = ~ Fe_Dead_percentage_0_4h, 
+               name = "Control", 
+               type = "box", boxpoints = "all")
+Fig_CellD_Fe_4h <- Fig_CellD_Fe_4h %>% add_trace(y = ~  Fe_Dead_percentage_1_4h, name= "Fluence 1.1")
+Fig_CellD_Fe_4h <- Fig_CellD_Fe_4h %>% add_trace(y = ~  Fe_Dead_percentage_3_4h, name= "Fluence 3")             
+Fig_CellD_Fe_4h <- Fig_CellD_Fe_4h %>% layout(title = "Cell Death for Iron at 4h")
+#print(Fig_CellD_Fe_4h)
+               
+
+#Si
+Fig_CellD_Si_4h <- plot_ly(data=Cell_Death_4h_corrected, 
+               y = ~ Si_Dead_percentage_0_4h, 
+               name = "Control", 
+               type = "box", boxpoints = "all")
+Fig_CellD_Si_4h <- Fig_CellD_Si_4h %>% add_trace(y = ~  Si_Dead_percentage_1_4h, name= "Fluence 1.1")
+Fig_CellD_Si_4h <- Fig_CellD_Si_4h %>% add_trace(y = ~  Si_Dead_percentage_3_4h, name= "Fluence 3")             
+Fig_CellD_Si_4h <- Fig_CellD_Si_4h %>% layout(title = "Cell Death for Silicon at 4h")
+#print(Fig_CellD_Si_4h)
+
+#Ar
+Fig_CellD_Ar_4h <- plot_ly(data=Phenotypes_corrected_data, 
+               y = ~ Ar_Dead_percentage_0_4h, 
+               name = "Control", 
+               type = "box", boxpoints = "all")
+Fig_CellD_Ar_4h <- Fig_CellD_Ar_4h %>% add_trace(y = ~  Ar_Dead_percentage_1_4h, name= "Fluence 1.1")
+Fig_CellD_Ar_4h <- Fig_CellD_Ar_4h %>% add_trace(y = ~  Ar_Dead_percentage_3_4h, name= "Fluence 3")             
+Fig_CellD_Ar_4h <- Fig_CellD_Ar_4h %>% layout(title = "Cell Death for Argon at 4h")
+#print(Fig_CellD_Ar_4h)
+
+
+#Gamma
+Fig_CellD_Gamma_4h <- plot_ly(data=Cell_Death_4h_corrected, 
+               y = ~ Gamma_Dead_percentage_0_4h, 
+               name = "Control", 
+               type = "box", boxpoints = "all")
+Fig_CellD_Gamma_4h <- Fig_CellD_Gamma_4h %>% add_trace(y = ~  Gamma_Dead_percentage_0.1_4h, name= "0.1 Gy")
+Fig_CellD_Gamma_4h <- Fig_CellD_Gamma_4h %>% add_trace(y = ~  Gamma_Dead_percentage_1_4h, name= "1 Gy")             
+Fig_CellD_Gamma_4h <- Fig_CellD_Gamma_4h %>% layout(title = "Cell Death for Gamma at 4h")
+#print(Fig_CellD_Gamma_4h)
+
+#Cell Death 24h
+#Fe
+Fig_CellD_Fe_24h <- plot_ly(data=Cell_Death_24h_corrected, 
+               y = ~ Fe_Dead_percentage_0_24h, 
+               name = "Control", 
+               type = "box", boxpoints = "all")
+Fig_CellD_Fe_24h <- Fig_CellD_Fe_24h %>% add_trace(y = ~  Fe_Dead_percentage_1_24h, name= "Fluence 1.1")
+Fig_CellD_Fe_24h <- Fig_CellD_Fe_24h %>% add_trace(y = ~  Fe_Dead_percentage_3_24h, name= "Fluence 3")             
+Fig_CellD_Fe_24h <- Fig_CellD_Fe_24h %>% layout(title = "Cell Death Iron at 24h")
+#print(Fig_CellD_Fe_24h)
+               
+
+#Si
+Fig_CellD_Si_24h <- plot_ly(data=Cell_Death_24h_corrected, 
+               y = ~ Si_Dead_percentage_0_24h, 
+               name = "Control", 
+               type = "box", boxpoints = "all")
+Fig_CellD_Si_24h <- Fig_CellD_Si_24h %>% add_trace(y = ~  Si_Dead_percentage_1_24h, name= "Fluence 1.1")
+Fig_CellD_Si_24h <- Fig_CellD_Si_24h %>% add_trace(y = ~  Si_Dead_percentage_3_24h, name= "Fluence 3")             
+Fig_CellD_Si_24h <- Fig_CellD_Si_24h %>% layout(title = "Cell Death for Silicon at 24h")
+#print(Fig_CellD_Si_24h)
+
+#Ar
+Fig_CellD_Ar_24h <- plot_ly(data=Cell_Death_24h_corrected, 
+               y = ~ Ar_Dead_percentage_0_24h, 
+               name = "Control", 
+               type = "box", boxpoints = "all")
+Fig_CellD_Ar_24h <- Fig_CellD_Ar_24h %>% add_trace(y = ~  Ar_Dead_percentage_1_24h, name= "Fluence 1.1")
+Fig_CellD_Ar_24h <- Fig_CellD_Ar_24h %>% add_trace(y = ~  Ar_Dead_percentage_3_24h, name= "Fluence 3")             
+Fig_CellD_Ar_24h <- Fig_CellD_Ar_24h %>% layout(title = "Cell Death for Argon at 24h")
+#print(Fig_CellD_Ar_24h)
+
+
+#Gamma
+Fig_CellD_Gamma_24h <- plot_ly(data=Cell_Death_24h_corrected, 
+               y = ~ Gamma_Dead_percentage_0_24h, 
+               name = "Control", 
+               type = "box", boxpoints = "all")
+Fig_CellD_Gamma_24h <- Fig_CellD_Gamma_24h %>% add_trace(y = ~  Gamma_Dead_percentage_0.1_24h, name= "0.1 Gy")
+Fig_CellD_Gamma_24h <- Fig_CellD_Gamma_24h %>% add_trace(y = ~  Gamma_Dead_percentage_1_24h, name= "1 Gy")             
+Fig_CellD_Gamma_24h <- Fig_CellD_Gamma_24h %>% layout(title = "Cell Death for Gamma at 24h")
+#print(Fig_CellD_Gamma_24h)
+
+
+
+DNA_Damage_All_plots_4h <- subplot(Fig_DNA_Fe_4h, Fig_DNA_Ar_4h,Fig_DNA_Si_4h ,Fig_DNA_Gamma_4h, nrows = 4)
+orca(DNA_Damage_All_plots, file='DNA_Damage_All_plots_4h.pdf', scale = 2)
+
+DNA_Damage_All_plots_24h <- subplot(Fig_DNA_Fe_24h, Fig_DNA_Ar_24h,Fig_DNA_Si_24h ,Fig_DNA_Gamma_24h, nrows = 4)
+orca(DNA_Damage_All_plots, file='DNA_Damage_All_plots_24h.pdf', scale = 2)
+
+Oxidative_Stress_All_plots_4h <- subplot(Fig_OxStress_Fe_4h, Fig_OxStress_Ar_4h,Fig_OxStress_Si_4h ,Fig_OxStress_Gamma_4h, nrows = 4)
+orca(Oxidative_Stress_All_plots_4h, file='Oxidative_Stress_All_plots_4h.pdf', scale = 2)
+
+Oxidative_Stress_All_plots_24h <- subplot(Fig_OxStress_Fe_24h, Fig_OxStress_Ar_24h,Fig_OxStress_Si_24h ,Fig_OxStress_Gamma_24h, nrows = 4)
+orca(Oxidative_Stress_All_plots_24h, file='Oxidative_Stress_All_plots_24h.pdf', scale = 2)
+
+Cell_Death_All_plots_4h <- subplot(Fig_CellD_Fe_4h, Fig_CellD_Ar_4h, Fig_CellD_Si_4h, Fig_CellD_Gamma_4h, nrows = 4)
+orca(Cell_Death_All_plots_4h, file='Cell_Death_All_plots_4h.pdf', scale = 2)
+
+Cell_Death_All_plots_24h <- subplot(Fig_CellD_Fe_24h, Fig_CellD_Ar_24h, Fig_CellD_Si_24h, Fig_CellD_Gamma_24h, nrows = 4)
+orca(Cell_Death_All_plots_24h, file='Cell_Death_All_plots_24h.pdf', scale = 2)
+```
+

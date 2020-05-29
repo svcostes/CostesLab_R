@@ -1,0 +1,2181 @@
+---
+title: "Immune Cell Responses to Ioninzing Radiations"
+author: "Margaux P."
+date: "04/05/2020"
+---
+
+```{r}
+library(devtools)
+#install_github("vqv/ggbiplot")
+library(ggbiplot)
+require('lattice')
+require('ggplot2')
+require('polynom')
+require('corrplot')
+require('plyr')
+require('reshape2')
+require('stringr')
+library(IDPmisc)
+library(nlme)
+library(corpcor)
+library(mgcv)
+require('rlist')
+library('sva')
+library(dplyr)
+# install.packages("plotly")
+library(plotly)
+#install.packages("questionr")
+#install.packages("rgl")
+library(rgl)
+library(ash)
+#install.packages("OneR")
+#install.packages("reshape")
+library(reshape)
+#install.packages("pdp")
+library(pdp)
+library(OneR)
+#install.packages("base")
+library(base)
+library("gridExtra")
+```
+
+
+```{r}
+setwd(getwd())
+All_Data <- read.csv('Phenotypes_corrected_data_without_neg_values.csv', header = TRUE, sep = ",", quote = "\"", dec = ".")
+All_Data$X=NULL
+
+########## NORMALISATION ######################
+
+###### Fe 
+## 4h
+All_Data$Fe_Live_CR_mean_1_4h_Normalized = All_Data$Fe_Live_CR_mean_1_4h / All_Data$Fe_Live_CR_mean_0_4h
+All_Data$Fe_Live_CR_mean_3_4h_Normalized = All_Data$Fe_Live_CR_mean_3_4h / All_Data$Fe_Live_CR_mean_0_4h
+All_Data$Fe_Dead_percentage_1_4h_Normalized = All_Data$Fe_Dead_percentage_1_4h / All_Data$Fe_Dead_percentage_0_4h
+All_Data$Fe_Dead_percentage_3_4h_Normalized = All_Data$Fe_Dead_percentage_3_4h / All_Data$Fe_Dead_percentage_0_4h
+All_Data$Fe_avg_nfoci_1_4h_Normalized = All_Data$Fe_avg_nfoci_1_4h /All_Data$Fe_avg_nfoci_0_4h
+All_Data$Fe_avg_nfoci_3_4h_Normalized =All_Data$Fe_avg_nfoci_3_4h / All_Data$Fe_avg_nfoci_0_4h
+## 24h 
+All_Data$Fe_Live_CR_mean_1_24h_Normalized = All_Data$Fe_Live_CR_mean_1_24h / All_Data$Fe_Live_CR_mean_0_24h
+All_Data$Fe_Live_CR_mean_3_24h_Normalized = All_Data$Fe_Live_CR_mean_3_24h / All_Data$Fe_Live_CR_mean_0_24h
+All_Data$Fe_Dead_percentage_1_24h_Normalized = All_Data$Fe_Dead_percentage_1_24h / All_Data$Fe_Dead_percentage_0_24h
+All_Data$Fe_Dead_percentage_3_24h_Normalized = All_Data$Fe_Dead_percentage_3_24h / All_Data$Fe_Dead_percentage_0_24h
+All_Data$Fe_avg_nfoci_1_24h_Normalized = All_Data$Fe_avg_nfoci_1_24h / All_Data$Fe_avg_nfoci_0_24h
+All_Data$Fe_avg_nfoci_3_24h_Normalized = All_Data$Fe_avg_nfoci_3_24h / All_Data$Fe_avg_nfoci_0_24h
+
+###### Ar
+##4h
+All_Data$Ar_Live_CR_mean_1_4h_Normalized = All_Data$Ar_Live_CR_mean_1_4h / All_Data$Ar_Live_CR_mean_0_4h
+All_Data$Ar_Live_CR_mean_3_4h_Normalized = All_Data$Ar_Live_CR_mean_3_4h / All_Data$Ar_Live_CR_mean_0_4h
+All_Data$Ar_Dead_percentage_1_4h_Normalized = All_Data$Ar_Dead_percentage_1_4h / All_Data$Ar_Dead_percentage_0_4h
+All_Data$Ar_Dead_percentage_3_4h_Normalized = All_Data$Ar_Dead_percentage_3_4h / All_Data$Ar_Dead_percentage_0_4h
+All_Data$Ar_avg_nfoci_1_4h_Normalized = All_Data$Ar_avg_nfoci_1_4h / All_Data$Ar_avg_nfoci_0_4h
+All_Data$Ar_avg_nfoci_3_4h_Normalized = All_Data$Ar_avg_nfoci_3_4h / All_Data$Ar_avg_nfoci_0_4h
+## 24h
+All_Data$Ar_Live_CR_mean_1_24h_Normalized = All_Data$Ar_Live_CR_mean_1_24h / All_Data$Ar_Live_CR_mean_0_24h
+All_Data$Ar_Live_CR_mean_3_24h_Normalized = All_Data$Ar_Live_CR_mean_3_24h / All_Data$Ar_Live_CR_mean_0_24h
+All_Data$Ar_Dead_percentage_1_24h_Normalized = All_Data$Ar_Dead_percentage_1_24h / All_Data$Ar_Dead_percentage_0_24h
+All_Data$Ar_Dead_percentage_3_24h_Normalized = All_Data$Ar_Dead_percentage_3_24h / All_Data$Ar_Dead_percentage_0_24h
+All_Data$Ar_avg_nfoci_1_24h_Normalized = All_Data$Ar_avg_nfoci_1_24h / All_Data$Ar_avg_nfoci_0_24h
+All_Data$Ar_avg_nfoci_3_24h_Normalized = All_Data$Ar_avg_nfoci_3_24h / All_Data$Ar_avg_nfoci_0_24h
+
+
+###### Si
+##4h
+All_Data$Si_Live_CR_mean_1_4h_Normalized = All_Data$Si_Live_CR_mean_1_4h / All_Data$Si_Live_CR_mean_0_4h
+All_Data$Si_Live_CR_mean_3_4h_Normalized = All_Data$Si_Live_CR_mean_3_4h / All_Data$Si_Live_CR_mean_0_4h
+All_Data$Si_Dead_percentage_1_4h_Normalized = All_Data$Si_Dead_percentage_1_4h / All_Data$Si_Dead_percentage_0_4h
+All_Data$Si_Dead_percentage_3_4h_Normalized = All_Data$Si_Dead_percentage_3_4h / All_Data$Si_Dead_percentage_0_4h
+All_Data$Si_avg_nfoci_1_4h_Normalized = All_Data$Si_avg_nfoci_1_4h / All_Data$Si_avg_nfoci_0_4h
+All_Data$Si_avg_nfoci_3_4h_Normalized = All_Data$Si_avg_nfoci_3_4h / All_Data$Si_avg_nfoci_0_4h
+## 24h
+All_Data$Si_Live_CR_mean_1_24h_Normalized = All_Data$Si_Live_CR_mean_1_24h / All_Data$Si_Live_CR_mean_0_24h
+All_Data$Si_Live_CR_mean_3_24h_Normalized = All_Data$Si_Live_CR_mean_3_24h / All_Data$Si_Live_CR_mean_0_24h
+All_Data$Si_Dead_percentage_1_24h_Normalized = All_Data$Si_Dead_percentage_1_24h / All_Data$Si_Dead_percentage_0_24h
+All_Data$Si_Dead_percentage_3_24h_Normalized = All_Data$Si_Dead_percentage_3_24h / All_Data$Si_Dead_percentage_0_24h
+All_Data$Si_avg_nfoci_1_24h_Normalized = All_Data$Si_avg_nfoci_1_24h / All_Data$Si_avg_nfoci_0_24h
+All_Data$Si_avg_nfoci_3_24h_Normalized = All_Data$Si_avg_nfoci_3_24h / All_Data$Si_avg_nfoci_0_24h
+
+###### Gamma
+##4h
+All_Data$Gamma_Live_CR_mean_0.1_4h_Normalized = All_Data$Gamma_Live_CR_mean_0.1_4h / All_Data$Gamma_Live_CR_mean_0_4h
+All_Data$Gamma_Live_CR_mean_1_4h_Normalized = All_Data$Gamma_Live_CR_mean_1_4h / All_Data$Gamma_Live_CR_mean_0_4h
+All_Data$Gamma_Dead_percentage_0.1_4h_Normalized =All_Data$Gamma_Dead_percentage_0.1_4h / All_Data$Gamma_Dead_percentage_0_4h
+All_Data$Gamma_Dead_percentage_1_4h_Normalized = All_Data$Gamma_Dead_percentage_1_4h / All_Data$Gamma_Dead_percentage_0_4h
+All_Data$Gamma_avg_nfoci_0.1_4h_Normalized = All_Data$Gamma_avg_nfoci_0.1_4h / All_Data$Gamma_avg_nfoci_0_4h
+All_Data$Gamma_avg_nfoci_1_4h_Normalized = All_Data$Gamma_avg_nfoci_1_4h / All_Data$Gamma_avg_nfoci_0_4h
+## 24h
+All_Data$Gamma_Live_CR_mean_0.1_24h_Normalized = All_Data$Gamma_Live_CR_mean_0.1_24h / All_Data$Gamma_Live_CR_mean_0_24h
+All_Data$Gamma_Live_CR_mean_1_24h_Normalized = All_Data$Gamma_Live_CR_mean_1_24h / All_Data$Gamma_Live_CR_mean_0_24h
+All_Data$Gamma_Dead_percentage_0.1_24h_Normalized = All_Data$Gamma_Dead_percentage_0.1_24h / All_Data$Gamma_Dead_percentage_0_24h
+All_Data$Gamma_Dead_percentage_1_24h_Normalized = All_Data$Gamma_Dead_percentage_1_24h / All_Data$Gamma_Dead_percentage_0_24h
+All_Data$Gamma_avg_nfoci_0.1_24h_Normalized = All_Data$Gamma_avg_nfoci_0.1_24h / All_Data$Gamma_avg_nfoci_0_24h
+All_Data$Gamma_avg_nfoci_1_24h_Normalized = All_Data$Gamma_avg_nfoci_1_24h / All_Data$Gamma_avg_nfoci_0_24h
+
+```
+
+
+```{r}
+## Rename all columns to manipulate them more easily 
+
+All_Data_4h_Normalized= All_Data[ , grepl( "Sample_ID|_4h_Normalized" , names(All_Data) ) ]
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Gamma_Dead_percentage_0.1_4h_Normalized"] <- "Low_Dose_Cell_Death_Gamma"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Gamma_Dead_percentage_1_4h_Normalized"] <- "High_Dose_Cell_Death_Gamma"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Gamma_avg_nfoci_0.1_4h_Normalized"] <- "Low_Dose_DNA_Damage_Gamma"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Gamma_avg_nfoci_1_4h_Normalized"] <- "High_Dose_DNA_Damage_Gamma"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Gamma_Live_CR_mean_0.1_4h_Normalized"] <- "Low_Dose_Oxidative_Stress_Gamma"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Gamma_Live_CR_mean_1_4h_Normalized"] <- "High_Dose_Oxidative_Stress_Gamma"
+
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Fe_Dead_percentage_1_4h_Normalized"] <- "Low_Dose_Cell_Death_Fe"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Fe_Dead_percentage_3_4h_Normalized"] <- "High_Dose_Cell_Death_Fe"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Fe_avg_nfoci_1_4h_Normalized"] <- "Low_Dose_DNA_Damage_Fe"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Fe_avg_nfoci_3_4h_Normalized"] <- "High_Dose_DNA_Damage_Fe"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Fe_Live_CR_mean_1_4h_Normalized"] <- "Low_Dose_Oxidative_Stress_Fe"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Fe_Live_CR_mean_3_4h_Normalized"] <- "High_Dose_Oxidative_Stress_Fe"
+
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Si_Dead_percentage_1_4h_Normalized"] <- "Low_Dose_Cell_Death_Si"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Si_Dead_percentage_3_4h_Normalized"] <- "High_Dose_Cell_Death_Si"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Si_avg_nfoci_1_4h_Normalized"] <- "Low_Dose_DNA_Damage_Si"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Si_avg_nfoci_3_4h_Normalized"] <- "High_Dose_DNA_Damage_Si"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Si_Live_CR_mean_1_4h_Normalized"] <- "Low_Dose_Oxidative_Stress_Si"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Si_Live_CR_mean_3_4h_Normalized"] <- "High_Dose_Oxidative_Stress_Si"
+
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Ar_Dead_percentage_1_4h_Normalized"] <- "Low_Dose_Cell_Death_Ar"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Ar_Dead_percentage_3_4h_Normalized"] <- "High_Dose_Cell_Death_Ar"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Ar_avg_nfoci_1_4h_Normalized"] <- "Low_Dose_DNA_Damage_Ar"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Ar_avg_nfoci_3_4h_Normalized"] <- "High_Dose_DNA_Damage_Ar"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Ar_Live_CR_mean_1_4h_Normalized"] <- "Low_Dose_Oxidative_Stress_Ar"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Ar_Live_CR_mean_3_4h_Normalized"] <- "High_Dose_Oxidative_Stress_Ar"
+
+```
+
+
+
+```{r}
+
+### Data binning at 4h for cell death and oxidative stress 
+
+### I choose the scale based on the highest value of Oxidative Stress and Cell death osberved for Fe, Si, Ar and Gamma (very high outliers are, here, not considered)
+
+OS_breaks = seq(0, 3.8, 0.1)
+CD_breaks = seq(0, 11.9, 0.1)
+OS_breaks_data = seq(0, 3.75, 0.05)
+CD_breaks_data = seq(0,11.85, 0.05)
+
+Bins_OS=cut(OS_breaks_data, breaks = OS_breaks, right = TRUE )
+Bins_CD=cut(CD_breaks_data, breaks = CD_breaks, right = TRUE )
+Bins_CD_OS_4h_All_Data=merge(Bins_OS, Bins_CD)
+Bins_CD_OS_4h_All_Data=NaRV.omit(Bins_CD_OS_4h_All_Data)
+Bins_CD_OS_4h_All_Data$Bins_couple <- paste(Bins_CD_OS_4h_All_Data$x, Bins_CD_OS_4h_All_Data$y, sep="_")
+Bins_CD_OS_4h_All_Data$Bins_OS = Bins_CD_OS_4h_All_Data$x
+Bins_CD_OS_4h_All_Data$Bins_CD = Bins_CD_OS_4h_All_Data$y
+Bins_CD_OS_4h_All_Data$x=NULL
+Bins_CD_OS_4h_All_Data$y=NULL
+Bins_CD_OS_4h_All_Data=distinct(Bins_CD_OS_4h_All_Data)
+
+
+## Fe Low Dose 
+
+Bins_LD_Fe= All_Data_4h_Normalized[ , grepl( "Sample_ID|Low_Dose_Cell_Death_Fe|Low_Dose_DNA_Damage_Fe|Low_Dose_Oxidative_Stress_Fe" , names(All_Data_4h_Normalized))]
+Bins_LD_Fe=NaRV.omit(Bins_LD_Fe)
+Bins_LD_Fe$Low_Dose_Bins_Cell_Death_Fe=cut(Bins_LD_Fe$Low_Dose_Cell_Death_Fe, breaks = CD_breaks, right = TRUE)
+Bins_LD_Fe$Low_Dose_Bins_Oxidative_Stress_Fe=cut(Bins_LD_Fe$Low_Dose_Oxidative_Stress_Fe, breaks = OS_breaks, right = TRUE)
+Bins_LD_Fe$Bins_couple <- paste(Bins_LD_Fe$Low_Dose_Bins_Oxidative_Stress_Fe, Bins_LD_Fe$Low_Dose_Bins_Cell_Death_Fe,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_LD_Fe, .(Bins_couple), summarise, Low_Dose_mean_nfoci_Fe=mean(Low_Dose_DNA_Damage_Fe))
+Bins_LD_Fe=merge(Bins_LD_Fe,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_LD_Fe, Low_Dose_mean_nfoci_Fe)
+Bins_LD_Fe=merge(Bins_LD_Fe, Individuals_per_Bin, by.x="Low_Dose_mean_nfoci_Fe", by.y = "Low_Dose_mean_nfoci_Fe", all.x = TRUE, all.y = TRUE)
+Bins_LD_Fe$Low_Dose_Ind_per_Bin_Fe = Bins_LD_Fe$n
+Bins_LD_Fe$n=NULL
+
+Bins_LD_Fe_useful= Bins_LD_Fe[ , grepl( "Bins_couple|Low_Dose_mean_nfoci_Fe|Low_Dose_Ind_per_Bin_Fe" , names(Bins_LD_Fe))]
+Bins_LD_Fe_useful=distinct(Bins_LD_Fe_useful)
+
+Bins_CD_OS_4h_All_Data=merge(Bins_CD_OS_4h_All_Data,Bins_LD_Fe_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+## Fe High Dose 
+
+Bins_HD_Fe= All_Data_4h_Normalized[ , grepl( "Sample_ID|High_Dose_Cell_Death_Fe|High_Dose_DNA_Damage_Fe|High_Dose_Oxidative_Stress_Fe" , names(All_Data_4h_Normalized))]
+Bins_HD_Fe=NaRV.omit(Bins_HD_Fe)
+Bins_HD_Fe$High_Dose_Bins_Cell_Death_Fe=cut(Bins_HD_Fe$High_Dose_Cell_Death_Fe, breaks = CD_breaks, right = TRUE)
+Bins_HD_Fe$High_Dose_Bins_Oxidative_Stress_Fe=cut(Bins_HD_Fe$High_Dose_Oxidative_Stress_Fe, breaks = OS_breaks, right = TRUE)
+Bins_HD_Fe$Bins_couple <- paste(Bins_HD_Fe$High_Dose_Bins_Oxidative_Stress_Fe, Bins_HD_Fe$High_Dose_Bins_Cell_Death_Fe,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_HD_Fe, .(Bins_couple), summarise, High_Dose_mean_nfoci_Fe=mean(High_Dose_DNA_Damage_Fe))
+Bins_HD_Fe=merge(Bins_HD_Fe,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_HD_Fe, High_Dose_mean_nfoci_Fe)
+Bins_HD_Fe=merge(Bins_HD_Fe, Individuals_per_Bin, by.x="High_Dose_mean_nfoci_Fe", by.y = "High_Dose_mean_nfoci_Fe", all.x = TRUE, all.y = TRUE)
+Bins_HD_Fe$High_Dose_Ind_per_Bin_Fe = Bins_HD_Fe$n
+Bins_HD_Fe$n=NULL
+
+Bins_HD_Fe_useful= Bins_HD_Fe[ , grepl( "Bins_couple|High_Dose_mean_nfoci_Fe|High_Dose_Ind_per_Bin_Fe" , names(Bins_HD_Fe))]
+Bins_HD_Fe_useful=distinct(Bins_HD_Fe_useful)
+
+Bins_CD_OS_4h_All_Data=merge(Bins_CD_OS_4h_All_Data,Bins_HD_Fe_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+## Si Low Dose 
+
+Bins_LD_Si= All_Data_4h_Normalized[ , grepl( "Sample_ID|Low_Dose_Cell_Death_Si|Low_Dose_DNA_Damage_Si|Low_Dose_Oxidative_Stress_Si" , names(All_Data_4h_Normalized))]
+Bins_LD_Si=NaRV.omit(Bins_LD_Si)
+Bins_LD_Si$Low_Dose_Bins_Cell_Death_Si=cut(Bins_LD_Si$Low_Dose_Cell_Death_Si, breaks = CD_breaks, right = TRUE)
+Bins_LD_Si$Low_Dose_Bins_Oxidative_Stress_Si=cut(Bins_LD_Si$Low_Dose_Oxidative_Stress_Si, breaks = OS_breaks, right = TRUE)
+Bins_LD_Si$Bins_couple <- paste(Bins_LD_Si$Low_Dose_Bins_Oxidative_Stress_Si, Bins_LD_Si$Low_Dose_Bins_Cell_Death_Si,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_LD_Si, .(Bins_couple), summarise, Low_Dose_mean_nfoci_Si=mean(Low_Dose_DNA_Damage_Si))
+Bins_LD_Si=merge(Bins_LD_Si,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_LD_Si, Low_Dose_mean_nfoci_Si)
+Bins_LD_Si=merge(Bins_LD_Si, Individuals_per_Bin, by.x="Low_Dose_mean_nfoci_Si", by.y = "Low_Dose_mean_nfoci_Si", all.x = TRUE, all.y = TRUE)
+Bins_LD_Si$Low_Dose_Ind_per_Bin_Si = Bins_LD_Si$n
+Bins_LD_Si$n=NULL
+
+Bins_LD_Si_useful= Bins_LD_Si[ , grepl( "Bins_couple|Low_Dose_mean_nfoci_Si|Low_Dose_Ind_per_Bin_Si" , names(Bins_LD_Si))]
+Bins_LD_Si_useful=distinct(Bins_LD_Si_useful)
+
+Bins_CD_OS_4h_All_Data=merge(Bins_CD_OS_4h_All_Data,Bins_LD_Si_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+## Si High Dose 
+
+Bins_HD_Si= All_Data_4h_Normalized[ , grepl( "Sample_ID|High_Dose_Cell_Death_Si|High_Dose_DNA_Damage_Si|High_Dose_Oxidative_Stress_Si" , names(All_Data_4h_Normalized))]
+Bins_HD_Si=NaRV.omit(Bins_HD_Si)
+Bins_HD_Si$High_Dose_Bins_Cell_Death_Si=cut(Bins_HD_Si$High_Dose_Cell_Death_Si, breaks = CD_breaks, right = TRUE)
+Bins_HD_Si$High_Dose_Bins_Oxidative_Stress_Si=cut(Bins_HD_Si$High_Dose_Oxidative_Stress_Si, breaks = OS_breaks, right = TRUE)
+Bins_HD_Si$Bins_couple <- paste(Bins_HD_Si$High_Dose_Bins_Oxidative_Stress_Si, Bins_HD_Si$High_Dose_Bins_Cell_Death_Si,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_HD_Si, .(Bins_couple), summarise, High_Dose_mean_nfoci_Si=mean(High_Dose_DNA_Damage_Si))
+Bins_HD_Si=merge(Bins_HD_Si,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_HD_Si, High_Dose_mean_nfoci_Si)
+Bins_HD_Si=merge(Bins_HD_Si, Individuals_per_Bin, by.x="High_Dose_mean_nfoci_Si", by.y = "High_Dose_mean_nfoci_Si", all.x = TRUE, all.y = TRUE)
+Bins_HD_Si$High_Dose_Ind_per_Bin_Si = Bins_HD_Si$n
+Bins_HD_Si$n=NULL
+
+Bins_HD_Si_useful= Bins_HD_Si[ , grepl( "Bins_couple|High_Dose_mean_nfoci_Si|High_Dose_Ind_per_Bin_Si" , names(Bins_HD_Si))]
+Bins_HD_Si_useful=distinct(Bins_HD_Si_useful)
+
+Bins_CD_OS_4h_All_Data=merge(Bins_CD_OS_4h_All_Data,Bins_HD_Si_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+## Ar Low Dose 
+
+Bins_LD_Ar= All_Data_4h_Normalized[ , grepl( "Sample_ID|Low_Dose_Cell_Death_Ar|Low_Dose_DNA_Damage_Ar|Low_Dose_Oxidative_Stress_Ar" , names(All_Data_4h_Normalized))]
+Bins_LD_Ar=NaRV.omit(Bins_LD_Ar)
+Bins_LD_Ar$Low_Dose_Bins_Cell_Death_Ar=cut(Bins_LD_Ar$Low_Dose_Cell_Death_Ar, breaks = CD_breaks, right = TRUE)
+Bins_LD_Ar$Low_Dose_Bins_Oxidative_Stress_Ar=cut(Bins_LD_Ar$Low_Dose_Oxidative_Stress_Ar, breaks = OS_breaks, right = TRUE)
+Bins_LD_Ar$Bins_couple <- paste(Bins_LD_Ar$Low_Dose_Bins_Oxidative_Stress_Ar, Bins_LD_Ar$Low_Dose_Bins_Cell_Death_Ar,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_LD_Ar, .(Bins_couple), summarise, Low_Dose_mean_nfoci_Ar=mean(Low_Dose_DNA_Damage_Ar))
+Bins_LD_Ar=merge(Bins_LD_Ar,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_LD_Ar, Low_Dose_mean_nfoci_Ar)
+Bins_LD_Ar=merge(Bins_LD_Ar, Individuals_per_Bin, by.x="Low_Dose_mean_nfoci_Ar", by.y = "Low_Dose_mean_nfoci_Ar", all.x = TRUE, all.y = TRUE)
+Bins_LD_Ar$Low_Dose_Ind_per_Bin_Ar = Bins_LD_Ar$n
+Bins_LD_Ar$n=NULL
+
+Bins_LD_Ar_useful= Bins_LD_Ar[ , grepl( "Bins_couple|Low_Dose_mean_nfoci_Ar|Low_Dose_Ind_per_Bin_Ar" , names(Bins_LD_Ar))]
+Bins_LD_Ar_useful=distinct(Bins_LD_Ar_useful)
+
+Bins_CD_OS_4h_All_Data=merge(Bins_CD_OS_4h_All_Data,Bins_LD_Ar_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+## Ar High Dose 
+
+Bins_HD_Ar= All_Data_4h_Normalized[ , grepl( "Sample_ID|High_Dose_Cell_Death_Ar|High_Dose_DNA_Damage_Ar|High_Dose_Oxidative_Stress_Ar" , names(All_Data_4h_Normalized))]
+Bins_HD_Ar=NaRV.omit(Bins_HD_Ar)
+Bins_HD_Ar$High_Dose_Bins_Cell_Death_Ar=cut(Bins_HD_Ar$High_Dose_Cell_Death_Ar, breaks = CD_breaks, right = TRUE)
+Bins_HD_Ar$High_Dose_Bins_Oxidative_Stress_Ar=cut(Bins_HD_Ar$High_Dose_Oxidative_Stress_Ar, breaks = OS_breaks, right = TRUE)
+Bins_HD_Ar$Bins_couple <- paste(Bins_HD_Ar$High_Dose_Bins_Oxidative_Stress_Ar, Bins_HD_Ar$High_Dose_Bins_Cell_Death_Ar,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_HD_Ar, .(Bins_couple), summarise, High_Dose_mean_nfoci_Ar=mean(High_Dose_DNA_Damage_Ar))
+Bins_HD_Ar=merge(Bins_HD_Ar,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_HD_Ar, High_Dose_mean_nfoci_Ar)
+Bins_HD_Ar=merge(Bins_HD_Ar, Individuals_per_Bin, by.x="High_Dose_mean_nfoci_Ar", by.y = "High_Dose_mean_nfoci_Ar", all.x = TRUE, all.y = TRUE)
+Bins_HD_Ar$High_Dose_Ind_per_Bin_Ar = Bins_HD_Ar$n
+Bins_HD_Ar$n=NULL
+
+Bins_HD_Ar_useful= Bins_HD_Ar[ , grepl( "Bins_couple|High_Dose_mean_nfoci_Ar|High_Dose_Ind_per_Bin_Ar" , names(Bins_HD_Ar))]
+Bins_HD_Ar_useful=distinct(Bins_HD_Ar_useful)
+
+Bins_CD_OS_4h_All_Data=merge(Bins_CD_OS_4h_All_Data,Bins_HD_Ar_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+## Gamma Low Dose 
+
+Bins_LD_Gamma= All_Data_4h_Normalized[ , grepl( "Sample_ID|Low_Dose_Cell_Death_Gamma|Low_Dose_DNA_Damage_Gamma|Low_Dose_Oxidative_Stress_Gamma" , names(All_Data_4h_Normalized))]
+Bins_LD_Gamma=NaRV.omit(Bins_LD_Gamma)
+Bins_LD_Gamma$Low_Dose_Bins_Cell_Death_Gamma=cut(Bins_LD_Gamma$Low_Dose_Cell_Death_Gamma, breaks = CD_breaks, right = TRUE)
+Bins_LD_Gamma$Low_Dose_Bins_Oxidative_Stress_Gamma=cut(Bins_LD_Gamma$Low_Dose_Oxidative_Stress_Gamma, breaks = OS_breaks, right = TRUE)
+Bins_LD_Gamma$Bins_couple <- paste(Bins_LD_Gamma$Low_Dose_Bins_Oxidative_Stress_Gamma, Bins_LD_Gamma$Low_Dose_Bins_Cell_Death_Gamma,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_LD_Gamma, .(Bins_couple), summarise, Low_Dose_mean_nfoci_Gamma=mean(Low_Dose_DNA_Damage_Gamma))
+Bins_LD_Gamma=merge(Bins_LD_Gamma,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_LD_Gamma, Low_Dose_mean_nfoci_Gamma)
+Bins_LD_Gamma=merge(Bins_LD_Gamma, Individuals_per_Bin, by.x="Low_Dose_mean_nfoci_Gamma", by.y = "Low_Dose_mean_nfoci_Gamma", all.x = TRUE, all.y = TRUE)
+Bins_LD_Gamma$Low_Dose_Ind_per_Bin_Gamma = Bins_LD_Gamma$n
+Bins_LD_Gamma$n=NULL
+
+Bins_LD_Gamma_useful= Bins_LD_Gamma[ , grepl( "Bins_couple|Low_Dose_mean_nfoci_Gamma|Low_Dose_Ind_per_Bin_Gamma" , names(Bins_LD_Gamma))]
+Bins_LD_Gamma_useful=distinct(Bins_LD_Gamma_useful)
+
+Bins_CD_OS_4h_All_Data=merge(Bins_CD_OS_4h_All_Data,Bins_LD_Gamma_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+## Gamma High Dose 
+
+Bins_HD_Gamma= All_Data_4h_Normalized[ , grepl( "Sample_ID|High_Dose_Cell_Death_Gamma|High_Dose_DNA_Damage_Gamma|High_Dose_Oxidative_Stress_Gamma" , names(All_Data_4h_Normalized))]
+Bins_HD_Gamma=NaRV.omit(Bins_HD_Gamma)
+Bins_HD_Gamma$High_Dose_Bins_Cell_Death_Gamma=cut(Bins_HD_Gamma$High_Dose_Cell_Death_Gamma, breaks = CD_breaks, right = TRUE)
+Bins_HD_Gamma$High_Dose_Bins_Oxidative_Stress_Gamma=cut(Bins_HD_Gamma$High_Dose_Oxidative_Stress_Gamma, breaks = OS_breaks, right = TRUE)
+Bins_HD_Gamma$Bins_couple <- paste(Bins_HD_Gamma$High_Dose_Bins_Oxidative_Stress_Gamma, Bins_HD_Gamma$High_Dose_Bins_Cell_Death_Gamma,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_HD_Gamma, .(Bins_couple), summarise, High_Dose_mean_nfoci_Gamma=mean(High_Dose_DNA_Damage_Gamma))
+Bins_HD_Gamma=merge(Bins_HD_Gamma,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_HD_Gamma, High_Dose_mean_nfoci_Gamma)
+Bins_HD_Gamma=merge(Bins_HD_Gamma, Individuals_per_Bin, by.x="High_Dose_mean_nfoci_Gamma", by.y = "High_Dose_mean_nfoci_Gamma", all.x = TRUE, all.y = TRUE)
+Bins_HD_Gamma$High_Dose_Ind_per_Bin_Gamma = Bins_HD_Gamma$n
+Bins_HD_Gamma$n=NULL
+
+Bins_HD_Gamma_useful= Bins_HD_Gamma[ , grepl( "Bins_couple|High_Dose_mean_nfoci_Gamma|High_Dose_Ind_per_Bin_Gamma" , names(Bins_HD_Gamma))]
+Bins_HD_Gamma_useful=distinct(Bins_HD_Gamma_useful)
+
+Bins_CD_OS_4h_All_Data=merge(Bins_CD_OS_4h_All_Data,Bins_HD_Gamma_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+```
+
+```{r}
+### the same at 24h 
+OS_breaks = seq(0, 3.8, 0.1)
+CD_breaks = seq(0, 11.9, 0.1)
+OS_breaks_data = seq(0, 3.75, 0.05)
+CD_breaks_data = seq(0,11.85, 0.05)
+
+Bins_OS=cut(OS_breaks_data, breaks = OS_breaks, right = TRUE )
+Bins_CD=cut(CD_breaks_data, breaks = CD_breaks, right = TRUE )
+Bins_CD_OS_24h_All_Data=merge(Bins_OS, Bins_CD)
+Bins_CD_OS_24h_All_Data=NaRV.omit(Bins_CD_OS_24h_All_Data)
+Bins_CD_OS_24h_All_Data$Bins_couple <- paste(Bins_CD_OS_24h_All_Data$x, Bins_CD_OS_24h_All_Data$y, sep="_")
+Bins_CD_OS_24h_All_Data$Bins_OS = Bins_CD_OS_24h_All_Data$x
+Bins_CD_OS_24h_All_Data$Bins_CD = Bins_CD_OS_24h_All_Data$y
+Bins_CD_OS_24h_All_Data$x=NULL
+Bins_CD_OS_24h_All_Data$y=NULL
+Bins_CD_OS_24h_All_Data=distinct(Bins_CD_OS_24h_All_Data)
+
+
+## Fe Low Dose 
+
+Bins_LD_Fe= All_Data_24h_Normalized[ , grepl( "Sample_ID|Low_Dose_Cell_Death_Fe|Low_Dose_DNA_Damage_Fe|Low_Dose_Oxidative_Stress_Fe" , names(All_Data_24h_Normalized))]
+Bins_LD_Fe=NaRV.omit(Bins_LD_Fe)
+Bins_LD_Fe$Low_Dose_Bins_Cell_Death_Fe=cut(Bins_LD_Fe$Low_Dose_Cell_Death_Fe, breaks = CD_breaks, right = TRUE)
+Bins_LD_Fe$Low_Dose_Bins_Oxidative_Stress_Fe=cut(Bins_LD_Fe$Low_Dose_Oxidative_Stress_Fe, breaks = OS_breaks, right = TRUE)
+Bins_LD_Fe$Bins_couple <- paste(Bins_LD_Fe$Low_Dose_Bins_Oxidative_Stress_Fe, Bins_LD_Fe$Low_Dose_Bins_Cell_Death_Fe,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_LD_Fe, .(Bins_couple), summarise, Low_Dose_mean_nfoci_Fe=mean(Low_Dose_DNA_Damage_Fe))
+Bins_LD_Fe=merge(Bins_LD_Fe,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_LD_Fe, Low_Dose_mean_nfoci_Fe)
+Bins_LD_Fe=merge(Bins_LD_Fe, Individuals_per_Bin, by.x="Low_Dose_mean_nfoci_Fe", by.y = "Low_Dose_mean_nfoci_Fe", all.x = TRUE, all.y = TRUE)
+Bins_LD_Fe$Low_Dose_Ind_per_Bin_Fe = Bins_LD_Fe$n
+Bins_LD_Fe$n=NULL
+
+Bins_LD_Fe_useful= Bins_LD_Fe[ , grepl( "Bins_couple|Low_Dose_mean_nfoci_Fe|Low_Dose_Ind_per_Bin_Fe" , names(Bins_LD_Fe))]
+Bins_LD_Fe_useful=distinct(Bins_LD_Fe_useful)
+
+Bins_CD_OS_24h_All_Data=merge(Bins_CD_OS_24h_All_Data,Bins_LD_Fe_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+## Fe High Dose 
+
+Bins_HD_Fe= All_Data_24h_Normalized[ , grepl( "Sample_ID|High_Dose_Cell_Death_Fe|High_Dose_DNA_Damage_Fe|High_Dose_Oxidative_Stress_Fe" , names(All_Data_24h_Normalized))]
+Bins_HD_Fe=NaRV.omit(Bins_HD_Fe)
+Bins_HD_Fe$High_Dose_Bins_Cell_Death_Fe=cut(Bins_HD_Fe$High_Dose_Cell_Death_Fe, breaks = CD_breaks, right = TRUE)
+Bins_HD_Fe$High_Dose_Bins_Oxidative_Stress_Fe=cut(Bins_HD_Fe$High_Dose_Oxidative_Stress_Fe, breaks = OS_breaks, right = TRUE)
+Bins_HD_Fe$Bins_couple <- paste(Bins_HD_Fe$High_Dose_Bins_Oxidative_Stress_Fe, Bins_HD_Fe$High_Dose_Bins_Cell_Death_Fe,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_HD_Fe, .(Bins_couple), summarise, High_Dose_mean_nfoci_Fe=mean(High_Dose_DNA_Damage_Fe))
+Bins_HD_Fe=merge(Bins_HD_Fe,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_HD_Fe, High_Dose_mean_nfoci_Fe)
+Bins_HD_Fe=merge(Bins_HD_Fe, Individuals_per_Bin, by.x="High_Dose_mean_nfoci_Fe", by.y = "High_Dose_mean_nfoci_Fe", all.x = TRUE, all.y = TRUE)
+Bins_HD_Fe$High_Dose_Ind_per_Bin_Fe = Bins_HD_Fe$n
+Bins_HD_Fe$n=NULL
+
+Bins_HD_Fe_useful= Bins_HD_Fe[ , grepl( "Bins_couple|High_Dose_mean_nfoci_Fe|High_Dose_Ind_per_Bin_Fe" , names(Bins_HD_Fe))]
+Bins_HD_Fe_useful=distinct(Bins_HD_Fe_useful)
+
+Bins_CD_OS_24h_All_Data=merge(Bins_CD_OS_24h_All_Data,Bins_HD_Fe_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+## Si Low Dose 
+
+Bins_LD_Si= All_Data_24h_Normalized[ , grepl( "Sample_ID|Low_Dose_Cell_Death_Si|Low_Dose_DNA_Damage_Si|Low_Dose_Oxidative_Stress_Si" , names(All_Data_24h_Normalized))]
+Bins_LD_Si=NaRV.omit(Bins_LD_Si)
+Bins_LD_Si$Low_Dose_Bins_Cell_Death_Si=cut(Bins_LD_Si$Low_Dose_Cell_Death_Si, breaks = CD_breaks, right = TRUE)
+Bins_LD_Si$Low_Dose_Bins_Oxidative_Stress_Si=cut(Bins_LD_Si$Low_Dose_Oxidative_Stress_Si, breaks = OS_breaks, right = TRUE)
+Bins_LD_Si$Bins_couple <- paste(Bins_LD_Si$Low_Dose_Bins_Oxidative_Stress_Si, Bins_LD_Si$Low_Dose_Bins_Cell_Death_Si,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_LD_Si, .(Bins_couple), summarise, Low_Dose_mean_nfoci_Si=mean(Low_Dose_DNA_Damage_Si))
+Bins_LD_Si=merge(Bins_LD_Si,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_LD_Si, Low_Dose_mean_nfoci_Si)
+Bins_LD_Si=merge(Bins_LD_Si, Individuals_per_Bin, by.x="Low_Dose_mean_nfoci_Si", by.y = "Low_Dose_mean_nfoci_Si", all.x = TRUE, all.y = TRUE)
+Bins_LD_Si$Low_Dose_Ind_per_Bin_Si = Bins_LD_Si$n
+Bins_LD_Si$n=NULL
+
+Bins_LD_Si_useful= Bins_LD_Si[ , grepl( "Bins_couple|Low_Dose_mean_nfoci_Si|Low_Dose_Ind_per_Bin_Si" , names(Bins_LD_Si))]
+Bins_LD_Si_useful=distinct(Bins_LD_Si_useful)
+
+Bins_CD_OS_24h_All_Data=merge(Bins_CD_OS_24h_All_Data,Bins_LD_Si_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+## Si High Dose 
+
+Bins_HD_Si= All_Data_24h_Normalized[ , grepl( "Sample_ID|High_Dose_Cell_Death_Si|High_Dose_DNA_Damage_Si|High_Dose_Oxidative_Stress_Si" , names(All_Data_24h_Normalized))]
+Bins_HD_Si=NaRV.omit(Bins_HD_Si)
+Bins_HD_Si$High_Dose_Bins_Cell_Death_Si=cut(Bins_HD_Si$High_Dose_Cell_Death_Si, breaks = CD_breaks, right = TRUE)
+Bins_HD_Si$High_Dose_Bins_Oxidative_Stress_Si=cut(Bins_HD_Si$High_Dose_Oxidative_Stress_Si, breaks = OS_breaks, right = TRUE)
+Bins_HD_Si$Bins_couple <- paste(Bins_HD_Si$High_Dose_Bins_Oxidative_Stress_Si, Bins_HD_Si$High_Dose_Bins_Cell_Death_Si,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_HD_Si, .(Bins_couple), summarise, High_Dose_mean_nfoci_Si=mean(High_Dose_DNA_Damage_Si))
+Bins_HD_Si=merge(Bins_HD_Si,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_HD_Si, High_Dose_mean_nfoci_Si)
+Bins_HD_Si=merge(Bins_HD_Si, Individuals_per_Bin, by.x="High_Dose_mean_nfoci_Si", by.y = "High_Dose_mean_nfoci_Si", all.x = TRUE, all.y = TRUE)
+Bins_HD_Si$High_Dose_Ind_per_Bin_Si = Bins_HD_Si$n
+Bins_HD_Si$n=NULL
+
+Bins_HD_Si_useful= Bins_HD_Si[ , grepl( "Bins_couple|High_Dose_mean_nfoci_Si|High_Dose_Ind_per_Bin_Si" , names(Bins_HD_Si))]
+Bins_HD_Si_useful=distinct(Bins_HD_Si_useful)
+
+Bins_CD_OS_24h_All_Data=merge(Bins_CD_OS_24h_All_Data,Bins_HD_Si_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+## Ar Low Dose 
+
+Bins_LD_Ar= All_Data_24h_Normalized[ , grepl( "Sample_ID|Low_Dose_Cell_Death_Ar|Low_Dose_DNA_Damage_Ar|Low_Dose_Oxidative_Stress_Ar" , names(All_Data_24h_Normalized))]
+Bins_LD_Ar=NaRV.omit(Bins_LD_Ar)
+Bins_LD_Ar$Low_Dose_Bins_Cell_Death_Ar=cut(Bins_LD_Ar$Low_Dose_Cell_Death_Ar, breaks = CD_breaks, right = TRUE)
+Bins_LD_Ar$Low_Dose_Bins_Oxidative_Stress_Ar=cut(Bins_LD_Ar$Low_Dose_Oxidative_Stress_Ar, breaks = OS_breaks, right = TRUE)
+Bins_LD_Ar$Bins_couple <- paste(Bins_LD_Ar$Low_Dose_Bins_Oxidative_Stress_Ar, Bins_LD_Ar$Low_Dose_Bins_Cell_Death_Ar,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_LD_Ar, .(Bins_couple), summarise, Low_Dose_mean_nfoci_Ar=mean(Low_Dose_DNA_Damage_Ar))
+Bins_LD_Ar=merge(Bins_LD_Ar,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_LD_Ar, Low_Dose_mean_nfoci_Ar)
+Bins_LD_Ar=merge(Bins_LD_Ar, Individuals_per_Bin, by.x="Low_Dose_mean_nfoci_Ar", by.y = "Low_Dose_mean_nfoci_Ar", all.x = TRUE, all.y = TRUE)
+Bins_LD_Ar$Low_Dose_Ind_per_Bin_Ar = Bins_LD_Ar$n
+Bins_LD_Ar$n=NULL
+
+Bins_LD_Ar_useful= Bins_LD_Ar[ , grepl( "Bins_couple|Low_Dose_mean_nfoci_Ar|Low_Dose_Ind_per_Bin_Ar" , names(Bins_LD_Ar))]
+Bins_LD_Ar_useful=distinct(Bins_LD_Ar_useful)
+
+Bins_CD_OS_24h_All_Data=merge(Bins_CD_OS_24h_All_Data,Bins_LD_Ar_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+## Ar High Dose 
+
+Bins_HD_Ar= All_Data_24h_Normalized[ , grepl( "Sample_ID|High_Dose_Cell_Death_Ar|High_Dose_DNA_Damage_Ar|High_Dose_Oxidative_Stress_Ar" , names(All_Data_24h_Normalized))]
+Bins_HD_Ar=NaRV.omit(Bins_HD_Ar)
+Bins_HD_Ar$High_Dose_Bins_Cell_Death_Ar=cut(Bins_HD_Ar$High_Dose_Cell_Death_Ar, breaks = CD_breaks, right = TRUE)
+Bins_HD_Ar$High_Dose_Bins_Oxidative_Stress_Ar=cut(Bins_HD_Ar$High_Dose_Oxidative_Stress_Ar, breaks = OS_breaks, right = TRUE)
+Bins_HD_Ar$Bins_couple <- paste(Bins_HD_Ar$High_Dose_Bins_Oxidative_Stress_Ar, Bins_HD_Ar$High_Dose_Bins_Cell_Death_Ar,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_HD_Ar, .(Bins_couple), summarise, High_Dose_mean_nfoci_Ar=mean(High_Dose_DNA_Damage_Ar))
+Bins_HD_Ar=merge(Bins_HD_Ar,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_HD_Ar, High_Dose_mean_nfoci_Ar)
+Bins_HD_Ar=merge(Bins_HD_Ar, Individuals_per_Bin, by.x="High_Dose_mean_nfoci_Ar", by.y = "High_Dose_mean_nfoci_Ar", all.x = TRUE, all.y = TRUE)
+Bins_HD_Ar$High_Dose_Ind_per_Bin_Ar = Bins_HD_Ar$n
+Bins_HD_Ar$n=NULL
+
+Bins_HD_Ar_useful= Bins_HD_Ar[ , grepl( "Bins_couple|High_Dose_mean_nfoci_Ar|High_Dose_Ind_per_Bin_Ar" , names(Bins_HD_Ar))]
+Bins_HD_Ar_useful=distinct(Bins_HD_Ar_useful)
+
+Bins_CD_OS_24h_All_Data=merge(Bins_CD_OS_24h_All_Data,Bins_HD_Ar_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+## Gamma Low Dose 
+
+Bins_LD_Gamma= All_Data_24h_Normalized[ , grepl( "Sample_ID|Low_Dose_Cell_Death_Gamma|Low_Dose_DNA_Damage_Gamma|Low_Dose_Oxidative_Stress_Gamma" , names(All_Data_24h_Normalized))]
+Bins_LD_Gamma=NaRV.omit(Bins_LD_Gamma)
+Bins_LD_Gamma$Low_Dose_Bins_Cell_Death_Gamma=cut(Bins_LD_Gamma$Low_Dose_Cell_Death_Gamma, breaks = CD_breaks, right = TRUE)
+Bins_LD_Gamma$Low_Dose_Bins_Oxidative_Stress_Gamma=cut(Bins_LD_Gamma$Low_Dose_Oxidative_Stress_Gamma, breaks = OS_breaks, right = TRUE)
+Bins_LD_Gamma$Bins_couple <- paste(Bins_LD_Gamma$Low_Dose_Bins_Oxidative_Stress_Gamma, Bins_LD_Gamma$Low_Dose_Bins_Cell_Death_Gamma,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_LD_Gamma, .(Bins_couple), summarise, Low_Dose_mean_nfoci_Gamma=mean(Low_Dose_DNA_Damage_Gamma))
+Bins_LD_Gamma=merge(Bins_LD_Gamma,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_LD_Gamma, Low_Dose_mean_nfoci_Gamma)
+Bins_LD_Gamma=merge(Bins_LD_Gamma, Individuals_per_Bin, by.x="Low_Dose_mean_nfoci_Gamma", by.y = "Low_Dose_mean_nfoci_Gamma", all.x = TRUE, all.y = TRUE)
+Bins_LD_Gamma$Low_Dose_Ind_per_Bin_Gamma = Bins_LD_Gamma$n
+Bins_LD_Gamma$n=NULL
+
+Bins_LD_Gamma_useful= Bins_LD_Gamma[ , grepl( "Bins_couple|Low_Dose_mean_nfoci_Gamma|Low_Dose_Ind_per_Bin_Gamma" , names(Bins_LD_Gamma))]
+Bins_LD_Gamma_useful=distinct(Bins_LD_Gamma_useful)
+
+Bins_CD_OS_24h_All_Data=merge(Bins_CD_OS_24h_All_Data,Bins_LD_Gamma_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+## Gamma High Dose 
+
+Bins_HD_Gamma= All_Data_24h_Normalized[ , grepl( "Sample_ID|High_Dose_Cell_Death_Gamma|High_Dose_DNA_Damage_Gamma|High_Dose_Oxidative_Stress_Gamma" , names(All_Data_24h_Normalized))]
+Bins_HD_Gamma=NaRV.omit(Bins_HD_Gamma)
+Bins_HD_Gamma$High_Dose_Bins_Cell_Death_Gamma=cut(Bins_HD_Gamma$High_Dose_Cell_Death_Gamma, breaks = CD_breaks, right = TRUE)
+Bins_HD_Gamma$High_Dose_Bins_Oxidative_Stress_Gamma=cut(Bins_HD_Gamma$High_Dose_Oxidative_Stress_Gamma, breaks = OS_breaks, right = TRUE)
+Bins_HD_Gamma$Bins_couple <- paste(Bins_HD_Gamma$High_Dose_Bins_Oxidative_Stress_Gamma, Bins_HD_Gamma$High_Dose_Bins_Cell_Death_Gamma,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_HD_Gamma, .(Bins_couple), summarise, High_Dose_mean_nfoci_Gamma=mean(High_Dose_DNA_Damage_Gamma))
+Bins_HD_Gamma=merge(Bins_HD_Gamma,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_HD_Gamma, High_Dose_mean_nfoci_Gamma)
+Bins_HD_Gamma=merge(Bins_HD_Gamma, Individuals_per_Bin, by.x="High_Dose_mean_nfoci_Gamma", by.y = "High_Dose_mean_nfoci_Gamma", all.x = TRUE, all.y = TRUE)
+Bins_HD_Gamma$High_Dose_Ind_per_Bin_Gamma = Bins_HD_Gamma$n
+Bins_HD_Gamma$n=NULL
+
+Bins_HD_Gamma_useful= Bins_HD_Gamma[ , grepl( "Bins_couple|High_Dose_mean_nfoci_Gamma|High_Dose_Ind_per_Bin_Gamma" , names(Bins_HD_Gamma))]
+Bins_HD_Gamma_useful=distinct(Bins_HD_Gamma_useful)
+
+Bins_CD_OS_24h_All_Data=merge(Bins_CD_OS_24h_All_Data,Bins_HD_Gamma_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+```
+
+
+```{r}
+### Plot all phenotypes simultaneously at the same scale for all radiation
+
+## At 4h 
+
+# search of the highest value of DNA damage to fix the color scale range
+Max_DD=max(Bins_CD_OS_4h_All_Data$Low_Dose_mean_nfoci_Fe, Bins_CD_OS_4h_All_Data$High_Dose_mean_nfoci_Fe, 
+            Bins_CD_OS_4h_All_Data$Low_Dose_mean_nfoci_Si, Bins_CD_OS_4h_All_Data$High_Dose_mean_nfoci_Si,
+            Bins_CD_OS_4h_All_Data$Low_Dose_mean_nfoci_Ar, Bins_CD_OS_4h_All_Data$High_Dose_mean_nfoci_Ar, 
+            Bins_CD_OS_4h_All_Data$Low_Dose_mean_nfoci_Gamma,Bins_CD_OS_4h_All_Data$High_Dose_mean_nfoci_Gamma,
+            na.rm = TRUE)
+
+
+Fe_CD_0S_DD_LD_4h <- ggplot(data = Bins_CD_OS_4h_All_Data) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = Low_Dose_mean_nfoci_Fe))+
+  scale_fill_gradient2(midpoint = (Max_DD/2) ,na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(Max_DD))) + ggtitle("Fe Low Dose 4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 6),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 1.5))
+
+
+Ar_CD_0S_DD_LD_4h <- ggplot(data = Bins_CD_OS_4h_All_Data) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = Low_Dose_mean_nfoci_Ar))+
+  scale_fill_gradient2(midpoint = (Max_DD/2) ,na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(Max_DD))) + ggtitle("Ar Low Dose 4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 6),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) +  guides(fill = guide_colorbar(title.position = "top", title.hjust = 1.5))
+
+
+Si_CD_0S_DD_LD_4h <- ggplot(data = Bins_CD_OS_4h_All_Data) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = Low_Dose_mean_nfoci_Si))+
+  scale_fill_gradient2(midpoint = (Max_DD/2) ,na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(Max_DD))) + ggtitle("Si Low Dose 4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 6),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) +  guides(fill = guide_colorbar(title.position = "top", title.hjust = 1.5))
+
+
+Gamma_CD_0S_DD_LD_4h <- ggplot(data = Bins_CD_OS_4h_All_Data) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = Low_Dose_mean_nfoci_Gamma))+
+  scale_fill_gradient2(midpoint = (Max_DD/2) ,na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(Max_DD))) + ggtitle("Gamma Low Dose 4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 6),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))+ guides(fill = guide_colorbar(title.position = "top", title.hjust = 1.5))
+
+
+Fe_CD_0S_DD_HD_4h <- ggplot(data = Bins_CD_OS_4h_All_Data) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = High_Dose_mean_nfoci_Fe))+
+  scale_fill_gradient2(midpoint = (Max_DD/2) ,na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(Max_DD))) + ggtitle("Fe High Dose 4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 6),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) +  guides(fill = guide_colorbar(title.position = "top", title.hjust = 1.5))
+
+
+Ar_CD_0S_DD_HD_4h <- ggplot(data = Bins_CD_OS_4h_All_Data) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = High_Dose_mean_nfoci_Ar))+
+  scale_fill_gradient2(midpoint = (Max_DD/2) ,na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(Max_DD))) + ggtitle("Ar High Dose 4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 6),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) +  guides(fill = guide_colorbar(title.position = "top", title.hjust = 1.5))
+
+
+Si_CD_0S_DD_HD_4h <- ggplot(data = Bins_CD_OS_4h_All_Data) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = High_Dose_mean_nfoci_Si))+
+  scale_fill_gradient2(midpoint = (Max_DD/2) ,na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(Max_DD))) + ggtitle("Si High Dose 4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 6),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 1.5))
+
+
+Gamma_CD_0S_DD_HD_4h <- ggplot(data = Bins_CD_OS_4h_All_Data) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = High_Dose_mean_nfoci_Gamma))+
+  scale_fill_gradient2(midpoint = (Max_DD/2) ,na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(Max_DD))) + ggtitle("Gamma High Dose 4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 6),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 1.5))
+
+
+Fe_LD_HD_all_3_Pheno_4h <- grid.arrange(Fe_CD_0S_DD_LD_4h,Fe_CD_0S_DD_HD_4h, ncol = 2)
+ggsave("Fe_LD_HD_all_3_Pheno_4h.pdf", Fe_LD_HD_all_3_Pheno_4h, width = 45, height = 23)
+
+Ar_LD_HD_all_3_Pheno_4h <- grid.arrange(Ar_CD_0S_DD_LD_4h, Ar_CD_0S_DD_HD_4h, ncol = 2)
+ggsave("Ar_LD_HD_all_3_Pheno_4h.pdf", Ar_LD_HD_all_3_Pheno_4h, width = 45, height = 23)
+
+Si_LD_HD_all_3_Pheno_4h <- grid.arrange(Si_CD_0S_DD_LD_4h, Si_CD_0S_DD_HD_4h, ncol = 2)
+ggsave("Si_LD_HD_all_3_Pheno_4h.pdf", Si_LD_HD_all_3_Pheno_4h, width = 45, height = 23)
+
+Gamma_LD_HD_all_3_Pheno_4h <- grid.arrange(Gamma_CD_0S_DD_LD_4h, Gamma_CD_0S_DD_HD_4h, ncol = 2)
+ggsave("Gamma_LD_HD_all_3_Pheno_1_4h.pdf", Gamma_LD_HD_all_3_Pheno_4h, width = 45, height = 23)
+
+
+## At 24h 
+# search of the highest value of DNA damage to fix the color scale range
+Max_DD=max(Bins_CD_OS_24h_All_Data$Low_Dose_mean_nfoci_Fe, Bins_CD_OS_24h_All_Data$High_Dose_mean_nfoci_Fe, 
+            Bins_CD_OS_24h_All_Data$Low_Dose_mean_nfoci_Si, Bins_CD_OS_24h_All_Data$High_Dose_mean_nfoci_Si,
+            Bins_CD_OS_24h_All_Data$Low_Dose_mean_nfoci_Ar, Bins_CD_OS_24h_All_Data$High_Dose_mean_nfoci_Ar, 
+            Bins_CD_OS_24h_All_Data$Low_Dose_mean_nfoci_Gamma,Bins_CD_OS_24h_All_Data$High_Dose_mean_nfoci_Gamma,
+            na.rm = TRUE)
+
+
+Fe_CD_0S_DD_LD_24h <- ggplot(data = Bins_CD_OS_24h_All_Data) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = Low_Dose_mean_nfoci_Fe))+
+  scale_fill_gradient2(midpoint = (Max_DD/2) ,na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(Max_DD))) + ggtitle("Fe Low Dose 24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 6),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 1.5))
+
+
+Ar_CD_0S_DD_LD_24h <- ggplot(data = Bins_CD_OS_24h_All_Data) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = Low_Dose_mean_nfoci_Ar))+
+  scale_fill_gradient2(midpoint = (Max_DD/2) ,na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(Max_DD))) + ggtitle("Ar Low Dose 24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 6),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) +  guides(fill = guide_colorbar(title.position = "top", title.hjust = 1.5))
+
+
+Si_CD_0S_DD_LD_24h <- ggplot(data = Bins_CD_OS_24h_All_Data) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = Low_Dose_mean_nfoci_Si))+
+  scale_fill_gradient2(midpoint = (Max_DD/2) ,na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(Max_DD))) + ggtitle("Si Low Dose 24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 6),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) +  guides(fill = guide_colorbar(title.position = "top", title.hjust = 1.5))
+
+
+Gamma_CD_0S_DD_LD_24h <- ggplot(data = Bins_CD_OS_24h_All_Data) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = Low_Dose_mean_nfoci_Gamma))+
+  scale_fill_gradient2(midpoint = (Max_DD/2) ,na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(Max_DD))) + ggtitle("Gamma Low Dose 24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 6),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))+ guides(fill = guide_colorbar(title.position = "top", title.hjust = 1.5))
+
+
+Fe_CD_0S_DD_HD_24h <- ggplot(data = Bins_CD_OS_24h_All_Data) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = High_Dose_mean_nfoci_Fe))+
+  scale_fill_gradient2(midpoint = (Max_DD/2) ,na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(Max_DD))) + ggtitle("Fe High Dose 24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 6),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) +  guides(fill = guide_colorbar(title.position = "top", title.hjust = 1.5))
+
+
+Ar_CD_0S_DD_HD_24h <- ggplot(data = Bins_CD_OS_24h_All_Data) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = High_Dose_mean_nfoci_Ar))+
+  scale_fill_gradient2(midpoint = (Max_DD/2) ,na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(Max_DD))) + ggtitle("Ar High Dose 24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 6),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) +  guides(fill = guide_colorbar(title.position = "top", title.hjust = 1.5))
+
+
+Si_CD_0S_DD_HD_24h <- ggplot(data = Bins_CD_OS_24h_All_Data) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = High_Dose_mean_nfoci_Si))+
+  scale_fill_gradient2(midpoint = (Max_DD/2) ,na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(Max_DD))) + ggtitle("Si High Dose 24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 6),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 1.5))
+
+
+Gamma_CD_0S_DD_HD_24h <- ggplot(data = Bins_CD_OS_24h_All_Data) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = High_Dose_mean_nfoci_Gamma))+
+  scale_fill_gradient2(midpoint = (Max_DD/2) ,na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(Max_DD))) + ggtitle("Gamma High Dose 24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 6),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 1.5))
+
+
+Fe_LD_HD_all_3_Pheno_24h <- grid.arrange(Fe_CD_0S_DD_LD_24h,Fe_CD_0S_DD_HD_24h, ncol = 2)
+ggsave("Fe_LD_HD_all_3_Pheno_24h.pdf", Fe_LD_HD_all_3_Pheno_24h, width = 45, height = 23)
+
+Ar_LD_HD_all_3_Pheno_24h <- grid.arrange(Ar_CD_0S_DD_LD_24h ,Ar_CD_0S_DD_HD_24h, ncol = 2)
+ggsave("Ar_LD_HD_all_3_Pheno_24h.pdf", Ar_LD_HD_all_3_Pheno_24h, width = 45, height = 23)
+
+Si_LD_HD_all_3_Pheno_24h <- grid.arrange(Si_CD_0S_DD_LD_24h, Si_CD_0S_DD_HD_24h , ncol = 2)
+ggsave("Si_LD_HD_all_3_Pheno_24h.pdf", Si_LD_HD_all_3_Pheno_24h, width = 45, height = 23)
+
+Gamma_LD_HD_all_3_Pheno_24h <- grid.arrange(Gamma_CD_0S_DD_LD_24h, Gamma_CD_0S_DD_HD_24h, ncol = 2)
+ggsave("Gamma_LD_HD_all_3_Pheno_1_24h.pdf", Gamma_LD_HD_all_3_Pheno_24h, width = 45, height = 23)
+ 
+```
+
+```{r}
+
+### Now we plot for each radiation type and time point 2 penotypes at a time and color code by density
+
+### Here we use the same scale for every radation
+OS_breaks = seq(0, 3.8, 0.1)
+CD_breaks = seq(0, 11.9, 0.1)
+OS_breaks_data = seq(0, 3.75, 0.05)
+CD_breaks_data = seq(0,11.85, 0.05)
+DD_breaks = seq(0, 4, 0.1)
+DD_breaks_data = seq(0, 3.95, 0.05)
+
+### For each radiation and time point, we create 3 tables containing binning data for CD/OS, CD/DD and DD/OS and the density of individuals per interval
+
+###### At 4h 
+
+############ First Oxidative Stress and Cell Death 
+
+Bins_OS=cut(OS_breaks_data, breaks = OS_breaks, right = TRUE )
+Bins_CD_Fe=cut(CD_breaks_data, breaks = CD_breaks, right = TRUE )
+Bins_CD_OS_4h=merge(Bins_OS, Bins_CD)
+Bins_CD_OS_4h=NaRV.omit(Bins_CD_OS_4h)
+Bins_CD_OS_4h$Bins_couple <- paste(Bins_CD_OS_4h$x, Bins_CD_OS_4h$y, sep="_")
+Bins_CD_OS_4h$Bins_OS = Bins_CD_OS_4h$x
+Bins_CD_OS_4h$Bins_CD = Bins_CD_OS_4h$y
+Bins_CD_OS_4h$x=NULL
+Bins_CD_OS_4h$y=NULL
+Bins_CD_OS_4h=distinct(Bins_CD_OS_4h)
+
+### Fe - CD/OS - Low Dose 
+Bins_LD_Fe= All_Data_4h_Normalized[ , grepl( "Sample_ID|Low_Dose_Cell_Death_Fe|Low_Dose_DNA_Damage_Fe|Low_Dose_Oxidative_Stress_Fe" , names(All_Data_4h_Normalized))]
+Bins_LD_Fe=NaRV.omit(Bins_LD_Fe)
+Bins_LD_Fe$Low_Dose_Bins_Cell_Death_Fe=cut(Bins_LD_Fe$Low_Dose_Cell_Death_Fe, breaks = CD_breaks, right = TRUE)
+Bins_LD_Fe$Low_Dose_Bins_Oxidative_Stress_Fe=cut(Bins_LD_Fe$Low_Dose_Oxidative_Stress_Fe, breaks= OS_breaks, right = TRUE)
+Bins_LD_Fe$Bins_couple <- paste(Bins_LD_Fe$Low_Dose_Bins_Oxidative_Stress_Fe, Bins_LD_Fe$Low_Dose_Bins_Cell_Death_Fe,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_LD_Fe, .(Bins_couple), summarise, Low_Dose_mean_nfoci_Fe=mean(Low_Dose_DNA_Damage_Fe))
+Bins_LD_Fe=merge(Bins_LD_Fe,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_LD_Fe, Low_Dose_mean_nfoci_Fe)
+Bins_LD_Fe=merge(Bins_LD_Fe, Individuals_per_Bin, by.x="Low_Dose_mean_nfoci_Fe", by.y = "Low_Dose_mean_nfoci_Fe", all.x = TRUE, all.y = TRUE)
+Bins_LD_Fe$Low_Dose_Ind_per_Bin_Fe = Bins_LD_Fe$n
+Bins_LD_Fe$n=NULL
+
+Bins_LD_Fe_useful= Bins_LD_Fe[ , grepl( "Bins_couple|Low_Dose_mean_nfoci_Fe|Low_Dose_Ind_per_Bin_Fe" , names(Bins_LD_Fe))]
+Bins_LD_Fe_useful=distinct(Bins_LD_Fe_useful)
+
+Bins_CD_OS_4h_All_Data_Fe=merge(Bins_CD_OS_4h,Bins_LD_Fe_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+##  Fe - CD/OS - High Dose 
+Bins_HD_Fe= All_Data_4h_Normalized[ , grepl( "Sample_ID|High_Dose_Cell_Death_Fe|High_Dose_DNA_Damage_Fe|High_Dose_Oxidative_Stress_Fe" , names(All_Data_4h_Normalized))]
+Bins_HD_Fe=NaRV.omit(Bins_HD_Fe)
+Bins_HD_Fe$High_Dose_Bins_Cell_Death_Fe=cut(Bins_HD_Fe$High_Dose_Cell_Death_Fe, breaks = CD_breaks, right = TRUE)
+Bins_HD_Fe$High_Dose_Bins_Oxidative_Stress_Fe=cut(Bins_HD_Fe$High_Dose_Oxidative_Stress_Fe, breaks = OS_breaks, right = TRUE)
+Bins_HD_Fe$Bins_couple <- paste(Bins_HD_Fe$High_Dose_Bins_Oxidative_Stress_Fe, Bins_HD_Fe$High_Dose_Bins_Cell_Death_Fe,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_HD_Fe, .(Bins_couple), summarise, High_Dose_mean_nfoci_Fe=mean(High_Dose_DNA_Damage_Fe))
+Bins_HD_Fe=merge(Bins_HD_Fe,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_HD_Fe, High_Dose_mean_nfoci_Fe)
+Bins_HD_Fe=merge(Bins_HD_Fe, Individuals_per_Bin, by.x="High_Dose_mean_nfoci_Fe", by.y = "High_Dose_mean_nfoci_Fe", all.x = TRUE, all.y = TRUE)
+Bins_HD_Fe$High_Dose_Ind_per_Bin_Fe = Bins_HD_Fe$n
+Bins_HD_Fe$n=NULL
+
+Bins_HD_Fe_useful= Bins_HD_Fe[ , grepl( "Bins_couple|High_Dose_mean_nfoci_Fe|High_Dose_Ind_per_Bin_Fe" , names(Bins_HD_Fe))]
+Bins_HD_Fe_useful=distinct(Bins_HD_Fe_useful)
+
+Bins_CD_OS_4h_All_Data_Fe=merge(Bins_CD_OS_4h,Bins_HD_Fe_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Si - CD/OS - Low Dose 
+Bins_LD_Si= All_Data_4h_Normalized[ , grepl( "Sample_ID|Low_Dose_Cell_Death_Si|Low_Dose_DNA_Damage_Si|Low_Dose_Oxidative_Stress_Si" , names(All_Data_4h_Normalized))]
+Bins_LD_Si=NaRV.omit(Bins_LD_Si)
+Bins_LD_Si$Low_Dose_Bins_Cell_Death_Si=cut(Bins_LD_Si$Low_Dose_Cell_Death_Si, breaks = CD_breaks, right = TRUE)
+Bins_LD_Si$Low_Dose_Bins_Oxidative_Stress_Si=cut(Bins_LD_Si$Low_Dose_Oxidative_Stress_Si, breaks = OS_breaks, right = TRUE)
+Bins_LD_Si$Bins_couple <- paste(Bins_LD_Si$Low_Dose_Bins_Oxidative_Stress_Si, Bins_LD_Si$Low_Dose_Bins_Cell_Death_Si,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_LD_Si, .(Bins_couple), summarise, Low_Dose_mean_nfoci_Si=mean(Low_Dose_DNA_Damage_Si))
+Bins_LD_Si=merge(Bins_LD_Si,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_LD_Si, Low_Dose_mean_nfoci_Si)
+Bins_LD_Si=merge(Bins_LD_Si, Individuals_per_Bin, by.x="Low_Dose_mean_nfoci_Si", by.y = "Low_Dose_mean_nfoci_Si", all.x = TRUE, all.y = TRUE)
+Bins_LD_Si$Low_Dose_Ind_per_Bin_Si = Bins_LD_Si$n
+Bins_LD_Si$n=NULL
+
+Bins_LD_Si_useful= Bins_LD_Si[ , grepl( "Bins_couple|Low_Dose_mean_nfoci_Si|Low_Dose_Ind_per_Bin_Si" , names(Bins_LD_Si))]
+Bins_LD_Si_useful=distinct(Bins_LD_Si_useful)
+
+Bins_CD_OS_4h_All_Data_Si=merge(Bins_CD_OS_4h,Bins_LD_Si_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Si - CD/OS - High Dose
+Bins_HD_Si= All_Data_4h_Normalized[ , grepl( "Sample_ID|High_Dose_Cell_Death_Si|High_Dose_DNA_Damage_Si|High_Dose_Oxidative_Stress_Si" , names(All_Data_4h_Normalized))]
+Bins_HD_Si=NaRV.omit(Bins_HD_Si)
+Bins_HD_Si$High_Dose_Bins_Cell_Death_Si=cut(Bins_HD_Si$High_Dose_Cell_Death_Si, breaks = CD_breaks, right = TRUE)
+Bins_HD_Si$High_Dose_Bins_Oxidative_Stress_Si=cut(Bins_HD_Si$High_Dose_Oxidative_Stress_Si, breaks = OS_breaks, right = TRUE)
+Bins_HD_Si$Bins_couple <- paste(Bins_HD_Si$High_Dose_Bins_Oxidative_Stress_Si, Bins_HD_Si$High_Dose_Bins_Cell_Death_Si,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_HD_Si, .(Bins_couple), summarise, High_Dose_mean_nfoci_Si=mean(High_Dose_DNA_Damage_Si))
+Bins_HD_Si=merge(Bins_HD_Si,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_HD_Si, High_Dose_mean_nfoci_Si)
+Bins_HD_Si=merge(Bins_HD_Si, Individuals_per_Bin, by.x="High_Dose_mean_nfoci_Si", by.y = "High_Dose_mean_nfoci_Si", all.x = TRUE, all.y = TRUE)
+Bins_HD_Si$High_Dose_Ind_per_Bin_Si = Bins_HD_Si$n
+Bins_HD_Si$n=NULL
+
+Bins_HD_Si_useful= Bins_HD_Si[ , grepl( "Bins_couple|High_Dose_mean_nfoci_Si|High_Dose_Ind_per_Bin_Si" , names(Bins_HD_Si))]
+Bins_HD_Si_useful=distinct(Bins_HD_Si_useful)
+
+Bins_CD_OS_4h_All_Data_Si=merge(Bins_CD_OS_4h,Bins_HD_Si_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Ar - CD/OS - Low Dose 
+Bins_LD_Ar= All_Data_4h_Normalized[ , grepl( "Sample_ID|Low_Dose_Cell_Death_Ar|Low_Dose_DNA_Damage_Ar|Low_Dose_Oxidative_Stress_Ar" , names(All_Data_4h_Normalized))]
+Bins_LD_Ar=NaRV.omit(Bins_LD_Ar)
+Bins_LD_Ar$Low_Dose_Bins_Cell_Death_Ar=cut(Bins_LD_Ar$Low_Dose_Cell_Death_Ar, breaks = CD_breaks, right = TRUE)
+Bins_LD_Ar$Low_Dose_Bins_Oxidative_Stress_Ar=cut(Bins_LD_Ar$Low_Dose_Oxidative_Stress_Ar, breaks = OS_breaks, right = TRUE)
+Bins_LD_Ar$Bins_couple <- paste(Bins_LD_Ar$Low_Dose_Bins_Oxidative_Stress_Ar, Bins_LD_Ar$Low_Dose_Bins_Cell_Death_Ar,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_LD_Ar, .(Bins_couple), summarise, Low_Dose_mean_nfoci_Ar=mean(Low_Dose_DNA_Damage_Ar))
+Bins_LD_Ar=merge(Bins_LD_Ar,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_LD_Ar, Low_Dose_mean_nfoci_Ar)
+Bins_LD_Ar=merge(Bins_LD_Ar, Individuals_per_Bin, by.x="Low_Dose_mean_nfoci_Ar", by.y = "Low_Dose_mean_nfoci_Ar", all.x = TRUE, all.y = TRUE)
+Bins_LD_Ar$Low_Dose_Ind_per_Bin_Ar = Bins_LD_Ar$n
+Bins_LD_Ar$n=NULL
+
+Bins_LD_Ar_useful= Bins_LD_Ar[ , grepl( "Bins_couple|Low_Dose_mean_nfoci_Ar|Low_Dose_Ind_per_Bin_Ar" , names(Bins_LD_Ar))]
+Bins_LD_Ar_useful=distinct(Bins_LD_Ar_useful)
+
+Bins_CD_OS_4h_All_Data_Ar=merge(Bins_CD_OS_4h,Bins_LD_Ar_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Ar - CD/OS - High Dose 
+Bins_HD_Ar= All_Data_4h_Normalized[ , grepl( "Sample_ID|High_Dose_Cell_Death_Ar|High_Dose_DNA_Damage_Ar|High_Dose_Oxidative_Stress_Ar" , names(All_Data_4h_Normalized))]
+Bins_HD_Ar=NaRV.omit(Bins_HD_Ar)
+Bins_HD_Ar$High_Dose_Bins_Cell_Death_Ar=cut(Bins_HD_Ar$High_Dose_Cell_Death_Ar, breaks = CD_breaks, right = TRUE)
+Bins_HD_Ar$High_Dose_Bins_Oxidative_Stress_Ar=cut(Bins_HD_Ar$High_Dose_Oxidative_Stress_Ar, breaks = OS_breaks, right = TRUE)
+Bins_HD_Ar$Bins_couple <- paste(Bins_HD_Ar$High_Dose_Bins_Oxidative_Stress_Ar, Bins_HD_Ar$High_Dose_Bins_Cell_Death_Ar,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_HD_Ar, .(Bins_couple), summarise, High_Dose_mean_nfoci_Ar=mean(High_Dose_DNA_Damage_Ar))
+Bins_HD_Ar=merge(Bins_HD_Ar,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_HD_Ar, High_Dose_mean_nfoci_Ar)
+Bins_HD_Ar=merge(Bins_HD_Ar, Individuals_per_Bin, by.x="High_Dose_mean_nfoci_Ar", by.y = "High_Dose_mean_nfoci_Ar", all.x = TRUE, all.y = TRUE)
+Bins_HD_Ar$High_Dose_Ind_per_Bin_Ar = Bins_HD_Ar$n
+Bins_HD_Ar$n=NULL
+
+Bins_HD_Ar_useful= Bins_HD_Ar[ , grepl( "Bins_couple|High_Dose_mean_nfoci_Ar|High_Dose_Ind_per_Bin_Ar" , names(Bins_HD_Ar))]
+Bins_HD_Ar_useful=distinct(Bins_HD_Ar_useful)
+
+Bins_CD_OS_4h_All_Data_Ar=merge(Bins_CD_OS_4h,Bins_HD_Ar_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Gamma - CD/OS - Low Dose 
+Bins_LD_Gamma= All_Data_4h_Normalized[ , grepl( "Sample_ID|Low_Dose_Cell_Death_Gamma|Low_Dose_DNA_Damage_Gamma|Low_Dose_Oxidative_Stress_Gamma" , names(All_Data_4h_Normalized))]
+Bins_LD_Gamma=NaRV.omit(Bins_LD_Gamma)
+Bins_LD_Gamma$Low_Dose_Bins_Cell_Death_Gamma=cut(Bins_LD_Gamma$Low_Dose_Cell_Death_Gamma, breaks = CD_breaks, right = TRUE)
+Bins_LD_Gamma$Low_Dose_Bins_Oxidative_Stress_Gamma=cut(Bins_LD_Gamma$Low_Dose_Oxidative_Stress_Gamma, breaks = OS_breaks, right = TRUE)
+Bins_LD_Gamma$Bins_couple <- paste(Bins_LD_Gamma$Low_Dose_Bins_Oxidative_Stress_Gamma, Bins_LD_Gamma$Low_Dose_Bins_Cell_Death_Gamma,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_LD_Gamma, .(Bins_couple), summarise, Low_Dose_mean_nfoci_Gamma=mean(Low_Dose_DNA_Damage_Gamma))
+Bins_LD_Gamma=merge(Bins_LD_Gamma,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_LD_Gamma, Low_Dose_mean_nfoci_Gamma)
+Bins_LD_Gamma=merge(Bins_LD_Gamma, Individuals_per_Bin, by.x="Low_Dose_mean_nfoci_Gamma", by.y = "Low_Dose_mean_nfoci_Gamma", all.x = TRUE, all.y = TRUE)
+Bins_LD_Gamma$Low_Dose_Ind_per_Bin_Gamma = Bins_LD_Gamma$n
+Bins_LD_Gamma$n=NULL
+
+Bins_LD_Gamma_useful= Bins_LD_Gamma[ , grepl( "Bins_couple|Low_Dose_mean_nfoci_Gamma|Low_Dose_Ind_per_Bin_Gamma" , names(Bins_LD_Gamma))]
+Bins_LD_Gamma_useful=distinct(Bins_LD_Gamma_useful)
+
+Bins_CD_OS_4h_All_Data_Gamma=merge(Bins_CD_OS_4h, Bins_LD_Gamma_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Gamma - CD/OS - High Dose  
+Bins_HD_Gamma= All_Data_4h_Normalized[ , grepl( "Sample_ID|High_Dose_Cell_Death_Gamma|High_Dose_DNA_Damage_Gamma|High_Dose_Oxidative_Stress_Gamma" , names(All_Data_4h_Normalized))]
+Bins_HD_Gamma=NaRV.omit(Bins_HD_Gamma)
+Bins_HD_Gamma$High_Dose_Bins_Cell_Death_Gamma=cut(Bins_HD_Gamma$High_Dose_Cell_Death_Gamma, breaks = CD_breaks, right = TRUE)
+Bins_HD_Gamma$High_Dose_Bins_Oxidative_Stress_Gamma=cut(Bins_HD_Gamma$High_Dose_Oxidative_Stress_Gamma, breaks = OS_breaks, right = TRUE)
+Bins_HD_Gamma$Bins_couple <- paste(Bins_HD_Gamma$High_Dose_Bins_Oxidative_Stress_Gamma, Bins_HD_Gamma$High_Dose_Bins_Cell_Death_Gamma,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_HD_Gamma, .(Bins_couple), summarise, High_Dose_mean_nfoci_Gamma=mean(High_Dose_DNA_Damage_Gamma))
+Bins_HD_Gamma=merge(Bins_HD_Gamma,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_HD_Gamma, High_Dose_mean_nfoci_Gamma)
+Bins_HD_Gamma=merge(Bins_HD_Gamma, Individuals_per_Bin, by.x="High_Dose_mean_nfoci_Gamma", by.y = "High_Dose_mean_nfoci_Gamma", all.x = TRUE, all.y = TRUE)
+Bins_HD_Gamma$High_Dose_Ind_per_Bin_Gamma = Bins_HD_Gamma$n
+Bins_HD_Gamma$n=NULL
+
+Bins_HD_Gamma_useful= Bins_HD_Gamma[ , grepl( "Bins_couple|High_Dose_mean_nfoci_Gamma|High_Dose_Ind_per_Bin_Gamma" , names(Bins_HD_Gamma))]
+Bins_HD_Gamma_useful=distinct(Bins_HD_Gamma_useful)
+
+Bins_CD_OS_4h_All_Data_Gamma=merge(Bins_CD_OS_4h, Bins_HD_Gamma_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+
+############ Cell Death and DNA Damage 
+Bins_DD_=cut(DD_breaks_data, breaks = DD_breaks, right = TRUE )
+Bins_CD=cut(CD_breaks_data, breaks = CD_breaks, right = TRUE )
+Bins_CD_DD_4h=merge(Bins_DD_, Bins_CD)
+Bins_CD_DD_4h=NaRV.omit(Bins_CD_DD_4h)
+Bins_CD_DD_4h$Bins_couple <- paste(Bins_CD_DD_4h$x, Bins_CD_DD_4h$y, sep="_")
+Bins_CD_DD_4h$Bins_DD = Bins_CD_DD_4h$x
+Bins_CD_DD_4h$Bins_CD = Bins_CD_DD_4h$y
+Bins_CD_DD_4h$x=NULL
+Bins_CD_DD_4h$y=NULL
+Bins_CD_DD_4h=distinct(Bins_CD_DD_4h)
+
+
+### Fe - CD/DD - Low Dose 
+Bins_LD_Fe= All_Data_4h_Normalized[ , grepl( "Sample_ID|Low_Dose_Cell_Death_Fe|Low_Dose_DNA_Damage_Fe" , names(All_Data_4h_Normalized))]
+Bins_LD_Fe=NaRV.omit(Bins_LD_Fe)
+Bins_LD_Fe$Low_Dose_Bins_Cell_Death_Fe=cut(Bins_LD_Fe$Low_Dose_Cell_Death_Fe, breaks = CD_breaks, right = TRUE)
+Bins_LD_Fe$Low_Dose_Bins_DNA_Damage_Fe=cut(Bins_LD_Fe$Low_Dose_DNA_Damage_Fe, breaks = DD_breaks, right = TRUE)
+Bins_LD_Fe$Bins_couple <- paste(Bins_LD_Fe$Low_Dose_Bins_DNA_Damage_Fe, Bins_LD_Fe$Low_Dose_Bins_Cell_Death_Fe,sep="_")
+
+Individuals_per_Bin = count(Bins_LD_Fe, Bins_couple)
+
+Bins_LD_Fe=merge(Bins_LD_Fe, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_LD_Fe$Low_Dose_Ind_per_Bin_Fe = Bins_LD_Fe$n
+Bins_LD_Fe$n=NULL
+
+Bins_LD_Fe_useful= Bins_LD_Fe[ , grepl( "Bins_couple|Low_Dose_mean_nfoci_Fe|Low_Dose_Ind_per_Bin_Fe" , names(Bins_LD_Fe))]
+Bins_LD_Fe_useful=distinct(Bins_LD_Fe_useful)
+
+Bins_CD_DD_4h_All_Data_Fe=merge(Bins_CD_DD_4h,Bins_LD_Fe_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Fe - CD/DD - High Dose 
+Bins_HD_Fe= All_Data_4h_Normalized[ , grepl( "Sample_ID|High_Dose_Cell_Death_Fe|High_Dose_DNA_Damage_Fe" , names(All_Data_4h_Normalized))]
+Bins_HD_Fe=NaRV.omit(Bins_HD_Fe)
+Bins_HD_Fe$High_Dose_Bins_Cell_Death_Fe=cut(Bins_HD_Fe$High_Dose_Cell_Death_Fe, breaks = CD_breaks, right = TRUE)
+Bins_HD_Fe$High_Dose_Bins_DNA_Damage_Fe=cut(Bins_HD_Fe$High_Dose_DNA_Damage_Fe, breaks = DD_breaks, right = TRUE)
+Bins_HD_Fe$Bins_couple <- paste(Bins_HD_Fe$High_Dose_Bins_DNA_Damage_Fe, Bins_HD_Fe$High_Dose_Bins_Cell_Death_Fe,sep="_")
+
+Individuals_per_Bin = count(Bins_HD_Fe, Bins_couple)
+
+Bins_HD_Fe=merge(Bins_HD_Fe, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_HD_Fe$High_Dose_Ind_per_Bin_Fe = Bins_HD_Fe$n
+Bins_HD_Fe$n=NULL
+
+Bins_HD_Fe_useful= Bins_HD_Fe[ , grepl( "Bins_couple|High_Dose_Ind_per_Bin_Fe" , names(Bins_HD_Fe))]
+Bins_HD_Fe_useful=distinct(Bins_HD_Fe_useful)
+
+Bins_CD_DD_4h_All_Data_Fe=merge(Bins_CD_DD_4h,Bins_HD_Fe_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Si - CD/DD - Low Dose 
+Bins_LD_Si= All_Data_4h_Normalized[ , grepl( "Sample_ID|Low_Dose_Cell_Death_Si|Low_Dose_DNA_Damage_Si" , names(All_Data_4h_Normalized))]
+Bins_LD_Si=NaRV.omit(Bins_LD_Si)
+Bins_LD_Si$Low_Dose_Bins_Cell_Death_Si=cut(Bins_LD_Si$Low_Dose_Cell_Death_Si, breaks = CD_breaks, right = TRUE)
+Bins_LD_Si$Low_Dose_Bins_DNA_Damage_Si=cut(Bins_LD_Si$Low_Dose_DNA_Damage_Si, breaks = DD_breaks, right = TRUE)
+Bins_LD_Si$Bins_couple <- paste(Bins_LD_Si$Low_Dose_Bins_DNA_Damage_Si, Bins_LD_Si$Low_Dose_Bins_Cell_Death_Si,sep="_")
+
+Individuals_per_Bin = count(Bins_LD_Si, Bins_couple)
+
+Bins_LD_Si=merge(Bins_LD_Si, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_LD_Si$Low_Dose_Ind_per_Bin_Si = Bins_LD_Si$n
+Bins_LD_Si$n=NULL
+
+Bins_LD_Si_useful= Bins_LD_Si[ , grepl( "Bins_couple|Low_Dose_Ind_per_Bin_Si" , names(Bins_LD_Si))]
+Bins_LD_Si_useful=distinct(Bins_LD_Si_useful)
+
+Bins_CD_DD_4h_All_Data_Si=merge(Bins_CD_DD_4h,Bins_LD_Si_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Si - CD/DD - High Dose
+Bins_HD_Si= All_Data_4h_Normalized[ , grepl( "Sample_ID|High_Dose_Cell_Death_Si|High_Dose_DNA_Damage_Si" , names(All_Data_4h_Normalized))]
+Bins_HD_Si=NaRV.omit(Bins_HD_Si)
+Bins_HD_Si$High_Dose_Bins_Cell_Death_Si=cut(Bins_HD_Si$High_Dose_Cell_Death_Si, breaks = CD_breaks, right = TRUE)
+Bins_HD_Si$High_Dose_Bins_DNA_Damage_Si=cut(Bins_HD_Si$High_Dose_DNA_Damage_Si, breaks = DD_breaks, right = TRUE)
+Bins_HD_Si$Bins_couple <- paste(Bins_HD_Si$High_Dose_Bins_DNA_Damage_Si, Bins_HD_Si$High_Dose_Bins_Cell_Death_Si,sep="_")
+
+Individuals_per_Bin = count(Bins_HD_Si, Bins_couple)
+
+Bins_HD_Si=merge(Bins_HD_Si, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_HD_Si$High_Dose_Ind_per_Bin_Si = Bins_HD_Si$n
+Bins_HD_Si$n=NULL
+
+Bins_HD_Si_useful= Bins_HD_Si[ , grepl( "Bins_couple|High_Dose_Ind_per_Bin_Si" , names(Bins_HD_Si))]
+Bins_HD_Si_useful=distinct(Bins_HD_Si_useful)
+
+Bins_CD_DD_4h_All_Data_Si=merge(Bins_CD_DD_4h,Bins_HD_Si_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Ar - CD/DD - Low Dose
+Bins_LD_Ar= All_Data_4h_Normalized[ , grepl( "Sample_ID|Low_Dose_Cell_Death_Ar|Low_Dose_DNA_Damage_Ar" , names(All_Data_4h_Normalized))]
+Bins_LD_Ar=NaRV.omit(Bins_LD_Ar)
+Bins_LD_Ar$Low_Dose_Bins_Cell_Death_Ar=cut(Bins_LD_Ar$Low_Dose_Cell_Death_Ar, breaks = CD_breaks, right = TRUE)
+Bins_LD_Ar$Low_Dose_Bins_DNA_Damage_Ar=cut(Bins_LD_Ar$Low_Dose_DNA_Damage_Ar, breaks = DD_breaks, right = TRUE)
+Bins_LD_Ar$Bins_couple <- paste(Bins_LD_Ar$Low_Dose_Bins_DNA_Damage_Ar, Bins_LD_Ar$Low_Dose_Bins_Cell_Death_Ar,sep="_")
+
+Individuals_per_Bin = count(Bins_LD_Ar, Bins_couple)
+
+Bins_LD_Ar=merge(Bins_LD_Ar, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_LD_Ar$Low_Dose_Ind_per_Bin_Ar = Bins_LD_Ar$n
+Bins_LD_Ar$n=NULL
+
+Bins_LD_Ar_useful= Bins_LD_Ar[ , grepl( "Bins_couple|Low_Dose_Ind_per_Bin_Ar" , names(Bins_LD_Ar))]
+Bins_LD_Ar_useful=distinct(Bins_LD_Ar_useful)
+
+Bins_CD_DD_4h_All_Data_Ar=merge(Bins_CD_DD_4h,Bins_LD_Ar_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Ar - CD/DD - High Dose
+Bins_HD_Ar= All_Data_4h_Normalized[ , grepl( "Sample_ID|High_Dose_Cell_Death_Ar|High_Dose_DNA_Damage_Ar" , names(All_Data_4h_Normalized))]
+Bins_HD_Ar=NaRV.omit(Bins_HD_Ar)
+Bins_HD_Ar$High_Dose_Bins_Cell_Death_Ar=cut(Bins_HD_Ar$High_Dose_Cell_Death_Ar, breaks = CD_breaks, right = TRUE)
+Bins_HD_Ar$High_Dose_Bins_DNA_Damage_Ar=cut(Bins_HD_Ar$High_Dose_DNA_Damage_Ar, breaks = DD_breaks, right = TRUE)
+Bins_HD_Ar$Bins_couple <- paste(Bins_HD_Ar$High_Dose_Bins_DNA_Damage_Ar, Bins_HD_Ar$High_Dose_Bins_Cell_Death_Ar,sep="_")
+
+Individuals_per_Bin = count(Bins_HD_Ar, Bins_couple)
+
+Bins_HD_Ar=merge(Bins_HD_Ar, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_HD_Ar$High_Dose_Ind_per_Bin_Ar = Bins_HD_Ar$n
+Bins_HD_Ar$n=NULL
+
+Bins_HD_Ar_useful= Bins_HD_Ar[ , grepl( "Bins_couple|High_Dose_Ind_per_Bin_Ar" , names(Bins_HD_Ar))]
+Bins_HD_Ar_useful=distinct(Bins_HD_Ar_useful)
+
+Bins_CD_DD_4h_All_Data_Ar=merge(Bins_CD_DD_4h,Bins_HD_Ar_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Gamma - CD/DD - Low Dose
+Bins_LD_Gamma= All_Data_4h_Normalized[ , grepl( "Sample_ID|Low_Dose_Cell_Death_Gamma|Low_Dose_DNA_Damage_Gamma" , names(All_Data_4h_Normalized))]
+Bins_LD_Gamma=NaRV.omit(Bins_LD_Gamma)
+Bins_LD_Gamma$Low_Dose_Bins_Cell_Death_Gamma=cut(Bins_LD_Gamma$Low_Dose_Cell_Death_Gamma, breaks = CD_breaks, right = TRUE)
+Bins_LD_Gamma$Low_Dose_Bins_DNA_Damage_Gamma=cut(Bins_LD_Gamma$Low_Dose_DNA_Damage_Gamma, breaks = DD_breaks, right = TRUE)
+Bins_LD_Gamma$Bins_couple <- paste(Bins_LD_Gamma$Low_Dose_Bins_DNA_Damage_Gamma, Bins_LD_Gamma$Low_Dose_Bins_Cell_Death_Gamma,sep="_")
+
+Individuals_per_Bin = count(Bins_LD_Gamma, Bins_couple)
+
+Bins_LD_Gamma=merge(Bins_LD_Gamma, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_LD_Gamma$Low_Dose_Ind_per_Bin_Gamma = Bins_LD_Gamma$n
+Bins_LD_Gamma$n=NULL
+
+Bins_LD_Gamma_useful= Bins_LD_Gamma[ , grepl( "Bins_couple|Low_Dose_Ind_per_Bin_Gamma" , names(Bins_LD_Gamma))]
+Bins_LD_Gamma_useful=distinct(Bins_LD_Gamma_useful)
+
+Bins_CD_DD_4h_All_Data_Gamma=merge(Bins_CD_DD_4h,Bins_LD_Gamma_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Gamma - CD/DD - High Dose
+Bins_HD_Gamma= All_Data_4h_Normalized[ , grepl( "Sample_ID|High_Dose_Cell_Death_Gamma|High_Dose_DNA_Damage_Gamma" , names(All_Data_4h_Normalized))]
+Bins_HD_Gamma=NaRV.omit(Bins_HD_Gamma)
+Bins_HD_Gamma$High_Dose_Bins_Cell_Death_Gamma=cut(Bins_HD_Gamma$High_Dose_Cell_Death_Gamma, breaks = CD_breaks, right = TRUE)
+Bins_HD_Gamma$High_Dose_Bins_DNA_Damage_Gamma=cut(Bins_HD_Gamma$High_Dose_DNA_Damage_Gamma, breaks = DD_breaks, right = TRUE)
+Bins_HD_Gamma$Bins_couple <- paste(Bins_HD_Gamma$High_Dose_Bins_DNA_Damage_Gamma, Bins_HD_Gamma$High_Dose_Bins_Cell_Death_Gamma,sep="_")
+
+Individuals_per_Bin = count(Bins_HD_Gamma, Bins_couple)
+
+Bins_HD_Gamma=merge(Bins_HD_Gamma, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_HD_Gamma$High_Dose_Ind_per_Bin_Gamma = Bins_HD_Gamma$n
+Bins_HD_Gamma$n=NULL
+
+Bins_HD_Gamma_useful= Bins_HD_Gamma[ , grepl( "Bins_couple|High_Dose_Ind_per_Bin_Gamma" , names(Bins_HD_Gamma))]
+Bins_HD_Gamma_useful=distinct(Bins_HD_Gamma_useful)
+
+Bins_CD_DD_4h_All_Data_Gamma=merge(Bins_CD_DD_4h,Bins_HD_Gamma_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+############ Finally for time point 4h : DNA Damage and Oxidative Stress
+Bins_DD=cut(DD_breaks_data, breaks = DD_breaks, right = TRUE )
+Bins_OS=cut(OS_breaks_data, breaks = OS_breaks, right = TRUE )
+Bins_OS_DD_4h=merge(Bins_OS, Bins_DD)
+Bins_OS_DD_4h=NaRV.omit(Bins_OS_DD_4h)
+Bins_OS_DD_4h$Bins_couple <- paste(Bins_OS_DD_4h$x, Bins_OS_DD_4h$y, sep="_")
+Bins_OS_DD_4h$Bins_OS = Bins_OS_DD_4h$x
+Bins_OS_DD_4h$Bins_DD =Bins_OS_DD_4h$y
+Bins_OS_DD_4h$x=NULL
+Bins_OS_DD_4h$y=NULL
+Bins_OS_DD_4h=distinct(Bins_OS_DD_4h)
+
+### Fe - DD/OS - Low Dose 
+Bins_LD_Fe= All_Data_4h_Normalized[ , grepl( "Sample_ID|Low_Dose_Oxidative_Stress_Fe|Low_Dose_DNA_Damage_Fe" , names(All_Data_4h_Normalized))]
+Bins_LD_Fe=NaRV.omit(Bins_LD_Fe)
+Bins_LD_Fe$Low_Dose_Bins_Oxidative_Stress_Fe=cut(Bins_LD_Fe$Low_Dose_Oxidative_Stress_Fe, breaks = OS_breaks, right = TRUE)
+Bins_LD_Fe$Low_Dose_Bins_DNA_Damage_Fe=cut(Bins_LD_Fe$Low_Dose_DNA_Damage_Fe, breaks = DD_breaks, right = TRUE)
+Bins_LD_Fe$Bins_couple <- paste(Bins_LD_Fe$Low_Dose_Bins_Oxidative_Stress_Fe,Bins_LD_Fe$Low_Dose_Bins_DNA_Damage_Fe, sep="_")
+
+Individuals_per_Bin = count(Bins_LD_Fe, Bins_couple)
+
+Bins_LD_Fe=merge(Bins_LD_Fe, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_LD_Fe$Low_Dose_Ind_per_Bin_Fe = Bins_LD_Fe$n
+Bins_LD_Fe$n=NULL
+
+Bins_LD_Fe_useful= Bins_LD_Fe[ , grepl( "Bins_couple|Low_Dose_Ind_per_Bin_Fe" , names(Bins_LD_Fe))]
+Bins_LD_Fe_useful=distinct(Bins_LD_Fe_useful)
+
+Bins_OS_DD_4h_All_Data_Fe=merge(Bins_OS_DD_4h,Bins_LD_Fe_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Fe - DD/OS - High Dose 
+Bins_HD_Fe= All_Data_4h_Normalized[ , grepl( "Sample_ID|High_Dose_Oxidative_Stress_Fe|High_Dose_DNA_Damage_Fe" , names(All_Data_4h_Normalized))]
+Bins_HD_Fe=NaRV.omit(Bins_HD_Fe)
+Bins_HD_Fe$High_Dose_Bins_Oxidative_Stress_Fe=cut(Bins_HD_Fe$High_Dose_Oxidative_Stress_Fe, breaks = OS_breaks, right = TRUE)
+Bins_HD_Fe$High_Dose_Bins_DNA_Damage_Fe=cut(Bins_HD_Fe$High_Dose_DNA_Damage_Fe, breaks = DD_breaks, right = TRUE)
+Bins_HD_Fe$Bins_couple <- paste(Bins_HD_Fe$High_Dose_Bins_Oxidative_Stress_Fe,Bins_HD_Fe$High_Dose_Bins_DNA_Damage_Fe, sep="_")
+
+Individuals_per_Bin = count(Bins_HD_Fe, Bins_couple)
+
+Bins_HD_Fe=merge(Bins_HD_Fe, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_HD_Fe$High_Dose_Ind_per_Bin_Fe = Bins_HD_Fe$n
+Bins_HD_Fe$n=NULL
+
+Bins_HD_Fe_useful= Bins_HD_Fe[ , grepl( "Bins_couple|High_Dose_Ind_per_Bin_Fe" , names(Bins_HD_Fe))]
+Bins_HD_Fe_useful=distinct(Bins_HD_Fe_useful)
+
+Bins_OS_DD_4h_All_Data_Fe=merge(Bins_OS_DD_4h,Bins_HD_Fe_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Si - DD/OS - Low Dose 
+Bins_LD_Si= All_Data_4h_Normalized[ , grepl( "Sample_ID|Low_Dose_Oxidative_Stress_Si|Low_Dose_DNA_Damage_Si" , names(All_Data_4h_Normalized))]
+Bins_LD_Si=NaRV.omit(Bins_LD_Si)
+Bins_LD_Si$Low_Dose_Bins_Oxidative_Stress_Si=cut(Bins_LD_Si$Low_Dose_Oxidative_Stress_Si, breaks = OS_breaks, right = TRUE)
+Bins_LD_Si$Low_Dose_Bins_DNA_Damage_Si=cut(Bins_LD_Si$Low_Dose_DNA_Damage_Si, breaks = DD_breaks, right = TRUE)
+Bins_LD_Si$Bins_couple <- paste(Bins_LD_Si$Low_Dose_Bins_Oxidative_Stress_Si,Bins_LD_Si$Low_Dose_Bins_DNA_Damage_Si, sep="_")
+
+Individuals_per_Bin = count(Bins_LD_Si, Bins_couple)
+
+Bins_LD_Si=merge(Bins_LD_Si, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_LD_Si$Low_Dose_Ind_per_Bin_Si = Bins_LD_Si$n
+Bins_LD_Si$n=NULL
+
+Bins_LD_Si_useful= Bins_LD_Si[ , grepl( "Bins_couple|Low_Dose_Ind_per_Bin_Si" , names(Bins_LD_Si))]
+Bins_LD_Si_useful=distinct(Bins_LD_Si_useful)
+
+Bins_OS_DD_4h_All_Data_Si=merge(Bins_OS_DD_4h,Bins_LD_Si_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Si - DD/OS - High Dose 
+Bins_HD_Si= All_Data_4h_Normalized[ , grepl( "Sample_ID|High_Dose_Oxidative_Stress_Si|High_Dose_DNA_Damage_Si" , names(All_Data_4h_Normalized))]
+Bins_HD_Si=NaRV.omit(Bins_HD_Si)
+Bins_HD_Si$High_Dose_Bins_Oxidative_Stress_Si=cut(Bins_HD_Si$High_Dose_Oxidative_Stress_Si, breaks = OS_breaks, right = TRUE)
+Bins_HD_Si$High_Dose_Bins_DNA_Damage_Si=cut(Bins_HD_Si$High_Dose_DNA_Damage_Si, breaks = DD_breaks, right = TRUE)
+Bins_HD_Si$Bins_couple <- paste(Bins_HD_Si$High_Dose_Bins_Oxidative_Stress_Si,Bins_HD_Si$High_Dose_Bins_DNA_Damage_Si, sep="_")
+
+Individuals_per_Bin = count(Bins_HD_Si, Bins_couple)
+
+Bins_HD_Si=merge(Bins_HD_Si, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_HD_Si$High_Dose_Ind_per_Bin_Si = Bins_HD_Si$n
+Bins_HD_Si$n=NULL
+
+Bins_HD_Si_useful= Bins_HD_Si[ , grepl( "Bins_couple|High_Dose_Ind_per_Bin_Si" , names(Bins_HD_Si))]
+Bins_HD_Si_useful=distinct(Bins_HD_Si_useful)
+
+Bins_OS_DD_4h_All_Data_Si=merge(Bins_OS_DD_4h,Bins_HD_Si_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Ar - DD/OS - Low Dose 
+Bins_LD_Ar= All_Data_4h_Normalized[ , grepl( "Sample_ID|Low_Dose_Oxidative_Stress_Ar|Low_Dose_DNA_Damage_Ar" , names(All_Data_4h_Normalized))]
+Bins_LD_Ar=NaRV.omit(Bins_LD_Ar)
+Bins_LD_Ar$Low_Dose_Bins_Oxidative_Stress_Ar=cut(Bins_LD_Ar$Low_Dose_Oxidative_Stress_Ar, breaks = OS_breaks, right = TRUE)
+Bins_LD_Ar$Low_Dose_Bins_DNA_Damage_Ar=cut(Bins_LD_Ar$Low_Dose_DNA_Damage_Ar, breaks = DD_breaks, right = TRUE)
+Bins_LD_Ar$Bins_couple <- paste(Bins_LD_Ar$Low_Dose_Bins_Oxidative_Stress_Ar,Bins_LD_Ar$Low_Dose_Bins_DNA_Damage_Ar, sep="_")
+
+Individuals_per_Bin = count(Bins_LD_Ar, Bins_couple)
+
+Bins_LD_Ar=merge(Bins_LD_Ar, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_LD_Ar$Low_Dose_Ind_per_Bin_Ar = Bins_LD_Ar$n
+Bins_LD_Ar$n=NULL
+
+Bins_LD_Ar_useful= Bins_LD_Ar[ , grepl( "Bins_couple|Low_Dose_Ind_per_Bin_Ar" , names(Bins_LD_Ar))]
+Bins_LD_Ar_useful=distinct(Bins_LD_Ar_useful)
+
+Bins_OS_DD_4h_All_Data_Ar=merge(Bins_OS_DD_4h,Bins_LD_Ar_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+ 
+### Ar - DD/OS - High Dose 
+Bins_HD_Ar= All_Data_4h_Normalized[ , grepl( "Sample_ID|High_Dose_Oxidative_Stress_Ar|High_Dose_DNA_Damage_Ar" , names(All_Data_4h_Normalized))]
+Bins_HD_Ar=NaRV.omit(Bins_HD_Ar)
+Bins_HD_Ar$High_Dose_Bins_Oxidative_Stress_Ar=cut(Bins_HD_Ar$High_Dose_Oxidative_Stress_Ar, breaks = OS_breaks, right = TRUE)
+Bins_HD_Ar$High_Dose_Bins_DNA_Damage_Ar=cut(Bins_HD_Ar$High_Dose_DNA_Damage_Ar, breaks = DD_breaks, right = TRUE)
+Bins_HD_Ar$Bins_couple <- paste(Bins_HD_Ar$High_Dose_Bins_Oxidative_Stress_Ar,Bins_HD_Ar$High_Dose_Bins_DNA_Damage_Ar, sep="_")
+
+Individuals_per_Bin = count(Bins_HD_Ar, Bins_couple)
+
+Bins_HD_Ar=merge(Bins_HD_Ar, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_HD_Ar$High_Dose_Ind_per_Bin_Ar = Bins_HD_Ar$n
+Bins_HD_Ar$n=NULL
+
+Bins_HD_Ar_useful= Bins_HD_Ar[ , grepl( "Bins_couple|High_Dose_Ind_per_Bin_Ar" , names(Bins_HD_Ar))]
+Bins_HD_Ar_useful=distinct(Bins_HD_Ar_useful)
+
+Bins_OS_DD_4h_All_Data_Ar=merge(Bins_OS_DD_4h,Bins_HD_Ar_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Gamma - DD/OS - Low Dose 
+Bins_LD_Gamma= All_Data_4h_Normalized[ , grepl( "Sample_ID|Low_Dose_Oxidative_Stress_Gamma|Low_Dose_DNA_Damage_Gamma" , names(All_Data_4h_Normalized))]
+Bins_LD_Gamma=NaRV.omit(Bins_LD_Gamma)
+Bins_LD_Gamma$Low_Dose_Bins_Oxidative_Stress_Gamma=cut(Bins_LD_Gamma$Low_Dose_Oxidative_Stress_Gamma, breaks = OS_breaks, right = TRUE)
+Bins_LD_Gamma$Low_Dose_Bins_DNA_Damage_Gamma=cut(Bins_LD_Gamma$Low_Dose_DNA_Damage_Gamma, breaks = DD_breaks, right = TRUE)
+Bins_LD_Gamma$Bins_couple <- paste(Bins_LD_Gamma$Low_Dose_Bins_Oxidative_Stress_Gamma,Bins_LD_Gamma$Low_Dose_Bins_DNA_Damage_Gamma, sep="_")
+
+Individuals_per_Bin = count(Bins_LD_Gamma, Bins_couple)
+
+Bins_LD_Gamma=merge(Bins_LD_Gamma, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_LD_Gamma$Low_Dose_Ind_per_Bin_Gamma = Bins_LD_Gamma$n
+Bins_LD_Gamma$n=NULL
+
+Bins_LD_Gamma_useful= Bins_LD_Gamma[ , grepl( "Bins_couple|Low_Dose_Ind_per_Bin_Gamma" , names(Bins_LD_Gamma))]
+Bins_LD_Gamma_useful=distinct(Bins_LD_Gamma_useful)
+
+Bins_OS_DD_4h_All_Data_Gamma=merge(Bins_OS_DD_4h,Bins_LD_Gamma_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Gamma - DD/OS - High Dose 
+Bins_HD_Gamma= All_Data_4h_Normalized[ , grepl( "Sample_ID|High_Dose_Oxidative_Stress_Gamma|High_Dose_DNA_Damage_Gamma" , names(All_Data_4h_Normalized))]
+Bins_HD_Gamma=NaRV.omit(Bins_HD_Gamma)
+Bins_HD_Gamma$High_Dose_Bins_Oxidative_Stress_Gamma=cut(Bins_HD_Gamma$High_Dose_Oxidative_Stress_Gamma, breaks = OS_breaks, right = TRUE)
+Bins_HD_Gamma$High_Dose_Bins_DNA_Damage_Gamma=cut(Bins_HD_Gamma$High_Dose_DNA_Damage_Gamma, breaks = DD_breaks, right = TRUE)
+Bins_HD_Gamma$Bins_couple <- paste(Bins_HD_Gamma$High_Dose_Bins_Oxidative_Stress_Gamma,Bins_HD_Gamma$High_Dose_Bins_DNA_Damage_Gamma, sep="_")
+
+Individuals_per_Bin = count(Bins_HD_Gamma, Bins_couple)
+
+Bins_HD_Gamma=merge(Bins_HD_Gamma, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_HD_Gamma$High_Dose_Ind_per_Bin_Gamma= Bins_HD_Gamma$n
+Bins_HD_Gamma$n=NULL
+
+Bins_HD_Gamma_useful= Bins_HD_Gamma[ , grepl( "Bins_couple|High_Dose_Ind_per_Bin_Gamma" , names(Bins_HD_Gamma))]
+Bins_HD_Gamma_useful=distinct(Bins_HD_Gamma_useful)
+
+Bins_OS_DD_4h_All_Data_Gamma=merge(BBins_OS_DD_4h,Bins_HD_Gamma_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+```
+
+
+
+
+
+```{r}
+### Plots by radiation type and type point of Oxidative Stress vs DNA Damage / Cell Death vs DNA Damage & Oxidative Stress vs Cell Death all colored by density (same scale) 
+
+### first search of the highest density to fix the scale 
+
+Max_pop_CD_OS=max(Bins_CD_OS_4h_All_Data_Fe$Low_Dose_Ind_per_Bin_Fe, Bins_CD_OS_4h_All_Data_Fe$High_Dose_Ind_per_Bin_Fe, 
+            Bins_CD_OS_4h_All_Data_Si$Low_Dose_Ind_per_Bin_Si, Bins_CD_OS_4h_All_Data_Si$High_Dose_Ind_per_Bin_Si,
+            Bins_CD_OS_4h_All_Data_Ar$Low_Dose_Ind_per_Bin_Ar, Bins_CD_OS_4h_All_Data_Ar$High_Dose_Ind_per_Bin_Ar, 
+            Bins_CD_OS_4h_All_Data_Gamma$Low_Dose_Ind_per_Bin_Gamma,Bins_CD_OS_4h_All_Data_Gamma$High_Dose_Ind_per_Bin_Gamma,
+            na.rm = TRUE)
+
+Max_pop_CD_DD=max(Bins_CD_DD_4h_All_Data_Fe$Low_Dose_Ind_per_Bin_Fe, Bins_CD_DD_4h_All_Data_Fe$High_Dose_Ind_per_Bin_Fe, 
+            Bins_CD_DD_4h_All_Data_Si$Low_Dose_Ind_per_Bin_Si, Bins_CD_DD_4h_All_Data_Si$High_Dose_Ind_per_Bin_Si,
+            Bins_CD_DD_4h_All_Data_Ar$Low_Dose_Ind_per_Bin_Ar, Bins_CD_DD_4h_All_Data_Ar$High_Dose_Ind_per_Bin_Ar, 
+            Bins_CD_DD_4h_All_Data_Gamma$Low_Dose_Ind_per_Bin_Gamma,Bins_CD_DD_4h_All_Data_Gamma$High_Dose_Ind_per_Bin_Gamma,
+            na.rm = TRUE)
+
+Max_pop_OS_DD=max(Bins_OS_DD_4h_All_Data_Fe$Low_Dose_Ind_per_Bin_Fe, Bins_OS_DD_4h_All_Data_Fe$High_Dose_Ind_per_Bin_Fe, 
+            Bins_OS_DD_4h_All_Data_Si$Low_Dose_Ind_per_Bin_Si, Bins_OS_DD_4h_All_Data_Si$High_Dose_Ind_per_Bin_Si,
+            Bins_OS_DD_4h_All_Data_Ar$Low_Dose_Ind_per_Bin_Ar, Bins_OS_DD_4h_All_Data_Ar$High_Dose_Ind_per_Bin_Ar, 
+            Bins_OS_DD_4h_All_Data_Gamma$Low_Dose_Ind_per_Bin_Gamma,Bins_OS_DD_4h_All_Data_Gamma$High_Dose_Ind_per_Bin_Gamma,
+            na.rm = TRUE)
+
+Max_pop = max(Max_pop_CD_OS, Max_pop_CD_DD, Max_pop_OS_DD)
+
+
+
+###  Fe at 4h - LOW DOSE - Display OS vs CD + CD vs DD + DD vs OS 
+
+Fe_CD_0S_LD_4h <- ggplot(data = Bins_CD_OS_4h_All_Data_Fe) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = Low_Dose_Ind_per_Bin_Fe))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Fe - CD vs OS - Low Dose - 4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Fe_CD_DD_LD_4h <- ggplot(data = Bins_CD_DD_4h_All_Data_Fe) + geom_tile(aes(x=Bins_DD,y=Bins_CD,fill = Low_Dose_Ind_per_Bin_Fe))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Fe - CD vs DD - Low Dose -  4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Fe_OS_DD_LD_4h <- ggplot(data = Bins_OS_DD_4h_All_Data_Fe) + geom_tile(aes(x=Bins_OS,y=Bins_DD,fill = Low_Dose_Ind_per_Bin_Fe))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Fe - DD vs OS - Low Dose -  4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+
+
+###  Fe at 4h - HIGH DOSE - Display OS vs CD + CD vs DD + DD vs OS 
+
+Fe_CD_0S_HD_4h <- ggplot(data = Bins_CD_OS_4h_All_Data_Fe) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = High_Dose_Ind_per_Bin_Fe))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Fe - CD vs OS - High Dose - 4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Fe_CD_DD_HD_4h <- ggplot(data = Bins_CD_DD_4h_All_Data_Fe) + geom_tile(aes(x=Bins_DD,y=Bins_CD,fill = High_Dose_Ind_per_Bin_Fe))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Fe - CD vs DD - High Dose -  4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Fe_OS_DD_HD_4h <- ggplot(data = Bins_OS_DD_4h_All_Data_Fe) + geom_tile(aes(x=Bins_OS,y=Bins_DD,fill = High_Dose_Ind_per_Bin_Fe))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Fe - DD vs OS - High Dose -  4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+
+
+###  Ar at 4h - LOW DOSE - Display OS vs CD + CD vs DD + DD vs OS 
+
+Ar_CD_0S_LD_4h <- ggplot(data = Bins_CD_OS_4h_All_Data_Ar) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = Low_Dose_Ind_per_Bin_Ar))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Ar - CD vs OS - Low Dose - 4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Ar_CD_DD_LD_4h <- ggplot(data = Bins_CD_DD_4h_All_Data_Ar) + geom_tile(aes(x=Bins_DD,y=Bins_CD,fill = Low_Dose_Ind_per_Bin_Ar))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Ar - CD vs DD - Low Dose -  4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Ar_OS_DD_LD_4h <- ggplot(data = Bins_OS_DD_4h_All_Data_Ar) + geom_tile(aes(x=Bins_OS,y=Bins_DD,fill = Low_Dose_Ind_per_Bin_Ar))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Ar - DD vs OS - Low Dose -  4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+
+
+###  Ar at 4h - HIGH DOSE - Display OS vs CD + CD vs DD + DD vs OS 
+
+Ar_CD_0S_HD_4h <- ggplot(data = Bins_CD_OS_4h_All_Data_Ar) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = High_Dose_Ind_per_Bin_Ar))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Ar - CD vs OS - High Dose - 4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Ar_CD_DD_HD_4h <- ggplot(data = Bins_CD_DD_4h_All_Data_Ar) + geom_tile(aes(x=Bins_DD,y=Bins_CD,fill = High_Dose_Ind_per_Bin_Ar))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Ar - CD vs DD - High Dose -  4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Ar_OS_DD_HD_4h <- ggplot(data = Bins_OS_DD_4h_All_Data_Ar) + geom_tile(aes(x=Bins_OS,y=Bins_DD,fill = High_Dose_Ind_per_Bin_Ar))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Ar - DD vs OS - High Dose -  4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+
+
+
+###  Si at 4h - LOW DOSE - Display OS vs CD + CD vs DD + DD vs OS 
+
+Si_CD_0S_LD_4h <- ggplot(data = Bins_CD_OS_4h_All_Data_Si) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = Low_Dose_Ind_per_Bin_Si))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Si - CD vs OS - Low Dose - 4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Si_CD_DD_LD_4h <- ggplot(data = Bins_CD_DD_4h_All_Data_Si) + geom_tile(aes(x=Bins_DD,y=Bins_CD,fill = Low_Dose_Ind_per_Bin_Si))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Si - CD vs DD - Low Dose -  4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Si_OS_DD_LD_4h <- ggplot(data = Bins_OS_DD_4h_All_Data_Si) + geom_tile(aes(x=Bins_OS,y=Bins_DD,fill = Low_Dose_Ind_per_Bin_Si))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Si - DD vs OS - Low Dose -  4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+
+
+###  Si at 4h - HIGH DOSE - Display OS vs CD + CD vs DD + DD vs OS 
+
+Si_CD_0S_HD_4h <- ggplot(data = Bins_CD_OS_4h_All_Data_Si) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = High_Dose_Ind_per_Bin_Si))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Si - CD vs OS - High Dose - 4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Si_CD_DD_HD_4h <- ggplot(data = Bins_CD_DD_4h_All_Data_Si) + geom_tile(aes(x=Bins_DD,y=Bins_CD,fill = High_Dose_Ind_per_Bin_Si))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Si - CD vs DD - High Dose -  4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Si_OS_DD_HD_4h <- ggplot(data = Bins_OS_DD_4h_All_Data_Si) + geom_tile(aes(x=Bins_OS,y=Bins_DD,fill = High_Dose_Ind_per_Bin_Si))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Si - DD vs OS - High Dose -  4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+
+
+###  Gamma at 4h - LOW DOSE - Display OS vs CD + CD vs DD + DD vs OS 
+
+Gamma_CD_0S_LD_4h <- ggplot(data = Bins_CD_OS_4h_All_Data_Gamma) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = Low_Dose_Ind_per_Bin_Gamma))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Gamma - CD vs OS - Low Dose - 4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Gamma_CD_DD_LD_4h <- ggplot(data = Bins_CD_DD_4h_All_Data_Gamma) + geom_tile(aes(x=Bins_DD,y=Bins_CD,fill = Low_Dose_Ind_per_Bin_Gamma))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Gamma - CD vs DD - Low Dose -  4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Gamma_OS_DD_LD_4h <- ggplot(data = Bins_OS_DD_4h_All_Data_Gamma) + geom_tile(aes(x=Bins_OS,y=Bins_DD,fill = Low_Dose_Ind_per_Bin_Gamma))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Gamma - DD vs OS - Low Dose -  4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+
+
+###  Gamma at 4h - HIGH DOSE - Display OS vs CD + CD vs DD + DD vs OS 
+
+Gamma_CD_0S_HD_4h <- ggplot(data = Bins_CD_OS_4h_All_Data_Gamma) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = High_Dose_Ind_per_Bin_Gamma))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Gamma - CD vs OS - High Dose - 4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Gamma_CD_DD_HD_4h <- ggplot(data = Bins_CD_DD_4h_All_Data_Gamma) + geom_tile(aes(x=Bins_DD,y=Bins_CD,fill = High_Dose_Ind_per_Bin_Gamma))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Gamma - CD vs DD - High Dose -  4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Gamma_OS_DD_HD_4h <- ggplot(data = Bins_OS_DD_4h_All_Data_Gamma) + geom_tile(aes(x=Bins_OS,y=Bins_DD,fill = High_Dose_Ind_per_Bin_Gamma))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Gamma - DD vs OS - High Dose -  4h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+
+#### Now that all plots are created, we can diplay each type of plot (CD/OS, CD/DD and DD/OS) simultaneously by dose and for all radiation type (and save them)
+
+Low_CD_OS_4h_colored_density <- grid.arrange(Fe_CD_0S_LD_4h, Ar_CD_0S_LD_4h,Si_CD_0S_LD_4h, Gamma_CD_0S_LD_4h,ncol=4)
+ggsave("Low_CD_OS_4h_colored_density.pdf", Low_CD_OS_4h_colored_density, width = 49, height = 17)
+
+High_CD_OS_4h_colored_density <- grid.arrange(Fe_CD_0S_HD_4h, Ar_CD_0S_HD_4h,Si_CD_0S_HD_4h, Gamma_CD_0S_HD_4h,ncol=4)
+ggsave("High_CD_OS_4h_colored_density.pdf", High_CD_OS_4h_colored_density, width = 49, height = 17)
+
+Low_CD_DD_4h_colored_density <- grid.arrange(Fe_CD_DD_LD_4h, Ar_CD_DD_LD_4h,Si_CD_DD_LD_4h, Gamma_CD_DD_LD_4h,ncol=4)
+ggsave("Low_CD_DD_4h_colored_density.pdf", Low_CD_DD_4h_colored_density, width = 49, height = 17)
+
+High_CD_DD_4h_colored_density <- grid.arrange(Fe_CD_DD_HD_4h, Ar_CD_DD_HD_4h,Si_CD_DD_HD_4h, Gamma_CD_DD_HD_4h,ncol=4)
+ggsave("High_CD_DD_4h_colored_density.pdf", High_CD_DD_4h_colored_density, width = 49, height = 17)
+
+Low_OS_DD_4h_colored_density <- grid.arrange(Fe_OS_DD_LD_4h, Ar_OS_DD_LD_4h,Si_OS_DD_LD_4h, Gamma_OS_DD_LD_4h,ncol=4)
+ggsave("Low_OS_DD_4h_colored_density.pdf", Low_OS_DD_4h_colored_density, width = 49, height = 17)
+
+High_OS_DD_4h_colored_density <- grid.arrange(Fe_OS_DD_HD_4h, Ar_OS_DD_HD_4h,Si_OS_DD_HD_4h, Gamma_OS_DD_HD_4h,ncol=4)
+ggsave("High_OS_DD_4h_colored_density.pdf", High_OS_DD_4h_colored_density, width = 49, height = 17)
+
+
+######################### Additionnal representations #####################
+### Plots OS, DD & CD simultaneously + density dots at 4h 
+
+Fe_LD_4h <- ggplot(data = Bins_CD_OS_4h_All_Data_Fe) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill=Low_Dose_mean_nfoci_Fe))+
+  scale_fill_gradient2(midpoint = (2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(4)))+ geom_point(aes(x=Bins_OS,y=Bins_CD, size=Low_Dose_Ind_per_Bin_Fe))  + ggtitle("Fe  - Low Dose - 4h") + theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 5), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+#print(Fe_LD)
+
+Fe_HD_4h <- ggplot(data = Bins_CD_OS_4h_All_Data_Fe) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill=High_Dose_mean_nfoci_Fe))+
+  scale_fill_gradient2(midpoint = (2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(4)))+ geom_point(aes(x=Bins_OS,y=Bins_CD, size=High_Dose_Ind_per_Bin_Fe))  + ggtitle("Fe  - High Dose - 4h") + theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 5), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+#print(Fe_HD)
+
+Ar_LD_4h <- ggplot(data = Bins_CD_OS_4h_All_Data_Ar) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill=Low_Dose_mean_nfoci_Ar))+
+  scale_fill_gradient2(midpoint = (2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(4)))+ geom_point(aes(x=Bins_OS,y=Bins_CD, size=Low_Dose_Ind_per_Bin_Ar))  + ggtitle("Ar  - Low Dose - 4h") + theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 5), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+#print(Ar_LD)
+
+Ar_HD_4h <- ggplot(data = Bins_CD_OS_4h_All_Data_Ar) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill=High_Dose_mean_nfoci_Ar))+
+  scale_fill_gradient2(midpoint = (2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(4)))+ geom_point(aes(x=Bins_OS,y=Bins_CD, size=High_Dose_Ind_per_Bin_Ar))  + ggtitle("Ar  - High Dose - 4h") + theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 5), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+#print(Ar_HD)
+
+
+Si_LD_4h <- ggplot(data = Bins_CD_OS_4h_All_Data_Si) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill=Low_Dose_mean_nfoci_Si))+
+  scale_fill_gradient2(midpoint = (2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(4)))+ geom_point(aes(x=Bins_OS,y=Bins_CD, size=Low_Dose_Ind_per_Bin_Si))  + ggtitle("Si  - Low Dose - 4h") + theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 5), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+#print(Si_LD)
+
+Si_HD_4h <- ggplot(data = Bins_CD_OS_4h_All_Data_Si) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill=High_Dose_mean_nfoci_Si))+
+  scale_fill_gradient2(midpoint = (2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(4)))+ geom_point(aes(x=Bins_OS,y=Bins_CD, size=High_Dose_Ind_per_Bin_Si))  + ggtitle("Si  - High Dose - 4h") + theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 5), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+#print(Si_HD)
+
+Gamma_LD_4h <- ggplot(data = Bins_CD_OS_4h_All_Data_Gamma) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill=Low_Dose_mean_nfoci_Gamma))+
+  scale_fill_gradient2(midpoint = (2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(4)))+ geom_point(aes(x=Bins_OS,y=Bins_CD, size=Low_Dose_Ind_per_Bin_Gamma))  + ggtitle("Gamma  - Low Dose - 4h") + theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 5), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+#print(Gamma_LD)
+
+Gamma_HD_4h <- ggplot(data = Bins_CD_OS_4h_All_Data_Gamma) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill=High_Dose_mean_nfoci_Gamma))+
+  scale_fill_gradient2(midpoint = (2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(4)))+ geom_point(aes(x=Bins_OS,y=Bins_CD, size=High_Dose_Ind_per_Bin_Gamma))  + ggtitle("Gamma  - High Dose - 4h") + theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 5), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+#print(Gamma_HD)
+
+
+Fe_LD_HD_4h <- grid.arrange(Fe_LD_4h, Fe_HD_4h, ncol=2)
+ggsave("Fe_LD_HD_4h.pdf", Fe_LD_HD_4h,  width = 37, height = 20)
+
+Ar_LD_HD_4h <- grid.arrange(Ar_LD_4h, Ar_HD_4h, ncol=2)
+ggsave("Ar_LD_HD_4h.pdf", Ar_LD_HD_4h,  width = 37, height = 20)
+
+Si_LD_HD_4h <- grid.arrange(Si_LD_4h, Si_HD_4h, ncol=2)
+ggsave("Si_LD_HD_4h.pdf", Si_LD_HD_4h,  width = 37, height = 20)
+
+Gamma_LD_HD_4h <- grid.arrange(Gamma_LD_4h, Gamma_HD_4h, ncol=2)
+ggsave("Gamma_LD_HD_4h.pdf", Gamma_LD_HD_4h,  width = 37, height = 20)
+```
+
+
+```{r}
+### The exact 2 previous chunks but rewrite for data at 24h 
+
+### Now we plot for each radiation type and time point 2 penotypes at a time and color code by density
+
+### Here we use the same scale for every radation
+OS_breaks = seq(0, 3.8, 0.1)
+CD_breaks = seq(0, 11.9, 0.1)
+OS_breaks_data = seq(0, 3.75, 0.05)
+CD_breaks_data = seq(0,11.85, 0.05)
+DD_breaks = seq(0, 4, 0.1)
+DD_breaks_data = seq(0, 3.95, 0.05)
+
+### For each radiation and time point, we create 3 tables containing binning data for CD/OS, CD/DD and DD/OS and the density of individuals per interval
+
+###### At 24h 
+
+############ First Oxidative Stress and Cell Death 
+
+Bins_OS=cut(OS_breaks_data, breaks = OS_breaks, right = TRUE )
+Bins_CD_Fe=cut(CD_breaks_data, breaks = CD_breaks, right = TRUE )
+Bins_CD_OS_24h=merge(Bins_OS, Bins_CD)
+Bins_CD_OS_24h=NaRV.omit(Bins_CD_OS_24h)
+Bins_CD_OS_24h$Bins_couple <- paste(Bins_CD_OS_24h$x, Bins_CD_OS_24h$y, sep="_")
+Bins_CD_OS_24h$Bins_OS = Bins_CD_OS_24h$x
+Bins_CD_OS_24h$Bins_CD = Bins_CD_OS_24h$y
+Bins_CD_OS_24h$x=NULL
+Bins_CD_OS_24h$y=NULL
+Bins_CD_OS_24h=distinct(Bins_CD_OS_24h)
+
+### Fe - CD/OS - Low Dose 
+Bins_LD_Fe= All_Data_24h_Normalized[ , grepl( "Sample_ID|Low_Dose_Cell_Death_Fe|Low_Dose_DNA_Damage_Fe|Low_Dose_Oxidative_Stress_Fe" , names(All_Data_24h_Normalized))]
+Bins_LD_Fe=NaRV.omit(Bins_LD_Fe)
+Bins_LD_Fe$Low_Dose_Bins_Cell_Death_Fe=cut(Bins_LD_Fe$Low_Dose_Cell_Death_Fe, breaks = CD_breaks, right = TRUE)
+Bins_LD_Fe$Low_Dose_Bins_Oxidative_Stress_Fe=cut(Bins_LD_Fe$Low_Dose_Oxidative_Stress_Fe, breaks= OS_breaks, right = TRUE)
+Bins_LD_Fe$Bins_couple <- paste(Bins_LD_Fe$Low_Dose_Bins_Oxidative_Stress_Fe, Bins_LD_Fe$Low_Dose_Bins_Cell_Death_Fe,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_LD_Fe, .(Bins_couple), summarise, Low_Dose_mean_nfoci_Fe=mean(Low_Dose_DNA_Damage_Fe))
+Bins_LD_Fe=merge(Bins_LD_Fe,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_LD_Fe, Low_Dose_mean_nfoci_Fe)
+Bins_LD_Fe=merge(Bins_LD_Fe, Individuals_per_Bin, by.x="Low_Dose_mean_nfoci_Fe", by.y = "Low_Dose_mean_nfoci_Fe", all.x = TRUE, all.y = TRUE)
+Bins_LD_Fe$Low_Dose_Ind_per_Bin_Fe = Bins_LD_Fe$n
+Bins_LD_Fe$n=NULL
+
+Bins_LD_Fe_useful= Bins_LD_Fe[ , grepl( "Bins_couple|Low_Dose_mean_nfoci_Fe|Low_Dose_Ind_per_Bin_Fe" , names(Bins_LD_Fe))]
+Bins_LD_Fe_useful=distinct(Bins_LD_Fe_useful)
+
+Bins_CD_OS_24h_All_Data_Fe=merge(Bins_CD_OS_24h,Bins_LD_Fe_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+##  Fe - CD/OS - High Dose 
+Bins_HD_Fe= All_Data_24h_Normalized[ , grepl( "Sample_ID|High_Dose_Cell_Death_Fe|High_Dose_DNA_Damage_Fe|High_Dose_Oxidative_Stress_Fe" , names(All_Data_24h_Normalized))]
+Bins_HD_Fe=NaRV.omit(Bins_HD_Fe)
+Bins_HD_Fe$High_Dose_Bins_Cell_Death_Fe=cut(Bins_HD_Fe$High_Dose_Cell_Death_Fe, breaks = CD_breaks, right = TRUE)
+Bins_HD_Fe$High_Dose_Bins_Oxidative_Stress_Fe=cut(Bins_HD_Fe$High_Dose_Oxidative_Stress_Fe, breaks = OS_breaks, right = TRUE)
+Bins_HD_Fe$Bins_couple <- paste(Bins_HD_Fe$High_Dose_Bins_Oxidative_Stress_Fe, Bins_HD_Fe$High_Dose_Bins_Cell_Death_Fe,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_HD_Fe, .(Bins_couple), summarise, High_Dose_mean_nfoci_Fe=mean(High_Dose_DNA_Damage_Fe))
+Bins_HD_Fe=merge(Bins_HD_Fe,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_HD_Fe, High_Dose_mean_nfoci_Fe)
+Bins_HD_Fe=merge(Bins_HD_Fe, Individuals_per_Bin, by.x="High_Dose_mean_nfoci_Fe", by.y = "High_Dose_mean_nfoci_Fe", all.x = TRUE, all.y = TRUE)
+Bins_HD_Fe$High_Dose_Ind_per_Bin_Fe = Bins_HD_Fe$n
+Bins_HD_Fe$n=NULL
+
+Bins_HD_Fe_useful= Bins_HD_Fe[ , grepl( "Bins_couple|High_Dose_mean_nfoci_Fe|High_Dose_Ind_per_Bin_Fe" , names(Bins_HD_Fe))]
+Bins_HD_Fe_useful=distinct(Bins_HD_Fe_useful)
+
+Bins_CD_OS_24h_All_Data_Fe=merge(Bins_CD_OS_24h,Bins_HD_Fe_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Si - CD/OS - Low Dose 
+Bins_LD_Si= All_Data_24h_Normalized[ , grepl( "Sample_ID|Low_Dose_Cell_Death_Si|Low_Dose_DNA_Damage_Si|Low_Dose_Oxidative_Stress_Si" , names(All_Data_24h_Normalized))]
+Bins_LD_Si=NaRV.omit(Bins_LD_Si)
+Bins_LD_Si$Low_Dose_Bins_Cell_Death_Si=cut(Bins_LD_Si$Low_Dose_Cell_Death_Si, breaks = CD_breaks, right = TRUE)
+Bins_LD_Si$Low_Dose_Bins_Oxidative_Stress_Si=cut(Bins_LD_Si$Low_Dose_Oxidative_Stress_Si, breaks = OS_breaks, right = TRUE)
+Bins_LD_Si$Bins_couple <- paste(Bins_LD_Si$Low_Dose_Bins_Oxidative_Stress_Si, Bins_LD_Si$Low_Dose_Bins_Cell_Death_Si,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_LD_Si, .(Bins_couple), summarise, Low_Dose_mean_nfoci_Si=mean(Low_Dose_DNA_Damage_Si))
+Bins_LD_Si=merge(Bins_LD_Si,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_LD_Si, Low_Dose_mean_nfoci_Si)
+Bins_LD_Si=merge(Bins_LD_Si, Individuals_per_Bin, by.x="Low_Dose_mean_nfoci_Si", by.y = "Low_Dose_mean_nfoci_Si", all.x = TRUE, all.y = TRUE)
+Bins_LD_Si$Low_Dose_Ind_per_Bin_Si = Bins_LD_Si$n
+Bins_LD_Si$n=NULL
+
+Bins_LD_Si_useful= Bins_LD_Si[ , grepl( "Bins_couple|Low_Dose_mean_nfoci_Si|Low_Dose_Ind_per_Bin_Si" , names(Bins_LD_Si))]
+Bins_LD_Si_useful=distinct(Bins_LD_Si_useful)
+
+Bins_CD_OS_24h_All_Data_Si=merge(Bins_CD_OS_24h,Bins_LD_Si_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Si - CD/OS - High Dose
+Bins_HD_Si= All_Data_24h_Normalized[ , grepl( "Sample_ID|High_Dose_Cell_Death_Si|High_Dose_DNA_Damage_Si|High_Dose_Oxidative_Stress_Si" , names(All_Data_24h_Normalized))]
+Bins_HD_Si=NaRV.omit(Bins_HD_Si)
+Bins_HD_Si$High_Dose_Bins_Cell_Death_Si=cut(Bins_HD_Si$High_Dose_Cell_Death_Si, breaks = CD_breaks, right = TRUE)
+Bins_HD_Si$High_Dose_Bins_Oxidative_Stress_Si=cut(Bins_HD_Si$High_Dose_Oxidative_Stress_Si, breaks = OS_breaks, right = TRUE)
+Bins_HD_Si$Bins_couple <- paste(Bins_HD_Si$High_Dose_Bins_Oxidative_Stress_Si, Bins_HD_Si$High_Dose_Bins_Cell_Death_Si,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_HD_Si, .(Bins_couple), summarise, High_Dose_mean_nfoci_Si=mean(High_Dose_DNA_Damage_Si))
+Bins_HD_Si=merge(Bins_HD_Si,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_HD_Si, High_Dose_mean_nfoci_Si)
+Bins_HD_Si=merge(Bins_HD_Si, Individuals_per_Bin, by.x="High_Dose_mean_nfoci_Si", by.y = "High_Dose_mean_nfoci_Si", all.x = TRUE, all.y = TRUE)
+Bins_HD_Si$High_Dose_Ind_per_Bin_Si = Bins_HD_Si$n
+Bins_HD_Si$n=NULL
+
+Bins_HD_Si_useful= Bins_HD_Si[ , grepl( "Bins_couple|High_Dose_mean_nfoci_Si|High_Dose_Ind_per_Bin_Si" , names(Bins_HD_Si))]
+Bins_HD_Si_useful=distinct(Bins_HD_Si_useful)
+
+Bins_CD_OS_24h_All_Data_Si=merge(Bins_CD_OS_24h,Bins_HD_Si_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Ar - CD/OS - Low Dose 
+Bins_LD_Ar= All_Data_24h_Normalized[ , grepl( "Sample_ID|Low_Dose_Cell_Death_Ar|Low_Dose_DNA_Damage_Ar|Low_Dose_Oxidative_Stress_Ar" , names(All_Data_24h_Normalized))]
+Bins_LD_Ar=NaRV.omit(Bins_LD_Ar)
+Bins_LD_Ar$Low_Dose_Bins_Cell_Death_Ar=cut(Bins_LD_Ar$Low_Dose_Cell_Death_Ar, breaks = CD_breaks, right = TRUE)
+Bins_LD_Ar$Low_Dose_Bins_Oxidative_Stress_Ar=cut(Bins_LD_Ar$Low_Dose_Oxidative_Stress_Ar, breaks = OS_breaks, right = TRUE)
+Bins_LD_Ar$Bins_couple <- paste(Bins_LD_Ar$Low_Dose_Bins_Oxidative_Stress_Ar, Bins_LD_Ar$Low_Dose_Bins_Cell_Death_Ar,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_LD_Ar, .(Bins_couple), summarise, Low_Dose_mean_nfoci_Ar=mean(Low_Dose_DNA_Damage_Ar))
+Bins_LD_Ar=merge(Bins_LD_Ar,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_LD_Ar, Low_Dose_mean_nfoci_Ar)
+Bins_LD_Ar=merge(Bins_LD_Ar, Individuals_per_Bin, by.x="Low_Dose_mean_nfoci_Ar", by.y = "Low_Dose_mean_nfoci_Ar", all.x = TRUE, all.y = TRUE)
+Bins_LD_Ar$Low_Dose_Ind_per_Bin_Ar = Bins_LD_Ar$n
+Bins_LD_Ar$n=NULL
+
+Bins_LD_Ar_useful= Bins_LD_Ar[ , grepl( "Bins_couple|Low_Dose_mean_nfoci_Ar|Low_Dose_Ind_per_Bin_Ar" , names(Bins_LD_Ar))]
+Bins_LD_Ar_useful=distinct(Bins_LD_Ar_useful)
+
+Bins_CD_OS_24h_All_Data_Ar=merge(Bins_CD_OS_24h,Bins_LD_Ar_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Ar - CD/OS - High Dose 
+Bins_HD_Ar= All_Data_24h_Normalized[ , grepl( "Sample_ID|High_Dose_Cell_Death_Ar|High_Dose_DNA_Damage_Ar|High_Dose_Oxidative_Stress_Ar" , names(All_Data_24h_Normalized))]
+Bins_HD_Ar=NaRV.omit(Bins_HD_Ar)
+Bins_HD_Ar$High_Dose_Bins_Cell_Death_Ar=cut(Bins_HD_Ar$High_Dose_Cell_Death_Ar, breaks = CD_breaks, right = TRUE)
+Bins_HD_Ar$High_Dose_Bins_Oxidative_Stress_Ar=cut(Bins_HD_Ar$High_Dose_Oxidative_Stress_Ar, breaks = OS_breaks, right = TRUE)
+Bins_HD_Ar$Bins_couple <- paste(Bins_HD_Ar$High_Dose_Bins_Oxidative_Stress_Ar, Bins_HD_Ar$High_Dose_Bins_Cell_Death_Ar,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_HD_Ar, .(Bins_couple), summarise, High_Dose_mean_nfoci_Ar=mean(High_Dose_DNA_Damage_Ar))
+Bins_HD_Ar=merge(Bins_HD_Ar,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_HD_Ar, High_Dose_mean_nfoci_Ar)
+Bins_HD_Ar=merge(Bins_HD_Ar, Individuals_per_Bin, by.x="High_Dose_mean_nfoci_Ar", by.y = "High_Dose_mean_nfoci_Ar", all.x = TRUE, all.y = TRUE)
+Bins_HD_Ar$High_Dose_Ind_per_Bin_Ar = Bins_HD_Ar$n
+Bins_HD_Ar$n=NULL
+
+Bins_HD_Ar_useful= Bins_HD_Ar[ , grepl( "Bins_couple|High_Dose_mean_nfoci_Ar|High_Dose_Ind_per_Bin_Ar" , names(Bins_HD_Ar))]
+Bins_HD_Ar_useful=distinct(Bins_HD_Ar_useful)
+
+Bins_CD_OS_24h_All_Data_Ar=merge(Bins_CD_OS_24h,Bins_HD_Ar_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Gamma - CD/OS - Low Dose 
+Bins_LD_Gamma= All_Data_24h_Normalized[ , grepl( "Sample_ID|Low_Dose_Cell_Death_Gamma|Low_Dose_DNA_Damage_Gamma|Low_Dose_Oxidative_Stress_Gamma" , names(All_Data_24h_Normalized))]
+Bins_LD_Gamma=NaRV.omit(Bins_LD_Gamma)
+Bins_LD_Gamma$Low_Dose_Bins_Cell_Death_Gamma=cut(Bins_LD_Gamma$Low_Dose_Cell_Death_Gamma, breaks = CD_breaks, right = TRUE)
+Bins_LD_Gamma$Low_Dose_Bins_Oxidative_Stress_Gamma=cut(Bins_LD_Gamma$Low_Dose_Oxidative_Stress_Gamma, breaks = OS_breaks, right = TRUE)
+Bins_LD_Gamma$Bins_couple <- paste(Bins_LD_Gamma$Low_Dose_Bins_Oxidative_Stress_Gamma, Bins_LD_Gamma$Low_Dose_Bins_Cell_Death_Gamma,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_LD_Gamma, .(Bins_couple), summarise, Low_Dose_mean_nfoci_Gamma=mean(Low_Dose_DNA_Damage_Gamma))
+Bins_LD_Gamma=merge(Bins_LD_Gamma,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_LD_Gamma, Low_Dose_mean_nfoci_Gamma)
+Bins_LD_Gamma=merge(Bins_LD_Gamma, Individuals_per_Bin, by.x="Low_Dose_mean_nfoci_Gamma", by.y = "Low_Dose_mean_nfoci_Gamma", all.x = TRUE, all.y = TRUE)
+Bins_LD_Gamma$Low_Dose_Ind_per_Bin_Gamma = Bins_LD_Gamma$n
+Bins_LD_Gamma$n=NULL
+
+Bins_LD_Gamma_useful= Bins_LD_Gamma[ , grepl( "Bins_couple|Low_Dose_mean_nfoci_Gamma|Low_Dose_Ind_per_Bin_Gamma" , names(Bins_LD_Gamma))]
+Bins_LD_Gamma_useful=distinct(Bins_LD_Gamma_useful)
+
+Bins_CD_OS_24h_All_Data_Gamma=merge(Bins_CD_OS_24h, Bins_LD_Gamma_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Gamma - CD/OS - High Dose  
+Bins_HD_Gamma= All_Data_24h_Normalized[ , grepl( "Sample_ID|High_Dose_Cell_Death_Gamma|High_Dose_DNA_Damage_Gamma|High_Dose_Oxidative_Stress_Gamma" , names(All_Data_24h_Normalized))]
+Bins_HD_Gamma=NaRV.omit(Bins_HD_Gamma)
+Bins_HD_Gamma$High_Dose_Bins_Cell_Death_Gamma=cut(Bins_HD_Gamma$High_Dose_Cell_Death_Gamma, breaks = CD_breaks, right = TRUE)
+Bins_HD_Gamma$High_Dose_Bins_Oxidative_Stress_Gamma=cut(Bins_HD_Gamma$High_Dose_Oxidative_Stress_Gamma, breaks = OS_breaks, right = TRUE)
+Bins_HD_Gamma$Bins_couple <- paste(Bins_HD_Gamma$High_Dose_Bins_Oxidative_Stress_Gamma, Bins_HD_Gamma$High_Dose_Bins_Cell_Death_Gamma,sep="_")
+
+mean_nfoci_by_bins <- ddply(Bins_HD_Gamma, .(Bins_couple), summarise, High_Dose_mean_nfoci_Gamma=mean(High_Dose_DNA_Damage_Gamma))
+Bins_HD_Gamma=merge(Bins_HD_Gamma,mean_nfoci_by_bins, by.x ="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE )
+
+Individuals_per_Bin = count(Bins_HD_Gamma, High_Dose_mean_nfoci_Gamma)
+Bins_HD_Gamma=merge(Bins_HD_Gamma, Individuals_per_Bin, by.x="High_Dose_mean_nfoci_Gamma", by.y = "High_Dose_mean_nfoci_Gamma", all.x = TRUE, all.y = TRUE)
+Bins_HD_Gamma$High_Dose_Ind_per_Bin_Gamma = Bins_HD_Gamma$n
+Bins_HD_Gamma$n=NULL
+
+Bins_HD_Gamma_useful= Bins_HD_Gamma[ , grepl( "Bins_couple|High_Dose_mean_nfoci_Gamma|High_Dose_Ind_per_Bin_Gamma" , names(Bins_HD_Gamma))]
+Bins_HD_Gamma_useful=distinct(Bins_HD_Gamma_useful)
+
+Bins_CD_OS_24h_All_Data_Gamma=merge(Bins_CD_OS_24h, Bins_HD_Gamma_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+
+############ Cell Death and DNA Damage 
+Bins_DD_=cut(DD_breaks_data, breaks = DD_breaks, right = TRUE )
+Bins_CD=cut(CD_breaks_data, breaks = CD_breaks, right = TRUE )
+Bins_CD_DD_24h=merge(Bins_DD_, Bins_CD)
+Bins_CD_DD_24h=NaRV.omit(Bins_CD_DD_24h)
+Bins_CD_DD_24h$Bins_couple <- paste(Bins_CD_DD_24h$x, Bins_CD_DD_24h$y, sep="_")
+Bins_CD_DD_24h$Bins_DD = Bins_CD_DD_24h$x
+Bins_CD_DD_24h$Bins_CD = Bins_CD_DD_24h$y
+Bins_CD_DD_24h$x=NULL
+Bins_CD_DD_24h$y=NULL
+Bins_CD_DD_24h=distinct(Bins_CD_DD_24h)
+
+
+### Fe - CD/DD - Low Dose 
+Bins_LD_Fe= All_Data_24h_Normalized[ , grepl( "Sample_ID|Low_Dose_Cell_Death_Fe|Low_Dose_DNA_Damage_Fe" , names(All_Data_24h_Normalized))]
+Bins_LD_Fe=NaRV.omit(Bins_LD_Fe)
+Bins_LD_Fe$Low_Dose_Bins_Cell_Death_Fe=cut(Bins_LD_Fe$Low_Dose_Cell_Death_Fe, breaks = CD_breaks, right = TRUE)
+Bins_LD_Fe$Low_Dose_Bins_DNA_Damage_Fe=cut(Bins_LD_Fe$Low_Dose_DNA_Damage_Fe, breaks = DD_breaks, right = TRUE)
+Bins_LD_Fe$Bins_couple <- paste(Bins_LD_Fe$Low_Dose_Bins_DNA_Damage_Fe, Bins_LD_Fe$Low_Dose_Bins_Cell_Death_Fe,sep="_")
+
+Individuals_per_Bin = count(Bins_LD_Fe, Bins_couple)
+
+Bins_LD_Fe=merge(Bins_LD_Fe, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_LD_Fe$Low_Dose_Ind_per_Bin_Fe = Bins_LD_Fe$n
+Bins_LD_Fe$n=NULL
+
+Bins_LD_Fe_useful= Bins_LD_Fe[ , grepl( "Bins_couple|Low_Dose_mean_nfoci_Fe|Low_Dose_Ind_per_Bin_Fe" , names(Bins_LD_Fe))]
+Bins_LD_Fe_useful=distinct(Bins_LD_Fe_useful)
+
+Bins_CD_DD_24h_All_Data_Fe=merge(Bins_CD_DD_24h,Bins_LD_Fe_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Fe - CD/DD - High Dose 
+Bins_HD_Fe= All_Data_24h_Normalized[ , grepl( "Sample_ID|High_Dose_Cell_Death_Fe|High_Dose_DNA_Damage_Fe" , names(All_Data_24h_Normalized))]
+Bins_HD_Fe=NaRV.omit(Bins_HD_Fe)
+Bins_HD_Fe$High_Dose_Bins_Cell_Death_Fe=cut(Bins_HD_Fe$High_Dose_Cell_Death_Fe, breaks = CD_breaks, right = TRUE)
+Bins_HD_Fe$High_Dose_Bins_DNA_Damage_Fe=cut(Bins_HD_Fe$High_Dose_DNA_Damage_Fe, breaks = DD_breaks, right = TRUE)
+Bins_HD_Fe$Bins_couple <- paste(Bins_HD_Fe$High_Dose_Bins_DNA_Damage_Fe, Bins_HD_Fe$High_Dose_Bins_Cell_Death_Fe,sep="_")
+
+Individuals_per_Bin = count(Bins_HD_Fe, Bins_couple)
+
+Bins_HD_Fe=merge(Bins_HD_Fe, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_HD_Fe$High_Dose_Ind_per_Bin_Fe = Bins_HD_Fe$n
+Bins_HD_Fe$n=NULL
+
+Bins_HD_Fe_useful= Bins_HD_Fe[ , grepl( "Bins_couple|High_Dose_Ind_per_Bin_Fe" , names(Bins_HD_Fe))]
+Bins_HD_Fe_useful=distinct(Bins_HD_Fe_useful)
+
+Bins_CD_DD_24h_All_Data_Fe=merge(Bins_CD_DD_24h,Bins_HD_Fe_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Si - CD/DD - Low Dose 
+Bins_LD_Si= All_Data_24h_Normalized[ , grepl( "Sample_ID|Low_Dose_Cell_Death_Si|Low_Dose_DNA_Damage_Si" , names(All_Data_24h_Normalized))]
+Bins_LD_Si=NaRV.omit(Bins_LD_Si)
+Bins_LD_Si$Low_Dose_Bins_Cell_Death_Si=cut(Bins_LD_Si$Low_Dose_Cell_Death_Si, breaks = CD_breaks, right = TRUE)
+Bins_LD_Si$Low_Dose_Bins_DNA_Damage_Si=cut(Bins_LD_Si$Low_Dose_DNA_Damage_Si, breaks = DD_breaks, right = TRUE)
+Bins_LD_Si$Bins_couple <- paste(Bins_LD_Si$Low_Dose_Bins_DNA_Damage_Si, Bins_LD_Si$Low_Dose_Bins_Cell_Death_Si,sep="_")
+
+Individuals_per_Bin = count(Bins_LD_Si, Bins_couple)
+
+Bins_LD_Si=merge(Bins_LD_Si, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_LD_Si$Low_Dose_Ind_per_Bin_Si = Bins_LD_Si$n
+Bins_LD_Si$n=NULL
+
+Bins_LD_Si_useful= Bins_LD_Si[ , grepl( "Bins_couple|Low_Dose_Ind_per_Bin_Si" , names(Bins_LD_Si))]
+Bins_LD_Si_useful=distinct(Bins_LD_Si_useful)
+
+Bins_CD_DD_24h_All_Data_Si=merge(Bins_CD_DD_24h,Bins_LD_Si_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Si - CD/DD - High Dose
+Bins_HD_Si= All_Data_24h_Normalized[ , grepl( "Sample_ID|High_Dose_Cell_Death_Si|High_Dose_DNA_Damage_Si" , names(All_Data_24h_Normalized))]
+Bins_HD_Si=NaRV.omit(Bins_HD_Si)
+Bins_HD_Si$High_Dose_Bins_Cell_Death_Si=cut(Bins_HD_Si$High_Dose_Cell_Death_Si, breaks = CD_breaks, right = TRUE)
+Bins_HD_Si$High_Dose_Bins_DNA_Damage_Si=cut(Bins_HD_Si$High_Dose_DNA_Damage_Si, breaks = DD_breaks, right = TRUE)
+Bins_HD_Si$Bins_couple <- paste(Bins_HD_Si$High_Dose_Bins_DNA_Damage_Si, Bins_HD_Si$High_Dose_Bins_Cell_Death_Si,sep="_")
+
+Individuals_per_Bin = count(Bins_HD_Si, Bins_couple)
+
+Bins_HD_Si=merge(Bins_HD_Si, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_HD_Si$High_Dose_Ind_per_Bin_Si = Bins_HD_Si$n
+Bins_HD_Si$n=NULL
+
+Bins_HD_Si_useful= Bins_HD_Si[ , grepl( "Bins_couple|High_Dose_Ind_per_Bin_Si" , names(Bins_HD_Si))]
+Bins_HD_Si_useful=distinct(Bins_HD_Si_useful)
+
+Bins_CD_DD_24h_All_Data_Si=merge(Bins_CD_DD_24h,Bins_HD_Si_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Ar - CD/DD - Low Dose
+Bins_LD_Ar= All_Data_24h_Normalized[ , grepl( "Sample_ID|Low_Dose_Cell_Death_Ar|Low_Dose_DNA_Damage_Ar" , names(All_Data_24h_Normalized))]
+Bins_LD_Ar=NaRV.omit(Bins_LD_Ar)
+Bins_LD_Ar$Low_Dose_Bins_Cell_Death_Ar=cut(Bins_LD_Ar$Low_Dose_Cell_Death_Ar, breaks = CD_breaks, right = TRUE)
+Bins_LD_Ar$Low_Dose_Bins_DNA_Damage_Ar=cut(Bins_LD_Ar$Low_Dose_DNA_Damage_Ar, breaks = DD_breaks, right = TRUE)
+Bins_LD_Ar$Bins_couple <- paste(Bins_LD_Ar$Low_Dose_Bins_DNA_Damage_Ar, Bins_LD_Ar$Low_Dose_Bins_Cell_Death_Ar,sep="_")
+
+Individuals_per_Bin = count(Bins_LD_Ar, Bins_couple)
+
+Bins_LD_Ar=merge(Bins_LD_Ar, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_LD_Ar$Low_Dose_Ind_per_Bin_Ar = Bins_LD_Ar$n
+Bins_LD_Ar$n=NULL
+
+Bins_LD_Ar_useful= Bins_LD_Ar[ , grepl( "Bins_couple|Low_Dose_Ind_per_Bin_Ar" , names(Bins_LD_Ar))]
+Bins_LD_Ar_useful=distinct(Bins_LD_Ar_useful)
+
+Bins_CD_DD_24h_All_Data_Ar=merge(Bins_CD_DD_24h,Bins_LD_Ar_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Ar - CD/DD - High Dose
+Bins_HD_Ar= All_Data_24h_Normalized[ , grepl( "Sample_ID|High_Dose_Cell_Death_Ar|High_Dose_DNA_Damage_Ar" , names(All_Data_24h_Normalized))]
+Bins_HD_Ar=NaRV.omit(Bins_HD_Ar)
+Bins_HD_Ar$High_Dose_Bins_Cell_Death_Ar=cut(Bins_HD_Ar$High_Dose_Cell_Death_Ar, breaks = CD_breaks, right = TRUE)
+Bins_HD_Ar$High_Dose_Bins_DNA_Damage_Ar=cut(Bins_HD_Ar$High_Dose_DNA_Damage_Ar, breaks = DD_breaks, right = TRUE)
+Bins_HD_Ar$Bins_couple <- paste(Bins_HD_Ar$High_Dose_Bins_DNA_Damage_Ar, Bins_HD_Ar$High_Dose_Bins_Cell_Death_Ar,sep="_")
+
+Individuals_per_Bin = count(Bins_HD_Ar, Bins_couple)
+
+Bins_HD_Ar=merge(Bins_HD_Ar, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_HD_Ar$High_Dose_Ind_per_Bin_Ar = Bins_HD_Ar$n
+Bins_HD_Ar$n=NULL
+
+Bins_HD_Ar_useful= Bins_HD_Ar[ , grepl( "Bins_couple|High_Dose_Ind_per_Bin_Ar" , names(Bins_HD_Ar))]
+Bins_HD_Ar_useful=distinct(Bins_HD_Ar_useful)
+
+Bins_CD_DD_24h_All_Data_Ar=merge(Bins_CD_DD_24h,Bins_HD_Ar_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Gamma - CD/DD - Low Dose
+Bins_LD_Gamma= All_Data_24h_Normalized[ , grepl( "Sample_ID|Low_Dose_Cell_Death_Gamma|Low_Dose_DNA_Damage_Gamma" , names(All_Data_24h_Normalized))]
+Bins_LD_Gamma=NaRV.omit(Bins_LD_Gamma)
+Bins_LD_Gamma$Low_Dose_Bins_Cell_Death_Gamma=cut(Bins_LD_Gamma$Low_Dose_Cell_Death_Gamma, breaks = CD_breaks, right = TRUE)
+Bins_LD_Gamma$Low_Dose_Bins_DNA_Damage_Gamma=cut(Bins_LD_Gamma$Low_Dose_DNA_Damage_Gamma, breaks = DD_breaks, right = TRUE)
+Bins_LD_Gamma$Bins_couple <- paste(Bins_LD_Gamma$Low_Dose_Bins_DNA_Damage_Gamma, Bins_LD_Gamma$Low_Dose_Bins_Cell_Death_Gamma,sep="_")
+
+Individuals_per_Bin = count(Bins_LD_Gamma, Bins_couple)
+
+Bins_LD_Gamma=merge(Bins_LD_Gamma, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_LD_Gamma$Low_Dose_Ind_per_Bin_Gamma = Bins_LD_Gamma$n
+Bins_LD_Gamma$n=NULL
+
+Bins_LD_Gamma_useful= Bins_LD_Gamma[ , grepl( "Bins_couple|Low_Dose_Ind_per_Bin_Gamma" , names(Bins_LD_Gamma))]
+Bins_LD_Gamma_useful=distinct(Bins_LD_Gamma_useful)
+
+Bins_CD_DD_24h_All_Data_Gamma=merge(Bins_CD_DD_24h,Bins_LD_Gamma_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Gamma - CD/DD - High Dose
+Bins_HD_Gamma= All_Data_24h_Normalized[ , grepl( "Sample_ID|High_Dose_Cell_Death_Gamma|High_Dose_DNA_Damage_Gamma" , names(All_Data_24h_Normalized))]
+Bins_HD_Gamma=NaRV.omit(Bins_HD_Gamma)
+Bins_HD_Gamma$High_Dose_Bins_Cell_Death_Gamma=cut(Bins_HD_Gamma$High_Dose_Cell_Death_Gamma, breaks = CD_breaks, right = TRUE)
+Bins_HD_Gamma$High_Dose_Bins_DNA_Damage_Gamma=cut(Bins_HD_Gamma$High_Dose_DNA_Damage_Gamma, breaks = DD_breaks, right = TRUE)
+Bins_HD_Gamma$Bins_couple <- paste(Bins_HD_Gamma$High_Dose_Bins_DNA_Damage_Gamma, Bins_HD_Gamma$High_Dose_Bins_Cell_Death_Gamma,sep="_")
+
+Individuals_per_Bin = count(Bins_HD_Gamma, Bins_couple)
+
+Bins_HD_Gamma=merge(Bins_HD_Gamma, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_HD_Gamma$High_Dose_Ind_per_Bin_Gamma = Bins_HD_Gamma$n
+Bins_HD_Gamma$n=NULL
+
+Bins_HD_Gamma_useful= Bins_HD_Gamma[ , grepl( "Bins_couple|High_Dose_Ind_per_Bin_Gamma" , names(Bins_HD_Gamma))]
+Bins_HD_Gamma_useful=distinct(Bins_HD_Gamma_useful)
+
+Bins_CD_DD_24h_All_Data_Gamma=merge(Bins_CD_DD_24h,Bins_HD_Gamma_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+############ Finally for time point 24h : DNA Damage and Oxidative Stress
+Bins_DD=cut(DD_breaks_data, breaks = DD_breaks, right = TRUE )
+Bins_OS=cut(OS_breaks_data, breaks = OS_breaks, right = TRUE )
+Bins_OS_DD_24h=merge(Bins_OS, Bins_DD)
+Bins_OS_DD_24h=NaRV.omit(Bins_OS_DD_24h)
+Bins_OS_DD_24h$Bins_couple <- paste(Bins_OS_DD_24h$x, Bins_OS_DD_24h$y, sep="_")
+Bins_OS_DD_24h$Bins_OS = Bins_OS_DD_24h$x
+Bins_OS_DD_24h$Bins_DD =Bins_OS_DD_24h$y
+Bins_OS_DD_24h$x=NULL
+Bins_OS_DD_24h$y=NULL
+Bins_OS_DD_24h=distinct(Bins_OS_DD_24h)
+
+### Fe - DD/OS - Low Dose 
+Bins_LD_Fe= All_Data_24h_Normalized[ , grepl( "Sample_ID|Low_Dose_Oxidative_Stress_Fe|Low_Dose_DNA_Damage_Fe" , names(All_Data_24h_Normalized))]
+Bins_LD_Fe=NaRV.omit(Bins_LD_Fe)
+Bins_LD_Fe$Low_Dose_Bins_Oxidative_Stress_Fe=cut(Bins_LD_Fe$Low_Dose_Oxidative_Stress_Fe, breaks = OS_breaks, right = TRUE)
+Bins_LD_Fe$Low_Dose_Bins_DNA_Damage_Fe=cut(Bins_LD_Fe$Low_Dose_DNA_Damage_Fe, breaks = DD_breaks, right = TRUE)
+Bins_LD_Fe$Bins_couple <- paste(Bins_LD_Fe$Low_Dose_Bins_Oxidative_Stress_Fe,Bins_LD_Fe$Low_Dose_Bins_DNA_Damage_Fe, sep="_")
+
+Individuals_per_Bin = count(Bins_LD_Fe, Bins_couple)
+
+Bins_LD_Fe=merge(Bins_LD_Fe, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_LD_Fe$Low_Dose_Ind_per_Bin_Fe = Bins_LD_Fe$n
+Bins_LD_Fe$n=NULL
+
+Bins_LD_Fe_useful= Bins_LD_Fe[ , grepl( "Bins_couple|Low_Dose_Ind_per_Bin_Fe" , names(Bins_LD_Fe))]
+Bins_LD_Fe_useful=distinct(Bins_LD_Fe_useful)
+
+Bins_OS_DD_24h_All_Data_Fe=merge(Bins_OS_DD_24h,Bins_LD_Fe_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Fe - DD/OS - High Dose 
+Bins_HD_Fe= All_Data_24h_Normalized[ , grepl( "Sample_ID|High_Dose_Oxidative_Stress_Fe|High_Dose_DNA_Damage_Fe" , names(All_Data_24h_Normalized))]
+Bins_HD_Fe=NaRV.omit(Bins_HD_Fe)
+Bins_HD_Fe$High_Dose_Bins_Oxidative_Stress_Fe=cut(Bins_HD_Fe$High_Dose_Oxidative_Stress_Fe, breaks = OS_breaks, right = TRUE)
+Bins_HD_Fe$High_Dose_Bins_DNA_Damage_Fe=cut(Bins_HD_Fe$High_Dose_DNA_Damage_Fe, breaks = DD_breaks, right = TRUE)
+Bins_HD_Fe$Bins_couple <- paste(Bins_HD_Fe$High_Dose_Bins_Oxidative_Stress_Fe,Bins_HD_Fe$High_Dose_Bins_DNA_Damage_Fe, sep="_")
+
+Individuals_per_Bin = count(Bins_HD_Fe, Bins_couple)
+
+Bins_HD_Fe=merge(Bins_HD_Fe, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_HD_Fe$High_Dose_Ind_per_Bin_Fe = Bins_HD_Fe$n
+Bins_HD_Fe$n=NULL
+
+Bins_HD_Fe_useful= Bins_HD_Fe[ , grepl( "Bins_couple|High_Dose_Ind_per_Bin_Fe" , names(Bins_HD_Fe))]
+Bins_HD_Fe_useful=distinct(Bins_HD_Fe_useful)
+
+Bins_OS_DD_24h_All_Data_Fe=merge(Bins_OS_DD_24h,Bins_HD_Fe_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Si - DD/OS - Low Dose 
+Bins_LD_Si= All_Data_24h_Normalized[ , grepl( "Sample_ID|Low_Dose_Oxidative_Stress_Si|Low_Dose_DNA_Damage_Si" , names(All_Data_24h_Normalized))]
+Bins_LD_Si=NaRV.omit(Bins_LD_Si)
+Bins_LD_Si$Low_Dose_Bins_Oxidative_Stress_Si=cut(Bins_LD_Si$Low_Dose_Oxidative_Stress_Si, breaks = OS_breaks, right = TRUE)
+Bins_LD_Si$Low_Dose_Bins_DNA_Damage_Si=cut(Bins_LD_Si$Low_Dose_DNA_Damage_Si, breaks = DD_breaks, right = TRUE)
+Bins_LD_Si$Bins_couple <- paste(Bins_LD_Si$Low_Dose_Bins_Oxidative_Stress_Si,Bins_LD_Si$Low_Dose_Bins_DNA_Damage_Si, sep="_")
+
+Individuals_per_Bin = count(Bins_LD_Si, Bins_couple)
+
+Bins_LD_Si=merge(Bins_LD_Si, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_LD_Si$Low_Dose_Ind_per_Bin_Si = Bins_LD_Si$n
+Bins_LD_Si$n=NULL
+
+Bins_LD_Si_useful= Bins_LD_Si[ , grepl( "Bins_couple|Low_Dose_Ind_per_Bin_Si" , names(Bins_LD_Si))]
+Bins_LD_Si_useful=distinct(Bins_LD_Si_useful)
+
+Bins_OS_DD_24h_All_Data_Si=merge(Bins_OS_DD_24h,Bins_LD_Si_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Si - DD/OS - High Dose 
+Bins_HD_Si= All_Data_24h_Normalized[ , grepl( "Sample_ID|High_Dose_Oxidative_Stress_Si|High_Dose_DNA_Damage_Si" , names(All_Data_24h_Normalized))]
+Bins_HD_Si=NaRV.omit(Bins_HD_Si)
+Bins_HD_Si$High_Dose_Bins_Oxidative_Stress_Si=cut(Bins_HD_Si$High_Dose_Oxidative_Stress_Si, breaks = OS_breaks, right = TRUE)
+Bins_HD_Si$High_Dose_Bins_DNA_Damage_Si=cut(Bins_HD_Si$High_Dose_DNA_Damage_Si, breaks = DD_breaks, right = TRUE)
+Bins_HD_Si$Bins_couple <- paste(Bins_HD_Si$High_Dose_Bins_Oxidative_Stress_Si,Bins_HD_Si$High_Dose_Bins_DNA_Damage_Si, sep="_")
+
+Individuals_per_Bin = count(Bins_HD_Si, Bins_couple)
+
+Bins_HD_Si=merge(Bins_HD_Si, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_HD_Si$High_Dose_Ind_per_Bin_Si = Bins_HD_Si$n
+Bins_HD_Si$n=NULL
+
+Bins_HD_Si_useful= Bins_HD_Si[ , grepl( "Bins_couple|High_Dose_Ind_per_Bin_Si" , names(Bins_HD_Si))]
+Bins_HD_Si_useful=distinct(Bins_HD_Si_useful)
+
+Bins_OS_DD_24h_All_Data_Si=merge(Bins_OS_DD_24h,Bins_HD_Si_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Ar - DD/OS - Low Dose 
+Bins_LD_Ar= All_Data_24h_Normalized[ , grepl( "Sample_ID|Low_Dose_Oxidative_Stress_Ar|Low_Dose_DNA_Damage_Ar" , names(All_Data_24h_Normalized))]
+Bins_LD_Ar=NaRV.omit(Bins_LD_Ar)
+Bins_LD_Ar$Low_Dose_Bins_Oxidative_Stress_Ar=cut(Bins_LD_Ar$Low_Dose_Oxidative_Stress_Ar, breaks = OS_breaks, right = TRUE)
+Bins_LD_Ar$Low_Dose_Bins_DNA_Damage_Ar=cut(Bins_LD_Ar$Low_Dose_DNA_Damage_Ar, breaks = DD_breaks, right = TRUE)
+Bins_LD_Ar$Bins_couple <- paste(Bins_LD_Ar$Low_Dose_Bins_Oxidative_Stress_Ar,Bins_LD_Ar$Low_Dose_Bins_DNA_Damage_Ar, sep="_")
+
+Individuals_per_Bin = count(Bins_LD_Ar, Bins_couple)
+
+Bins_LD_Ar=merge(Bins_LD_Ar, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_LD_Ar$Low_Dose_Ind_per_Bin_Ar = Bins_LD_Ar$n
+Bins_LD_Ar$n=NULL
+
+Bins_LD_Ar_useful= Bins_LD_Ar[ , grepl( "Bins_couple|Low_Dose_Ind_per_Bin_Ar" , names(Bins_LD_Ar))]
+Bins_LD_Ar_useful=distinct(Bins_LD_Ar_useful)
+
+Bins_OS_DD_24h_All_Data_Ar=merge(Bins_OS_DD_24h,Bins_LD_Ar_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+ 
+### Ar - DD/OS - High Dose 
+Bins_HD_Ar= All_Data_24h_Normalized[ , grepl( "Sample_ID|High_Dose_Oxidative_Stress_Ar|High_Dose_DNA_Damage_Ar" , names(All_Data_24h_Normalized))]
+Bins_HD_Ar=NaRV.omit(Bins_HD_Ar)
+Bins_HD_Ar$High_Dose_Bins_Oxidative_Stress_Ar=cut(Bins_HD_Ar$High_Dose_Oxidative_Stress_Ar, breaks = OS_breaks, right = TRUE)
+Bins_HD_Ar$High_Dose_Bins_DNA_Damage_Ar=cut(Bins_HD_Ar$High_Dose_DNA_Damage_Ar, breaks = DD_breaks, right = TRUE)
+Bins_HD_Ar$Bins_couple <- paste(Bins_HD_Ar$High_Dose_Bins_Oxidative_Stress_Ar,Bins_HD_Ar$High_Dose_Bins_DNA_Damage_Ar, sep="_")
+
+Individuals_per_Bin = count(Bins_HD_Ar, Bins_couple)
+
+Bins_HD_Ar=merge(Bins_HD_Ar, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_HD_Ar$High_Dose_Ind_per_Bin_Ar = Bins_HD_Ar$n
+Bins_HD_Ar$n=NULL
+
+Bins_HD_Ar_useful= Bins_HD_Ar[ , grepl( "Bins_couple|High_Dose_Ind_per_Bin_Ar" , names(Bins_HD_Ar))]
+Bins_HD_Ar_useful=distinct(Bins_HD_Ar_useful)
+
+Bins_OS_DD_24h_All_Data_Ar=merge(Bins_OS_DD_24h,Bins_HD_Ar_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Gamma - DD/OS - Low Dose 
+Bins_LD_Gamma= All_Data_24h_Normalized[ , grepl( "Sample_ID|Low_Dose_Oxidative_Stress_Gamma|Low_Dose_DNA_Damage_Gamma" , names(All_Data_24h_Normalized))]
+Bins_LD_Gamma=NaRV.omit(Bins_LD_Gamma)
+Bins_LD_Gamma$Low_Dose_Bins_Oxidative_Stress_Gamma=cut(Bins_LD_Gamma$Low_Dose_Oxidative_Stress_Gamma, breaks = OS_breaks, right = TRUE)
+Bins_LD_Gamma$Low_Dose_Bins_DNA_Damage_Gamma=cut(Bins_LD_Gamma$Low_Dose_DNA_Damage_Gamma, breaks = DD_breaks, right = TRUE)
+Bins_LD_Gamma$Bins_couple <- paste(Bins_LD_Gamma$Low_Dose_Bins_Oxidative_Stress_Gamma,Bins_LD_Gamma$Low_Dose_Bins_DNA_Damage_Gamma, sep="_")
+
+Individuals_per_Bin = count(Bins_LD_Gamma, Bins_couple)
+
+Bins_LD_Gamma=merge(Bins_LD_Gamma, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_LD_Gamma$Low_Dose_Ind_per_Bin_Gamma = Bins_LD_Gamma$n
+Bins_LD_Gamma$n=NULL
+
+Bins_LD_Gamma_useful= Bins_LD_Gamma[ , grepl( "Bins_couple|Low_Dose_Ind_per_Bin_Gamma" , names(Bins_LD_Gamma))]
+Bins_LD_Gamma_useful=distinct(Bins_LD_Gamma_useful)
+
+Bins_OS_DD_24h_All_Data_Gamma=merge(Bins_OS_DD_24h,Bins_LD_Gamma_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+
+
+### Gamma - DD/OS - High Dose 
+Bins_HD_Gamma= All_Data_24h_Normalized[ , grepl( "Sample_ID|High_Dose_Oxidative_Stress_Gamma|High_Dose_DNA_Damage_Gamma" , names(All_Data_24h_Normalized))]
+Bins_HD_Gamma=NaRV.omit(Bins_HD_Gamma)
+Bins_HD_Gamma$High_Dose_Bins_Oxidative_Stress_Gamma=cut(Bins_HD_Gamma$High_Dose_Oxidative_Stress_Gamma, breaks = OS_breaks, right = TRUE)
+Bins_HD_Gamma$High_Dose_Bins_DNA_Damage_Gamma=cut(Bins_HD_Gamma$High_Dose_DNA_Damage_Gamma, breaks = DD_breaks, right = TRUE)
+Bins_HD_Gamma$Bins_couple <- paste(Bins_HD_Gamma$High_Dose_Bins_Oxidative_Stress_Gamma,Bins_HD_Gamma$High_Dose_Bins_DNA_Damage_Gamma, sep="_")
+
+Individuals_per_Bin = count(Bins_HD_Gamma, Bins_couple)
+
+Bins_HD_Gamma=merge(Bins_HD_Gamma, Individuals_per_Bin, by.x="Bins_couple", by.y = "Bins_couple", all.x = TRUE, all.y = TRUE)
+Bins_HD_Gamma$High_Dose_Ind_per_Bin_Gamma= Bins_HD_Gamma$n
+Bins_HD_Gamma$n=NULL
+
+Bins_HD_Gamma_useful= Bins_HD_Gamma[ , grepl( "Bins_couple|High_Dose_Ind_per_Bin_Gamma" , names(Bins_HD_Gamma))]
+Bins_HD_Gamma_useful=distinct(Bins_HD_Gamma_useful)
+
+Bins_OS_DD_24h_All_Data_Gamma=merge(BBins_OS_DD_24h,Bins_HD_Gamma_useful, by.x = "Bins_couple", by.y = "Bins_couple", all.x = TRUE)
+```
+
+
+```{r}
+
+### Plots by radiation type and type point of Oxidative Stress vs DNA Damage / Cell Death vs DNA Damage & Oxidative Stress vs Cell Death all colored by density (same scale) at 24h 
+
+### first search of the highest density to fix the scale 
+
+Max_pop_CD_OS=max(Bins_CD_OS_24h_All_Data_Fe$Low_Dose_Ind_per_Bin_Fe, Bins_CD_OS_24h_All_Data_Fe$High_Dose_Ind_per_Bin_Fe, 
+            Bins_CD_OS_24h_All_Data_Si$Low_Dose_Ind_per_Bin_Si, Bins_CD_OS_24h_All_Data_Si$High_Dose_Ind_per_Bin_Si,
+            Bins_CD_OS_24h_All_Data_Ar$Low_Dose_Ind_per_Bin_Ar, Bins_CD_OS_24h_All_Data_Ar$High_Dose_Ind_per_Bin_Ar, 
+            Bins_CD_OS_24h_All_Data_Gamma$Low_Dose_Ind_per_Bin_Gamma,Bins_CD_OS_24h_All_Data_Gamma$High_Dose_Ind_per_Bin_Gamma,
+            na.rm = TRUE)
+
+Max_pop_CD_DD=max(Bins_CD_DD_24h_All_Data_Fe$Low_Dose_Ind_per_Bin_Fe, Bins_CD_DD_24h_All_Data_Fe$High_Dose_Ind_per_Bin_Fe, 
+            Bins_CD_DD_24h_All_Data_Si$Low_Dose_Ind_per_Bin_Si, Bins_CD_DD_24h_All_Data_Si$High_Dose_Ind_per_Bin_Si,
+            Bins_CD_DD_24h_All_Data_Ar$Low_Dose_Ind_per_Bin_Ar, Bins_CD_DD_24h_All_Data_Ar$High_Dose_Ind_per_Bin_Ar, 
+            Bins_CD_DD_24h_All_Data_Gamma$Low_Dose_Ind_per_Bin_Gamma,Bins_CD_DD_24h_All_Data_Gamma$High_Dose_Ind_per_Bin_Gamma,
+            na.rm = TRUE)
+
+Max_pop_OS_DD=max(Bins_OS_DD_24h_All_Data_Fe$Low_Dose_Ind_per_Bin_Fe, Bins_OS_DD_24h_All_Data_Fe$High_Dose_Ind_per_Bin_Fe, 
+            Bins_OS_DD_24h_All_Data_Si$Low_Dose_Ind_per_Bin_Si, Bins_OS_DD_24h_All_Data_Si$High_Dose_Ind_per_Bin_Si,
+            Bins_OS_DD_24h_All_Data_Ar$Low_Dose_Ind_per_Bin_Ar, Bins_OS_DD_24h_All_Data_Ar$High_Dose_Ind_per_Bin_Ar, 
+            Bins_OS_DD_24h_All_Data_Gamma$Low_Dose_Ind_per_Bin_Gamma,Bins_OS_DD_24h_All_Data_Gamma$High_Dose_Ind_per_Bin_Gamma,
+            na.rm = TRUE)
+
+Max_pop = max(Max_pop_CD_OS, Max_pop_CD_DD, Max_pop_OS_DD)
+
+
+
+###  Fe at 24h - LOW DOSE - Display OS vs CD + CD vs DD + DD vs OS 
+
+Fe_CD_0S_LD_24h <- ggplot(data = Bins_CD_OS_24h_All_Data_Fe) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = Low_Dose_Ind_per_Bin_Fe))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Fe - CD vs OS - Low Dose - 24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Fe_CD_DD_LD_24h <- ggplot(data = Bins_CD_DD_24h_All_Data_Fe) + geom_tile(aes(x=Bins_DD,y=Bins_CD,fill = Low_Dose_Ind_per_Bin_Fe))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Fe - CD vs DD - Low Dose -  24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Fe_OS_DD_LD_24h <- ggplot(data = Bins_OS_DD_24h_All_Data_Fe) + geom_tile(aes(x=Bins_OS,y=Bins_DD,fill = Low_Dose_Ind_per_Bin_Fe))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Fe - DD vs OS - Low Dose -  24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+
+
+###  Fe at 24h - HIGH DOSE - Display OS vs CD + CD vs DD + DD vs OS 
+
+Fe_CD_0S_HD_24h <- ggplot(data = Bins_CD_OS_24h_All_Data_Fe) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = High_Dose_Ind_per_Bin_Fe))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Fe - CD vs OS - High Dose - 24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Fe_CD_DD_HD_24h <- ggplot(data = Bins_CD_DD_24h_All_Data_Fe) + geom_tile(aes(x=Bins_DD,y=Bins_CD,fill = High_Dose_Ind_per_Bin_Fe))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Fe - CD vs DD - High Dose -  24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Fe_OS_DD_HD_24h <- ggplot(data = Bins_OS_DD_24h_All_Data_Fe) + geom_tile(aes(x=Bins_OS,y=Bins_DD,fill = High_Dose_Ind_per_Bin_Fe))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Fe - DD vs OS - High Dose -  24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+
+
+###  Ar at 24h - LOW DOSE - Display OS vs CD + CD vs DD + DD vs OS 
+
+Ar_CD_0S_LD_24h <- ggplot(data = Bins_CD_OS_24h_All_Data_Ar) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = Low_Dose_Ind_per_Bin_Ar))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Ar - CD vs OS - Low Dose - 24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Ar_CD_DD_LD_24h <- ggplot(data = Bins_CD_DD_24h_All_Data_Ar) + geom_tile(aes(x=Bins_DD,y=Bins_CD,fill = Low_Dose_Ind_per_Bin_Ar))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Ar - CD vs DD - Low Dose -  24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Ar_OS_DD_LD_24h <- ggplot(data = Bins_OS_DD_24h_All_Data_Ar) + geom_tile(aes(x=Bins_OS,y=Bins_DD,fill = Low_Dose_Ind_per_Bin_Ar))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Ar - DD vs OS - Low Dose -  24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+
+
+###  Ar at 24h - HIGH DOSE - Display OS vs CD + CD vs DD + DD vs OS 
+
+Ar_CD_0S_HD_24h <- ggplot(data = Bins_CD_OS_4h_All_Data_Ar) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = High_Dose_Ind_per_Bin_Ar))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Ar - CD vs OS - High Dose - 24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Ar_CD_DD_HD_24h <- ggplot(data = Bins_CD_DD_24h_All_Data_Ar) + geom_tile(aes(x=Bins_DD,y=Bins_CD,fill = High_Dose_Ind_per_Bin_Ar))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Ar - CD vs DD - High Dose -  24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Ar_OS_DD_HD_24h <- ggplot(data = Bins_OS_DD_24h_All_Data_Ar) + geom_tile(aes(x=Bins_OS,y=Bins_DD,fill = High_Dose_Ind_per_Bin_Ar))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Ar - DD vs OS - High Dose -  24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+
+
+
+###  Si at 24h - LOW DOSE - Display OS vs CD + CD vs DD + DD vs OS 
+
+Si_CD_0S_LD_24h <- ggplot(data = Bins_CD_OS_4h_All_Data_Si) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = Low_Dose_Ind_per_Bin_Si))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Si - CD vs OS - Low Dose - 24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Si_CD_DD_LD_24h <- ggplot(data = Bins_CD_DD_24h_All_Data_Si) + geom_tile(aes(x=Bins_DD,y=Bins_CD,fill = Low_Dose_Ind_per_Bin_Si))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Si - CD vs DD - Low Dose -  24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Si_OS_DD_LD_24h <- ggplot(data = Bins_OS_DD_24h_All_Data_Si) + geom_tile(aes(x=Bins_OS,y=Bins_DD,fill = Low_Dose_Ind_per_Bin_Si))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Si - DD vs OS - Low Dose -  24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+
+
+###  Si at 24h - HIGH DOSE - Display OS vs CD + CD vs DD + DD vs OS 
+
+Si_CD_0S_HD_24h <- ggplot(data = Bins_CD_OS_24h_All_Data_Si) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = High_Dose_Ind_per_Bin_Si))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Si - CD vs OS - High Dose - 24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Si_CD_DD_HD_24h <- ggplot(data = Bins_CD_DD_24h_All_Data_Si) + geom_tile(aes(x=Bins_DD,y=Bins_CD,fill = High_Dose_Ind_per_Bin_Si))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Si - CD vs DD - High Dose -  24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Si_OS_DD_HD_24h <- ggplot(data = Bins_OS_DD_24h_All_Data_Si) + geom_tile(aes(x=Bins_OS,y=Bins_DD,fill = High_Dose_Ind_per_Bin_Si))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Si - DD vs OS - High Dose -  24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+
+
+###  Gamma at 24h - LOW DOSE - Display OS vs CD + CD vs DD + DD vs OS 
+
+Gamma_CD_0S_LD_24h <- ggplot(data = Bins_CD_OS_4h_All_Data_Gamma) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = Low_Dose_Ind_per_Bin_Gamma))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Gamma - CD vs OS - Low Dose - 24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Gamma_CD_DD_LD_24h <- ggplot(data = Bins_CD_DD_24h_All_Data_Gamma) + geom_tile(aes(x=Bins_DD,y=Bins_CD,fill = Low_Dose_Ind_per_Bin_Gamma))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Gamma - CD vs DD - Low Dose -  24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Gamma_OS_DD_LD_24h <- ggplot(data = Bins_OS_DD_24h_All_Data_Gamma) + geom_tile(aes(x=Bins_OS,y=Bins_DD,fill = Low_Dose_Ind_per_Bin_Gamma))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Gamma - DD vs OS - Low Dose -  24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+
+
+###  Gamma at 24h - HIGH DOSE - Display OS vs CD + CD vs DD + DD vs OS 
+
+Gamma_CD_0S_HD_24h <- ggplot(data = Bins_CD_OS_4h_All_Data_Gamma) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill = High_Dose_Ind_per_Bin_Gamma))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Gamma - CD vs OS - High Dose - 24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Gamma_CD_DD_HD_24h <- ggplot(data = Bins_CD_DD_24h_All_Data_Gamma) + geom_tile(aes(x=Bins_DD,y=Bins_CD,fill = High_Dose_Ind_per_Bin_Gamma))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Gamma - CD vs DD - High Dose -  24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+Gamma_OS_DD_HD_24h <- ggplot(data = Bins_OS_DD_24h_All_Data_Gamma) + geom_tile(aes(x=Bins_OS,y=Bins_DD,fill = High_Dose_Ind_per_Bin_Gamma))+
+  scale_fill_gradient2(midpoint = (Max_pop/2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(1),ceiling(Max_pop))) + ggtitle("Gamma - DD vs OS - High Dose -  24h") +
+  theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 2), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+
+
+#### Now that all plots are created, we can diplay each type of plot (CD/OS, CD/DD and DD/OS) simultaneously by dose and for all radiation type (and save them)
+
+Low_CD_OS_24h_colored_density <- grid.arrange(Fe_CD_0S_LD_24h, Ar_CD_0S_LD_24h,Si_CD_0S_LD_24h, Gamma_CD_0S_LD_24h,ncol=4)
+ggsave("Low_CD_OS_24h_colored_density.pdf", Low_CD_OS_24h_colored_density, width = 49, height = 17)
+
+High_CD_OS_24h_colored_density <- grid.arrange(Fe_CD_0S_HD_24h, Ar_CD_0S_HD_24h,Si_CD_0S_HD_24h, Gamma_CD_0S_HD_24h,ncol=4)
+ggsave("High_CD_OS_24h_colored_density.pdf", High_CD_OS_24h_colored_density, width = 49, height = 17)
+
+Low_CD_DD_24h_colored_density <- grid.arrange(Fe_CD_DD_LD_24h, Ar_CD_DD_LD_24h,Si_CD_DD_LD_24h, Gamma_CD_DD_LD_24h,ncol=4)
+ggsave("Low_CD_DD_24h_colored_density.pdf", Low_CD_DD_24h_colored_density, width = 49, height = 17)
+
+High_CD_DD_24h_colored_density <- grid.arrange(Fe_CD_DD_HD_24h, Ar_CD_DD_HD_24h,Si_CD_DD_HD_24h, Gamma_CD_DD_HD_24h,ncol=4)
+ggsave("High_CD_DD_24h_colored_density.pdf", High_CD_DD_24h_colored_density, width = 49, height = 17)
+
+Low_OS_DD_24h_colored_density <- grid.arrange(Fe_OS_DD_LD_24h, Ar_OS_DD_LD_24h,Si_OS_DD_LD_24h, Gamma_OS_DD_LD_24h,ncol=4)
+ggsave("Low_OS_DD_24h_colored_density.pdf", Low_OS_DD_24h_colored_density, width = 49, height = 17)
+
+High_OS_DD_24h_colored_density <- grid.arrange(Fe_OS_DD_HD_24h, Ar_OS_DD_HD_24h,Si_OS_DD_HD_24h, Gamma_OS_DD_HD,ncol=4)
+ggsave("High_OS_DD_24h_colored_density.pdf", High_OS_DD_24h_colored_density, width = 49, height = 17)
+
+
+######################### Additionnal representations #####################
+### Plots OS, DD & CD simultaneously + density dots at 24h 
+
+Fe_LD_24h <- ggplot(data = Bins_CD_OS_24h_All_Data_Fe) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill=Low_Dose_mean_nfoci_Fe))+
+  scale_fill_gradient2(midpoint = (2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(4)))+ geom_point(aes(x=Bins_OS,y=Bins_CD, size=Low_Dose_Ind_per_Bin_Fe))  + ggtitle("Fe  - Low Dose - 24h") + theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 5), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+#print(Fe_LD)
+
+Fe_HD_24h <- ggplot(data = Bins_CD_OS_24h_All_Data_Fe) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill=High_Dose_mean_nfoci_Fe))+
+  scale_fill_gradient2(midpoint = (2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(4)))+ geom_point(aes(x=Bins_OS,y=Bins_CD, size=High_Dose_Ind_per_Bin_Fe))  + ggtitle("Fe  - High Dose - 24h") + theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 5), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+#print(Fe_HD)
+
+Ar_LD_24h <- ggplot(data = Bins_CD_OS_24h_All_Data_Ar) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill=Low_Dose_mean_nfoci_Ar))+
+  scale_fill_gradient2(midpoint = (2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(4)))+ geom_point(aes(x=Bins_OS,y=Bins_CD, size=Low_Dose_Ind_per_Bin_Ar))  + ggtitle("Ar  - Low Dose - 24h") + theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 5), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+#print(Ar_LD)
+
+Ar_HD_24h <- ggplot(data = Bins_CD_OS_24h_All_Data_Ar) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill=High_Dose_mean_nfoci_Ar))+
+  scale_fill_gradient2(midpoint = (2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(4)))+ geom_point(aes(x=Bins_OS,y=Bins_CD, size=High_Dose_Ind_per_Bin_Ar))  + ggtitle("Ar  - High Dose - 24h") + theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 5), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+#print(Ar_HD)
+
+
+Si_LD_24h <- ggplot(data = Bins_CD_OS_24h_All_Data_Si) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill=Low_Dose_mean_nfoci_Si))+
+  scale_fill_gradient2(midpoint = (2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(4)))+ geom_point(aes(x=Bins_OS,y=Bins_CD, size=Low_Dose_Ind_per_Bin_Si))  + ggtitle("Si  - Low Dose - 24h") + theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 5), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+#print(Si_LD)
+
+Si_HD_24h <- ggplot(data = Bins_CD_OS_24h_All_Data_Si) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill=High_Dose_mean_nfoci_Si))+
+  scale_fill_gradient2(midpoint = (2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(4)))+ geom_point(aes(x=Bins_OS,y=Bins_CD, size=High_Dose_Ind_per_Bin_Si))  + ggtitle("Si  - High Dose - 24h") + theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 5), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+#print(Si_HD)
+
+Gamma_LD_24h <- ggplot(data = Bins_CD_OS_24h_All_Data_Gamma) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill=Low_Dose_mean_nfoci_Gamma))+
+  scale_fill_gradient2(midpoint = (2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(4)))+ geom_point(aes(x=Bins_OS,y=Bins_CD, size=Low_Dose_Ind_per_Bin_Gamma))  + ggtitle("Gamma  - Low Dose - 24h") + theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 5), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+#print(Gamma_LD)
+
+Gamma_HD_24h <- ggplot(data = Bins_CD_OS_24h_All_Data_Gamma) + geom_tile(aes(x=Bins_OS,y=Bins_CD,fill=High_Dose_mean_nfoci_Gamma))+
+  scale_fill_gradient2(midpoint = (2),na.value="transparent", low = "lightblue", mid = "blue",high = "red", space = "Lab" , limits=c(floor(0),ceiling(4)))+ geom_point(aes(x=Bins_OS,y=Bins_CD, size=High_Dose_Ind_per_Bin_Gamma))  + ggtitle("Gamma  - High Dose - 24h") + theme(legend.position = "bottom", legend.direction = "horizontal", legend.title = element_text(size = 5), panel.background = element_blank(), panel.grid = element_line(size = 0.5, linetype = 'solid',colour = "lightgray"),legend.text = element_text(size = 1.5),axis.text.x = element_text(angle = 90), axis.text.y= element_text(hjust = 1.5, vjust = 2)) + guides(fill = guide_colorbar(title.position = "top", title.hjust = 0.5))
+#print(Gamma_HD)
+
+
+Fe_LD_HD_24h <- grid.arrange(Fe_LD_24h, Fe_HD_24h, ncol=2)
+ggsave("Fe_LD_HD_24h.pdf", Fe_LD_HD_24h,  width = 37, height = 20)
+
+Ar_LD_HD_24h <- grid.arrange(Ar_LD_24h, Ar_HD_24h, ncol=2)
+ggsave("Ar_LD_HD_24h.pdf", Ar_LD_HD_24h,  width = 37, height = 20)
+
+Si_LD_HD_24h <- grid.arrange(Si_LD_24h, Si_HD_24h, ncol=2)
+ggsave("Si_LD_HD_24h.pdf", Si_LD_HD_24h,  width = 37, height = 20)
+
+Gamma_LD_HD_24h <- grid.arrange(Gamma_LD_24h, Gamma_HD_24h, ncol=2)
+ggsave("Gamma_LD_HD_24h.pdf", Gamma_LD_HD_24h,  width = 37, height = 20)
+```
+
+
