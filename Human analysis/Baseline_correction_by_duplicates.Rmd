@@ -25,12 +25,11 @@ library(knitr)
 setwd(getwd())
 baseline <- read.csv('Baseline_with_metadata.csv', header = TRUE, sep = ";", quote = "\"", dec = ".")
 baseline$CMV=NULL
-baseline$Well.1=NULL
 baseline=NaRV.omit(baseline)
-baseline=unique((baseline))
+
 
 ## each plate is associate with its duplicate number 
-plate_metadata <- read.csv('Baseline_plate_metadata2.csv', header = TRUE, sep = ";", quote = "\"", dec = ".")
+plate_metadata <- read.csv('Baseline_plate_metadata.csv', header = TRUE, sep = ";", quote = "\"", dec = ".")
 baseline=merge(baseline, plate_metadata, by.x='Plate' , by.y='Plate_number')
 
 ```
