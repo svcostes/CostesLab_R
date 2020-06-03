@@ -30,11 +30,8 @@ baseline=NaRV.omit(baseline)
 baseline=unique((baseline))
 
 ## each plate is associate with its duplicate number 
-plate_metadata <- read.csv('Baseline_plate_metadata.csv', header = TRUE, sep = ",", quote = "\"", dec = ".")
+plate_metadata <- read.csv('Baseline_plate_metadata2.csv', header = TRUE, sep = ";", quote = "\"", dec = ".")
 baseline=merge(baseline, plate_metadata, by.x='Plate' , by.y='Plate_number')
-
-## we create a copy of the initial array, that will contain all metadata and at the end will be used to store corrected baseline
-Baseline_Corrected = baseline
 
 ```
 
@@ -55,13 +52,13 @@ Baseline_B=NaRV.omit(Baseline_B)
 ```
 
 ```{r}
-### we create require argument to apply Combat and we perform the correction 
-
 ## Duplicates A
 Baseline_metadata_save_A=Baseline_A[ , grepl( "Sample_ID|date|BMI_group|Plate" , names(Baseline_A) ) ]
 Baseline_A$BMI_group=NULL
 Baseline_metadata_A=Baseline_A[ , grepl( "Sample_ID|BMI|Plate" , names(Baseline_A) ) ]
 
+
+#create argument for ComBat for duplicates A
 edata <-Baseline_A[ , grepl( "avg_nfoci|avg_foci" , names(Baseline_A) ) ]
 edata=NaRV.omit(edata)
 edata=t(edata)
@@ -72,20 +69,18 @@ modcombat = model.matrix(~1, data=pheno)
 combat_edata = ComBat(edata, batch=Batch_baseline, mod=modcombat)
 combat_edata_t=t(combat_edata)
 combat_edata_t=data.frame(combat_edata_t)
-combat_edata_t$avg_nfoci_A = combat_edata_t$avg_nfoci
-combat_edata_t$avg_foci_no_outl_A = combat_edata_t$avg_foci_no_outl
-combat_edata_t$avg_nfoci = NULL
-combat_edata_t$avg_foci_no_outl = NULL
 
+pheno_sample_id= cbind(Sample_ID = Baseline_metadata_A$Sample_ID, pheno)
 Baseline_corrected_A = cbind(Sample_ID = Baseline_metadata_A$Sample_ID, combat_edata_t)
-Baseline_Corrected = merge(Baseline_Corrected,Baseline_corrected_A, by.x ="Sample_ID", by.y ="Sample_ID" )
-
+Baseline_corrected_A = merge (pheno_sample_id, Baseline_corrected_A, by.x ="Sample_ID", by.y ="Sample_ID")
+Baseline_corrected_A = merge (Baseline_metadata_save_A, Baseline_corrected_A, by.x ="Sample_ID", by.y ="Sample_ID")
 
 ## Duplicates B
 Baseline_metadata_save_B=Baseline_B[ , grepl( "Sample_ID|date|BMI_group|Plate" , names(Baseline_B) ) ]
 Baseline_B$BMI_group=NULL
 Baseline_metadata_B=Baseline_B[ , grepl( "Sample_ID|BMI|Plate" , names(Baseline_B) ) ]
 
+#create argument for ComBat for duplicates B
 edata <-Baseline_B[ , grepl( "avg_nfoci|avg_foci" , names(Baseline_B) ) ]
 edata=NaRV.omit(edata)
 edata=t(edata)
@@ -96,18 +91,17 @@ modcombat = model.matrix(~1, data=pheno)
 combat_edata = ComBat(edata, batch=Batch_baseline, mod=modcombat)
 combat_edata_t=t(combat_edata)
 combat_edata_t=data.frame(combat_edata_t)
-combat_edata_t$avg_nfoci_B = combat_edata_t$avg_nfoci
-combat_edata_t$avg_foci_no_outl_B = combat_edata_t$avg_foci_no_outl
-combat_edata_t$avg_nfoci = NULL
-combat_edata_t$avg_foci_no_outl = NULL
 
+pheno_sample_id= cbind(Sample_ID = Baseline_metadata_B$Sample_ID, pheno)
 Baseline_corrected_B = cbind(Sample_ID = Baseline_metadata_B$Sample_ID, combat_edata_t)
-Baseline_Corrected = merge(Baseline_Corrected,Baseline_corrected_B, by.x ="Sample_ID", by.y ="Sample_ID" )
+Baseline_corrected_B = merge (pheno_sample_id, Baseline_corrected_B, by.x ="Sample_ID", by.y ="Sample_ID")
+Baseline_corrected_B = merge (Baseline_metadata_save_B, Baseline_corrected_B, by.x ="Sample_ID", by.y ="Sample_ID")
+
 ```
 
 ```{r}
-## we save as a csv file the corrected baseline & the metadata associated 
+# we save as a csv file the corrected baseline  for duplicate A and B & the metadata associated in the same file 
+Baseline_Corrected=bind_rows(Baseline_corrected_A, Baseline_corrected_B)
 write.csv(Baseline_Corrected, "Baseline_with_Correction.csv")
 ```
-
 
