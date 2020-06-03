@@ -37,7 +37,7 @@ baseline=merge(baseline, plate_metadata, by.x='Plate' , by.y='Plate_number')
 ```{r}
 ## we split data depending on duplicates A and B 
 
-## If experiment performed in triplicates, need to create an additionnal table "Baseline_C"
+## If experiment performed in triplicate, need to create an additionnal table "Baseline_C"
 
 Baseline_A=baseline
 Baseline_B=baseline
