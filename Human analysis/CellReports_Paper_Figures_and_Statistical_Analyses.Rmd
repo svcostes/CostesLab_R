@@ -1,0 +1,1647 @@
+---
+title: "Endogenous DNA damage reveals human resilience to therapeutic and space radiation: Figures & Statistical Analyses"
+date: "06/27/2020"
+---
+```{r}
+library(dplyr)
+library(IDPmisc)
+require('ggplot2')
+library(plotly)
+require('plyr')
+require('sva')
+```
+
+
+```{r}
+### Baselines
+
+setwd(getwd())
+Raw_Baseline_No_Threshold <- read.csv('Baseline_Raw_Data_No_Threshold.csv', header = TRUE, sep = ",", quote = "\"", dec = ".")
+
+## fill in threshold number = minimal number of nuclei per well to consider the well for further analyses
+low_bar = 50
+baseline_filt = Raw_Baseline_No_Threshold[Raw_Baseline_No_Threshold$num_nuc > (low_bar-1),]
+
+Raw_Baseline_Threshold_N = baseline_filt[baseline_filt$avg_nfoci != 0,]
+
+
+###Baseline correction (confounding factor: staining date)
+baseline = Raw_Baseline_Threshold_N
+
+## each plate is associated with its duplicate number (A or B)
+plate_metadata <- read.csv('Baseline_plate_metadata.csv', header = TRUE, sep = ";", quote = "\"", dec = ".")
+colnames(plate_metadata)[colnames(plate_metadata) == "ï..Plate_number"] <- "Plate_number"
+baseline=merge(baseline, plate_metadata, by.x='Plate' , by.y='Plate_number')
+
+CMV_save=baseline[,grepl("Sample_ID|CMV", colnames(baseline))]
+CMV_save=unique(CMV_save)
+baseline$CMV=NULL
+
+### Correction performed independently for each duplicate A and B
+Baseline_A=baseline
+Baseline_B=baseline
+
+Baseline_A$Duplicates[Baseline_A$Duplicates== 'B'] <- NA
+Baseline_B$Duplicates[Baseline_B$Duplicates== 'A'] <- NA
+
+Baseline_A=NaRV.omit(Baseline_A)
+Baseline_B=NaRV.omit(Baseline_B)
+
+## Duplicates A
+Baseline_metadata_save_A=Baseline_A[ , grepl( "Sample_ID|date|BMI_group|Plate" , names(Baseline_A) ) ]
+Baseline_A$BMI_group=NULL
+Baseline_metadata_A=Baseline_A[ , grepl( "Sample_ID|BMI|Plate" , names(Baseline_A) ) ]
+
+
+#create arguments to apply ComBat function for duplicates A
+edata <-Baseline_A[ , grepl( "avg_nfoci|avg_foci" , names(Baseline_A) ) ]
+edata=NaRV.omit(edata)
+edata=t(edata)
+pheno= Baseline_A[ , grepl( "Age|Gender|BMI" , names(Baseline_A) ) ]
+Batch_baseline= Baseline_A$Date
+
+modcombat = model.matrix(~1, data=pheno) 
+combat_edata = ComBat(edata, batch=Batch_baseline, mod=modcombat)
+combat_edata_t=t(combat_edata)
+combat_edata_t=data.frame(combat_edata_t)
+
+pheno_sample_id= cbind(Sample_ID = Baseline_metadata_A$Sample_ID, pheno)
+Baseline_corrected_A = cbind(Sample_ID = Baseline_metadata_A$Sample_ID, combat_edata_t)
+Baseline_corrected_A = merge (pheno_sample_id, Baseline_corrected_A, by.x ="Sample_ID", by.y ="Sample_ID")
+Baseline_corrected_A = merge (Baseline_metadata_save_A, Baseline_corrected_A, by.x ="Sample_ID", by.y ="Sample_ID")
+Baseline_corrected_A=unique(Baseline_corrected_A)
+
+
+#create arguments to apply ComBat function for duplicates B
+Baseline_metadata_save_B=Baseline_B[ , grepl( "Sample_ID|date|BMI_group|Plate" , names(Baseline_B) ) ]
+Baseline_B$BMI_group=NULL
+Baseline_metadata_B=Baseline_B[ , grepl( "Sample_ID|BMI|Plate" , names(Baseline_B) ) ]
+
+#create argument for ComBat for duplicates B
+edata <-Baseline_B[ , grepl( "avg_nfoci|avg_foci" , names(Baseline_B) ) ]
+edata=NaRV.omit(edata)
+edata=t(edata)
+pheno= Baseline_B[ , grepl( "Age|Gender|BMI" , names(Baseline_B) ) ]
+Batch_baseline= Baseline_B$Date
+
+modcombat = model.matrix(~1, data=pheno) 
+combat_edata = ComBat(edata, batch=Batch_baseline, mod=modcombat)
+combat_edata_t=t(combat_edata)
+combat_edata_t=data.frame(combat_edata_t)
+
+pheno_sample_id= cbind(Sample_ID = Baseline_metadata_B$Sample_ID, pheno)
+Baseline_corrected_B = cbind(Sample_ID = Baseline_metadata_B$Sample_ID, combat_edata_t)
+Baseline_corrected_B = merge (pheno_sample_id, Baseline_corrected_B, by.x ="Sample_ID", by.y ="Sample_ID")
+Baseline_corrected_B = merge (Baseline_metadata_save_B, Baseline_corrected_B, by.x ="Sample_ID", by.y ="Sample_ID")
+Baseline_corrected_B=unique(Baseline_corrected_B)
+
+
+Baseline_Corrected=bind_rows(Baseline_corrected_A, Baseline_corrected_B)
+Baseline_Corrected$avg_nfoci[Baseline_Corrected$avg_nfoci < 0] <- 0
+
+
+Baseline_metadata = Baseline_Corrected[, grepl("Sample_ID|BMI|Age|Gender", colnames(Baseline_Corrected))]
+Baseline_metadata= unique(Baseline_metadata)
+
+Baseline_Corrected <- ddply(Baseline_Corrected, c("Sample_ID","BMI_group","Age","Gender","BMI"), summarise, avg_nfoci_mean = mean(avg_nfoci))
+
+Baseline_Corrected$baseline_nfoci =Baseline_Corrected$avg_nfoci_mean
+Baseline_Corrected$avg_nfoci_mean=NULL
+
+Baseline_Corrected=merge(Baseline_Corrected, CMV_save, by="Sample_ID", all.x = TRUE, all.y = FALSE)
+
+```
+
+```{r}
+######### Figure 1
+
+#Uncomment line of interest
+Baseline = Baseline_Corrected
+#Baseline = Raw_Baseline_No_Threshold
+#Baseline = Raw_Baseline_Threshold_N
+
+######### Figure 1.A
+p <- plot_ly(data=Baseline,
+             x = ~ factor(Gender),
+             y = ~ baseline_nfoci,
+             color = ~ factor(Gender),
+             type = "box", boxpoints = "all") %>% 
+  layout(xaxis = list(title = "Gender", tickfont = list(size = 20),
+                      zeroline = FALSE),
+         yaxis = list(title = "Spontaneous foci/nucleus", titlefont = list(size = 25), tickfont = list(size = 20),
+                      zeroline = FALSE))
+print(p)
+hide_legend(p)
+
+### Significance analysis
+ow_aov <- aov(baseline_nfoci ~ Gender,  data=Baseline)
+summary(ow_aov)
+t_test_ow_aov <- TukeyHSD(ow_aov)
+print(t_test_ow_aov)
+
+
+######### Figure 1.B
+p <- plot_ly(data=Baseline,
+             x = ~ Age,
+             y = ~ baseline_nfoci,
+             type = "scatter") %>% 
+  layout(xaxis = list(title = "Age", titlefont = list(size = 30), tickfont = list(size = 20),
+                      zeroline = FALSE),
+         yaxis = list(title = "Spontaneous foci/nucleus", titlefont = list(size = 25), tickfont = list(size = 20),
+                      zeroline = FALSE))
+print(p)
+hide_legend(p)
+
+### Significance analysis
+model = lm(baseline_nfoci ~ Age, data = Baseline)
+summary(model)
+
+
+######### Figure 1.C
+p <- plot_ly(data=Baseline,
+             x = ~ factor(CMV),
+             y = ~ baseline_nfoci,
+             color = ~ factor(CMV),
+             type = "box", boxpoints = "all") %>% 
+  layout(xaxis = list(title = "Latent CMV Infection", titlefont = list(size = 25), tickfont = list(size = 20),
+                      zeroline = FALSE),
+         yaxis = list(title = "Spontaneous foci/nucleus", titlefont = list(size = 25), tickfont = list(size = 20),
+                      zeroline = FALSE))
+print(p)
+hide_legend(p)
+
+### Significance analysis
+ow_aov <- aov(baseline_nfoci ~ CMV,  data=Baseline)
+summary(ow_aov)
+t_test_ow_aov <- TukeyHSD(ow_aov)
+print(t_test_ow_aov)
+
+
+######### Figure 1.D
+p <- plot_ly(data=Baseline,
+             x = ~ BMI,
+             y = ~ baseline_nfoci,
+             type = "scatter") %>% 
+  layout(xaxis = list(title = "BMI", titlefont = list(size = 25), tickfont = list(size = 20),
+                      zeroline = FALSE),
+         yaxis = list(title = "Spontaneous foci/nucleus", titlefont = list(size = 25), tickfont = list(size = 20),
+                      zeroline = FALSE))
+print(p)
+hide_legend(p)
+
+### Significance analysis
+model = lm(baseline_nfoci ~ BMI, data = Baseline)
+summary(model)
+
+
+######### Figure 1.E
+
+Baseline$age_bin = cut_width(Baseline$Age,5,boundary=15)
+
+foci_by_age_BMI = ggplot(Baseline, aes(x=age_bin, y=baseline_nfoci, col=BMI_group)) + geom_boxplot() + geom_point(position=position_jitterdodge(),alpha=0.4) + ylab("Baseline nb of foci/nucleus") + xlab("Age Group") + labs(col = "BMI Group") + theme(axis.text.x = element_text(size = 50)) + theme(axis.text.y = element_text(size = 50)) + theme(axis.title.x = element_text(size = 50, face = "bold")) + theme(axis.title.y = element_text(size = 50, face = "bold"))  + theme(legend.title = element_text(size = 50)) + theme(legend.text = element_text(size = 50)) + ylim(0,2.25) + theme_classic()
+foci_by_age_BMI
+
+### Significance analysis
+tw_aov_interaction <- aov(baseline_nfoci ~ Age * BMI_group,  data=Baseline)
+summary(tw_aov_interaction)
+```
+
+```{r}
+######### Figure 2
+baseline_Exogen <- read.csv('baseline_Exogen.csv')
+
+
+######### Figure 2A
+p <- plot_ly(data=baseline_Exogen,
+             x = ~ Age,
+             y = ~ baseline_nfoci,
+             type = "scatter") %>% 
+  layout(xaxis = list(title = "Age", titlefont = list(size = 25), tickfont = list(size = 20),
+                      zeroline = FALSE),
+         yaxis = list(title = "Spontaneous foci/nucleus", titlefont = list(size = 25), tickfont = list(size = 20),
+                      zeroline = FALSE))
+print(p)
+hide_legend(p)
+
+### Significance analysis
+model = lm(baseline_nfoci ~ Age, data = baseline_Exogen)
+summary(model)
+
+
+######### Figure 2B
+
+ZeroGy <- read.csv('0Gy_4h.csv')
+baseline_Exogen$Source = "Finger Prick"
+Baseline$Source = "PBMC Baseline"
+ZeroGy$Source = "PBMC 0Gy"
+
+baseline1 <- baseline_Exogen[, colnames(baseline_Exogen) %in% c("Source","baseline_nfoci")]
+baseline2 <- Baseline[, colnames(Baseline) %in% c("Source","baseline_nfoci")]
+baseline3 <- ZeroGy[, colnames(ZeroGy) %in% c("Source","baseline_nfoci")]
+baseline_all <- rbind(baseline1,baseline2,baseline3)
+baseline_all$Source = factor(baseline_all$Source, levels = c("Finger Prick","PBMC Baseline","PBMC 0Gy"))
+
+p <- plot_ly(data=baseline_all,
+             x = ~ factor(Source),
+             y = ~ baseline_nfoci,
+             color = ~ factor(Source),
+             type = "box", boxpoints = "all") %>% 
+  layout(xaxis = list(title = "Protocol", tickfont = list(size = 20),
+                      zeroline = FALSE),
+         yaxis = list(title = "Spontaneous foci/nucleus", titlefont = list(size = 25), tickfont = list(size = 20),
+                      zeroline = FALSE))
+print(p)
+hide_legend(p)
+
+### Significance analysis
+ow_aov <- aov(baseline_nfoci ~ Source,  data=baseline_all)
+summary(ow_aov)
+t_test_ow_aov <- TukeyHSD(ow_aov)
+print(t_test_ow_aov)
+```
+
+
+
+```{r}
+######### Figure 3
+
+foci <- read.csv('summary Loma Linda Dec 2015_all.csv',stringsAsFactors=FALSE)
+foci$Radiation = gsub(" ","",toupper(foci$Radiation),fixed = TRUE)
+foci$foci_num = as.numeric(as.character(foci$foci_num))
+foci$dose = as.numeric(as.character(foci$dose))
+foci$Group = as.integer(as.character(foci$Group))
+foci_time <- foci[foci$Radiation != "BLOODDRAW",]
+foci_time$time = as.numeric(as.character(foci_time$time))
+
+# We normalize number of foci to level at 0Gy for each time point
+
+# Gamma 1h------------------------------------------------------
+keep_ind = foci_time$Radiation == "GAMMA" & foci_time$dose == 0 & foci_time$time == 1
+gamma_1h_0Gy = foci_time[keep_ind,]
+col_to_keep <- c("ID","foci_num")
+gamma_1h_0Gy <- gamma_1h_0Gy[,colnames(gamma_1h_0Gy) %in% col_to_keep]
+colnames(gamma_1h_0Gy)[colnames(gamma_1h_0Gy)=="foci_num"]<-"foci_num_0"
+
+keep_ind = foci_time$Radiation == "GAMMA" & foci_time$time == 1
+gamma_1h = foci_time[keep_ind,]
+col_to_keep <- c("ID","foci_num")
+gamma_1h_all <- merge(gamma_1h_0Gy,gamma_1h,by="ID")
+
+gamma_1h_all$foci_num_norm <- gamma_1h_all$foci_num/gamma_1h_all$foci_num_0
+gamma_1h_all <- na.omit(gamma_1h_all)
+
+# Gamma 24h------------------------------------------------------
+keep_ind = foci_time$Radiation == "GAMMA" & foci_time$dose == 0 & foci_time$time == 24
+gamma_24h_0Gy = foci_time[keep_ind,]
+col_to_keep <- c("ID","foci_num")
+gamma_24h_0Gy <- gamma_24h_0Gy[,colnames(gamma_24h_0Gy) %in% col_to_keep]
+colnames(gamma_24h_0Gy)[colnames(gamma_24h_0Gy)=="foci_num"]<-"foci_num_0"
+
+keep_ind = foci_time$Radiation == "GAMMA" & foci_time$time == 24
+gamma_24h = foci_time[keep_ind,]
+col_to_keep <- c("ID","foci_num")
+gamma_24h_all <- merge(gamma_24h_0Gy,gamma_24h,by="ID")
+
+gamma_24h_all$foci_num_norm <- gamma_24h_all$foci_num/gamma_24h_all$foci_num_0
+gamma_24h_all <- na.omit(gamma_24h_all)
+
+# Proton 1h------------------------------------------------------
+keep_ind = foci_time$Radiation == "PROTON" & foci_time$dose == 0 & foci_time$time == 1
+proton_1h_0Gy = foci_time[keep_ind,]
+col_to_keep <- c("ID","foci_num")
+proton_1h_0Gy <- proton_1h_0Gy[,colnames(proton_1h_0Gy) %in% col_to_keep]
+colnames(proton_1h_0Gy)[colnames(proton_1h_0Gy)=="foci_num"]<-"foci_num_0"
+
+keep_ind = foci_time$Radiation == "PROTON" & foci_time$time == 1
+proton_1h = foci_time[keep_ind,]
+col_to_keep <- c("ID","foci_num")
+proton_1h_all <- merge(proton_1h_0Gy,proton_1h,by="ID")
+
+proton_1h_all$foci_num_norm <- proton_1h_all$foci_num/proton_1h_all$foci_num_0
+proton_1h_all <- na.omit(proton_1h_all)
+
+# Proton 24h------------------------------------------------------
+keep_ind = foci_time$Radiation == "PROTON" & foci_time$dose == 0 & foci_time$time == 24
+proton_24h_0Gy = foci_time[keep_ind,]
+col_to_keep <- c("ID","foci_num")
+proton_24h_0Gy <- proton_24h_0Gy[,colnames(proton_24h_0Gy) %in% col_to_keep]
+colnames(proton_24h_0Gy)[colnames(proton_24h_0Gy)=="foci_num"]<-"foci_num_0"
+
+keep_ind = foci_time$Radiation == "PROTON" & foci_time$time == 24
+proton_24h = foci_time[keep_ind,]
+col_to_keep <- c("ID","foci_num")
+proton_24h_all <- merge(proton_24h_0Gy,proton_24h,by="ID")
+
+proton_24h_all$foci_num_norm <- proton_24h_all$foci_num/proton_24h_all$foci_num_0
+proton_24h_all <- na.omit(proton_24h_all)
+
+foci_norm <- rbind(gamma_1h_all,gamma_24h_all,proton_1h_all,proton_24h_all)
+
+# Normalize Mid/Post measurements to combined proton/gamma baseline
+keep_ind = foci$dose == 0 & foci$time == 0
+baseline <- ddply(foci[keep_ind,], c("ID"), summarise,
+                              baseline    = mean(foci_num))
+foci_ME <- foci[foci$Radiation == "BLOODDRAW",]
+foci_ME <- merge(baseline, foci_ME)
+foci_ME$foci_norm <- foci_ME$foci_num/foci_ME$baseline
+foci_ME$time = factor(foci_ME$time,levels=c("Mid","End"))
+
+
+######### Figure 3A
+keep_ind = foci_norm$time == 24
+data_0Gy_24h <- foci_norm[keep_ind,]
+data_0Gy_24h = ddply(data_0Gy_24h, .(ID, Radiation, Group), summarise, foci_num_0 = mean(foci_num_0))
+
+p <- plot_ly(data=data_0Gy_24h,
+             x = ~ factor(Group),
+             y = ~ foci_num_0,
+             color = ~ factor(Group),
+             type = "box", boxpoints = "all",
+             colors = c('springgreen3','blue','#d62728')) %>% 
+  layout(title = "Baseline Level of Spontaneous Foci", titlefont = list(size = 30),
+         xaxis = list(title = "Clinical Response", titlefont = list(size = 25), tickfont = list(size = 20),
+                      zeroline = FALSE, tickvals = c(1,2,3), ticktext = c("Non Reactive", "Normally Reactive","Overly Reactive")),
+         yaxis = list(range=c(0,6.5), title = "Baseline nb of foci/nucleus", titlefont = list(size = 25), tickfont = list(size = 20),
+                      zeroline = FALSE))
+print(p)
+hide_legend(p)
+
+### Significance analysis
+data_0Gy_24h$Group[data_0Gy_24h$Group == 1] <- "Non Reactive"
+data_0Gy_24h$Group[data_0Gy_24h$Group == 2] <- "Normally Reactive"
+data_0Gy_24h$Group[data_0Gy_24h$Group == 3] <- "Overly Reactive"
+
+ow_aov <- aov(foci_num_0 ~ Group,  data=data_0Gy_24h)
+summary(ow_aov)
+t_test_ow_aov <- TukeyHSD(ow_aov)
+print(t_test_ow_aov)
+
+
+######### Figure 3B
+keep_ind = foci_ME$time == "Mid"
+p <- plot_ly(data=foci_ME[keep_ind,],
+             x = ~ factor(Group),
+             y = ~ foci_norm,
+             color = ~ factor(Group),
+             type = "box", boxpoints = "all",
+             colors = c('springgreen3','blue','#d62728')) %>% 
+  layout(title = "RIF Induction from Blood Draw at Mid-Radiotherapy", titlefont = list(size = 30),
+         xaxis = list(title = "Clinical Response", titlefont = list(size = 25), tickfont = list(size = 20),
+                      zeroline = FALSE, tickvals = c(1,2,3), ticktext = c("Non Reactive", "Normally Reactive","Overly Reactive")),
+         yaxis = list(range=c(0,6.5), title = "Normalized nb of RIF/nucleus", titlefont = list(size = 25), tickfont = list(size = 20),
+                      zeroline = FALSE))
+print(p)
+hide_legend(p)
+
+### Significance analysis
+data_fig_3 = foci_ME[keep_ind,]
+data_fig_3$Group[data_fig_3$Group == 1] <- "Non Reactive"
+data_fig_3$Group[data_fig_3$Group == 2] <- "Normally Reactive"
+data_fig_3$Group[data_fig_3$Group == 3] <- "Overly Reactive"
+
+ow_aov <- aov(foci_norm ~ Group,  data=data_fig_3)
+summary(ow_aov)
+t_test_ow_aov <- TukeyHSD(ow_aov)
+print(t_test_ow_aov)
+
+
+######### Figure 3C
+doses <- read.csv('Patients_dose.csv',stringsAsFactors=FALSE)
+all <- merge(foci_norm, doses)
+select <- unique(all[,colnames(all) %in% c("ID","Group","Dose")])
+
+p <- plot_ly(data=select,
+             x = ~ factor(Group),
+             y = ~ Dose,
+             color = ~ factor(Group),
+             type = "box", boxpoints = "all",
+             colors = c('springgreen3','blue','#d62728')) %>% 
+  layout(title = "RIF Induction from Blood Draw at Mid-Radiotherapy", titlefont = list(size = 30),
+         xaxis = list(title = "Clinical Response", titlefont = list(size = 25), tickfont = list(size = 20),
+                      zeroline = FALSE, tickvals = c(1,2,3), ticktext = c("Non Reactive", "Normally Reactive","Overly Reactive")),
+         yaxis = list(title = "Integral Dose (Gy)", titlefont = list(size = 25), tickfont = list(size = 20),
+                      zeroline = FALSE))
+print(p)
+hide_legend(p)
+
+### Significance analysis
+select$Group[select$Group == 1] <- "Non Reactive"
+select$Group[select$Group == 2] <- "Normally Reactive"
+select$Group[select$Group == 3] <- "Overly Reactive"
+
+ow_aov <- aov(Dose ~ Group,  data=select)
+summary(ow_aov)
+t_test_ow_aov <- TukeyHSD(ow_aov)
+print(t_test_ow_aov)
+
+
+######### Figure 3D
+keep_ind = foci_norm$time == 24 & foci_norm$dose != 2 & foci_norm$dose != 0 & foci_norm$Radiation == "GAMMA"
+p <- plot_ly(data=foci_norm[keep_ind,],
+             x = ~ factor(dose),
+             y = ~ foci_num_norm,
+             color = ~ factor(Group),
+             type = "box",
+             colors = c('springgreen3','blue','#d62728')) %>% 
+  layout(boxmode = "group",
+         title = "In Vitro Gamma Irradiation", titlefont = list(size = 30),
+         xaxis = list(title = "Dose (Gy)", titlefont = list(size = 25), tickfont = list(size = 20),
+                      zeroline = FALSE),
+         yaxis = list(range=c(0,6.5), title = "Normalized nb of RIF/nucleus", titlefont = list(size = 25), tickfont = list(size = 20),
+                      zeroline = FALSE))
+print(p)
+hide_legend(p)
+
+### Significance analysis
+data_3d= foci_norm[keep_ind,]
+data_3d$Group[data_3d$Group == 1] <- "Non Reactive"
+data_3d$Group[data_3d$Group == 2] <- "Normally Reactive"
+data_3d$Group[data_3d$Group == 3] <- "Overly Reactive"
+
+tw_aov <- aov(foci_num_norm ~ dose + Group,  data=data_3d)
+summary(tw_aov)
+test_tw_aov <- TukeyHSD(tw_aov, which = "Group")
+print(test_tw_aov)
+tw_aov_interaction <- aov(foci_num_norm ~ dose * Group,  data=data_3d)
+summary(tw_aov_interaction)
+
+
+######### Figure 3E
+keep_ind = foci_norm$time == 24 & foci_norm$dose != 2 & foci_norm$dose != 0 & foci_norm$Radiation == "PROTON"
+p <- plot_ly(data=foci_norm[keep_ind,],
+             x = ~ factor(dose),
+             y = ~ foci_num_norm,
+             color = ~ factor(Group),
+             type = "box",
+             colors = c('springgreen3','blue','#d62728')) %>% 
+  layout(boxmode = "group",
+         title = "In Vitro Proton Irradiation", titlefont = list(size = 30),
+         xaxis = list(title = "Dose (Gy)", titlefont = list(size = 25), tickfont = list(size = 20),
+                      zeroline = FALSE),
+         yaxis = list(range=c(0,6.5), title = "Normalized nb of RIF/nucleus", titlefont = list(size = 25), tickfont = list(size = 20),
+                      zeroline = FALSE))
+print(p)
+hide_legend(p)
+
+### Significance analysis
+data_3e= foci_norm[keep_ind,]
+data_3e$Group[data_3e$Group == 1] <- "Non Reactive"
+data_3e$Group[data_3e$Group == 2] <- "Normally Reactive"
+data_3e$Group[data_3e$Group == 3] <- "Overly Reactive"
+
+tw_aov <- aov(foci_num_norm ~ dose + Group,  data=data_3e)
+summary(tw_aov)
+test_tw_aov <- TukeyHSD(tw_aov, which = "Group")
+print(test_tw_aov)
+tw_aov_interaction <- aov(foci_num_norm ~ dose * Group,  data=data_3e)
+summary(tw_aov_interaction)
+
+
+# Classify patients based on baseline (first quartile - middle - fourth quartile)
+
+# For gamma----------------------------------------------------------------------
+all_gamma <- foci_norm[foci_norm$Radiation == "GAMMA" & foci_norm$time == 24 & foci_norm$dose != 2 & foci_norm$dose != 0,]
+keep_col = c("ID","foci_num_0")
+temp <- unique(all_gamma[,colnames(all_gamma) %in% keep_col])
+
+quantile_temp = quantile(temp$foci_num_0)
+
+LB = quantile_temp[2]
+HB = quantile_temp[4]
+
+temp$Baseline_group = 2
+
+keep_ind = temp$foci_num_0 <= LB
+temp[keep_ind,]$Baseline_group = 1
+
+keep_ind = temp$foci_num_0 >= HB
+temp[keep_ind,]$Baseline_group = 3
+
+all_gamma <- merge(all_gamma, temp)
+
+# For gamma----------------------------------------------------------------------
+all_proton <- foci_norm[foci_norm$Radiation == "PROTON" & foci_norm$time == 24 & foci_norm$dose != 2 & foci_norm$dose != 0,]
+keep_col = c("ID","foci_num_0")
+temp <- unique(all_proton[,colnames(all_proton) %in% keep_col])
+
+quantile_temp = quantile(temp$foci_num_0)
+
+LB = quantile_temp[2]
+HB = quantile_temp[4]
+
+temp$Baseline_group = 2
+
+keep_ind = temp$foci_num_0 <= LB
+temp[keep_ind,]$Baseline_group = 1
+
+keep_ind = temp$foci_num_0 >= HB
+temp[keep_ind,]$Baseline_group = 3
+
+all_proton <- merge(all_proton, temp)
+
+
+######### Figure 3F
+p <- plot_ly(data=all_gamma,
+             x = ~ factor(dose),
+             y = ~ foci_num_norm,
+             color = ~ factor(Baseline_group),
+             type = "box",
+             colors = c('springgreen3','blue','#d62728')) %>% 
+  layout(boxmode = "group",
+         title = "In Vitro Gamma Irradiation", titlefont = list(size = 30),
+         xaxis = list(title = "Dose (Gy)", titlefont = list(size = 25), tickfont = list(size = 20),
+                      zeroline = FALSE),
+         yaxis = list(range=c(0,6.5), title = "Normalized nb of RIF/nucleus", titlefont = list(size = 25), tickfont = list(size = 20),
+                      zeroline = FALSE))
+print(p)
+hide_legend(p)
+
+### Significance analysis
+all_gamma$Baseline_group[all_gamma$Baseline_group == 1] <- "Low Baseline"
+all_gamma$Baseline_group[all_gamma$Baseline_group == 2] <- "Medium Baseline"
+all_gamma$Baseline_group[all_gamma$Baseline_group == 3] <- "High Baseline"
+
+tw_aov <- aov(foci_num_norm ~ dose + Baseline_group,  data=all_gamma)
+summary(tw_aov)
+test_tw_aov <- TukeyHSD(tw_aov, which = "Baseline_group")
+print(test_tw_aov)
+tw_aov_interaction <- aov(foci_num_norm ~ dose * Baseline_group,  data=all_gamma)
+summary(tw_aov_interaction)
+
+
+######### Figure 3G
+p <- plot_ly(data=all_proton,
+             x = ~ factor(dose),
+             y = ~ foci_num_norm,
+             color = ~ factor(Baseline_group),
+             type = "box",
+             colors = c('springgreen3','blue','#d62728')) %>% 
+  layout(boxmode = "group",
+         title = "In Vitro Proton Irradiation", titlefont = list(size = 30),
+         xaxis = list(title = "Dose (Gy)", titlefont = list(size = 25), tickfont = list(size = 20),
+                      zeroline = FALSE),
+         yaxis = list(range=c(0,6.5), title = "Normalized nb of RIF/nucleus", titlefont = list(size = 25), tickfont = list(size = 20),
+                      zeroline = FALSE))
+print(p)
+hide_legend(p)
+
+### Significance analysis
+all_proton$Baseline_group[all_proton$Baseline_group == 1] <- "Low Baseline"
+all_proton$Baseline_group[all_proton$Baseline_group == 2] <- "Medium Baseline"
+all_proton$Baseline_group[all_proton$Baseline_group == 3] <- "High Baseline"
+
+tw_aov <- aov(foci_num_norm ~ dose + Baseline_group,  data=all_proton)
+summary(tw_aov)
+test_tw_aov <- TukeyHSD(tw_aov, which = "Baseline_group")
+print(test_tw_aov)
+tw_aov_interaction <- aov(foci_num_norm ~ dose * Baseline_group,  data=all_proton)
+summary(tw_aov_interaction)
+```
+
+
+```{r}
+###### Radiation Response correction (confounding factor: Run & Set) 
+Raw_Radiative_Responses <- read.csv('Radiation_Responses_Raw.csv', header = TRUE, sep = ",", quote = "\"", dec = ".")
+
+#Correction performed independently for each phenotype (e.g.  Oxidative Stress & DNA damage)
+save_metadata= Raw_Radiative_Responses[,grep("Age|Sample_ID|Batch.1|Batch.2|BMI|Gender|BMI_Group",colnames(Raw_Radiative_Responses))]
+DNA_Damage_w_meta = Raw_Radiative_Responses[,grep("_nfoci|Age|Sample_ID|Batch.1|Batch.2|BMI|Gender",colnames(Raw_Radiative_Responses))]
+Oxidative_Stress_w_meta = Raw_Radiative_Responses[,grep("_Live_CR_mean|Age|Sample_ID|Batch.1|Batch.2|BMI|Gender",colnames(Raw_Radiative_Responses))]
+
+#Remove potential NA values remaining in order to apply ComBat (that can't handle them)
+DNA_Damage_w_meta=NaRV.omit(DNA_Damage_w_meta)
+Oxidative_Stress_w_meta=NaRV.omit(Oxidative_Stress_w_meta)
+
+##Batch correction with ComBat 
+#edata = all radiative response data without metadata and transposed compared to the original table
+#pheno = metadata without the confounding factor, which will be stored in the variable named batch 
+
+# For DNA damage 
+metadata_storage = DNA_Damage_w_meta[,grep("Sample_ID|Batch.1|Age|BMI|Gender",colnames(DNA_Damage_w_meta))]
+pheno = DNA_Damage_w_meta[,grep("Age|BMI|Gender",colnames(DNA_Damage_w_meta))]
+edata= DNA_Damage_w_meta[,grep("_nfoci",colnames(DNA_Damage_w_meta))]
+edata=t(edata)
+
+modcombat = model.matrix(~1, data=pheno) 
+batch = DNA_Damage_w_meta$Batch.2
+combat_edata = ComBat(edata, batch=batch, mod=modcombat)
+combat_edata_t=t(combat_edata)
+combat_edata_t=data.frame(combat_edata_t)
+
+DNA_damage_corrected = cbind(Sample_ID=metadata_storage$Sample_ID, combat_edata_t)
+
+
+# For Oxidative Stress 
+metadata_storage = Oxidative_Stress_w_meta[,grep("Sample_ID|Batch.1|Age|BMI|Gender",colnames(Oxidative_Stress_w_meta))]
+pheno = Oxidative_Stress_w_meta[,grep("Age|BMI|Gender",colnames(Oxidative_Stress_w_meta))]
+edata= Oxidative_Stress_w_meta[,grep("_CR",colnames(Oxidative_Stress_w_meta))]
+edata=t(edata)
+
+modcombat = model.matrix(~1, data=pheno) 
+batch = Oxidative_Stress_w_meta$Batch.2
+combat_edata = ComBat(edata, batch=batch, mod=modcombat)
+combat_edata_t=t(combat_edata)
+combat_edata_t=data.frame(combat_edata_t)
+
+Oxidative_Stress_corrected = cbind(Sample_ID=metadata_storage$Sample_ID, combat_edata_t)
+
+
+#We regroup corrected DNA Damage, Oxidative Stress responses and meta data together
+Corrected_Radiative_Responses=merge(Oxidative_Stress_corrected, DNA_damage_corrected, by.x = 'Sample_ID', by.y = 'Sample_ID', all.x = TRUE, all.y = TRUE)
+Corrected_Radiative_Responses=merge(Corrected_Radiative_Responses, save_metadata, by.x = 'Sample_ID', by.y = 'Sample_ID', all.x = TRUE, all.y = TRUE)
+
+
+#After correction some negative values may appear, we set them to zero
+Corrected_Radiative_Responses$Fe_avg_nfoci_0_4h[Corrected_Radiative_Responses$Fe_avg_nfoci_0_4h< 0] <- 0
+Corrected_Radiative_Responses$Fe_avg_nfoci_1_4h[Corrected_Radiative_Responses$Fe_avg_nfoci_1_4h< 0] <- 0
+Corrected_Radiative_Responses$Fe_avg_nfoci_3_4h[Corrected_Radiative_Responses$Fe_avg_nfoci_3_4h< 0] <- 0
+Corrected_Radiative_Responses$Si_avg_nfoci_0_4h[Corrected_Radiative_Responses$Si_avg_nfoci_0_4h< 0] <- 0
+Corrected_Radiative_Responses$Si_avg_nfoci_1_4h[Corrected_Radiative_Responses$Si_avg_nfoci_1_4h< 0] <- 0
+Corrected_Radiative_Responses$Si_avg_nfoci_3_4h[Corrected_Radiative_Responses$Si_avg_nfoci_3_4h< 0] <- 0
+Corrected_Radiative_Responses$Ar_avg_nfoci_0_4h[Corrected_Radiative_Responses$Ar_avg_nfoci_0_4h< 0] <- 0
+Corrected_Radiative_Responses$Ar_avg_nfoci_1_4h[Corrected_Radiative_Responses$Ar_avg_nfoci_1_4h< 0] <- 0
+Corrected_Radiative_Responses$Ar_avg_nfoci_3_4h[Corrected_Radiative_Responses$Ar_avg_nfoci_3_4h< 0] <- 0
+Corrected_Radiative_Responses$Gamma_avg_nfoci_0_4h[Corrected_Radiative_Responses$Gamma_avg_nfoci_0_4h< 0] <- 0
+Corrected_Radiative_Responses$Gamma_avg_nfoci_0.1_4h[Corrected_Radiative_Responses$Gamma_avg_nfoci_0.1_4h< 0] <- 0
+Corrected_Radiative_Responses$Gamma_avg_nfoci_1_4h[Corrected_Radiative_Responses$Gamma_avg_nfoci_1_4h< 0] <- 0
+ 
+Corrected_Radiative_Responses$Fe_Live_CR_mean_0_4h[Corrected_Radiative_Responses$Fe_Live_CR_mean_0_4h< 0] <- 0
+Corrected_Radiative_Responses$Fe_Live_CR_mean_1_4h[Corrected_Radiative_Responses$Fe_Live_CR_mean_1_4h< 0] <- 0
+Corrected_Radiative_Responses$Fe_Live_CR_mean_3_4h[Corrected_Radiative_Responses$Fe_Live_CR_mean_3_4h< 0] <- 0
+Corrected_Radiative_Responses$Si_Live_CR_mean_0_4h[Corrected_Radiative_Responses$Si_Live_CR_mean_0_4h< 0] <- 0
+Corrected_Radiative_Responses$Si_Live_CR_mean_1_4h[Corrected_Radiative_Responses$Si_Live_CR_mean_1_4h< 0] <- 0
+Corrected_Radiative_Responses$Si_Live_CR_mean_3_4h[Corrected_Radiative_Responses$Si_Live_CR_mean_3_4h< 0] <- 0
+Corrected_Radiative_Responses$Ar_Live_CR_mean_0_4h[Corrected_Radiative_Responses$Ar_Live_CR_mean_0_4h< 0] <- 0
+Corrected_Radiative_Responses$Ar_Live_CR_mean_1_4h[Corrected_Radiative_Responses$Ar_Live_CR_mean_1_4h< 0] <- 0
+Corrected_Radiative_Responses$Ar_Live_CR_mean_3_4h[Corrected_Radiative_Responses$Ar_Live_CR_mean_3_4h< 0] <- 0
+Corrected_Radiative_Responses$Gamma_Live_CR_mean_0_4h[Corrected_Radiative_Responses$Gamma_Live_CR_mean_0_4h< 0] <- 0
+Corrected_Radiative_Responses$Gamma_Live_CR_mean_0.1_4h[Corrected_Radiative_Responses$Gamma_Live_CR_mean_0.1_4h< 0] <- 0
+Corrected_Radiative_Responses$Gamma_Live_CR_mean_1_4h[Corrected_Radiative_Responses$Gamma_Live_CR_mean_1_4h< 0] <- 0
+
+```
+
+```{r}
+######### Figure 4
+
+### Uncomment line of interest
+All_Data=Corrected_Radiative_Responses
+#All_Data=Raw_Radiative_Responses
+
+Baseline = Baseline_Corrected
+#Baseline = Raw_Baseline_No_Threshold
+#Baseline = Raw_Baseline_Threshold_N
+
+
+# Doses per Radiation in Gy
+Low_Dose_Fe =0.30
+High_Dose_Fe = 0.82 
+Low_Dose_Ar =0.18
+High_Dose_Ar = 0.5
+Low_Dose_Si = 0.11
+High_Dose_Si = 0.29
+Low_Dose_Gamma = 0.10
+High_Dose_Gamma = 1
+
+# Normalization to sham-irradiated control
+
+# Fe 4h------------------------------------
+All_Data$Fe_Live_CR_mean_1_4h_Normalized = All_Data$Fe_Live_CR_mean_1_4h / All_Data$Fe_Live_CR_mean_0_4h
+All_Data$Fe_Live_CR_mean_3_4h_Normalized = All_Data$Fe_Live_CR_mean_3_4h / All_Data$Fe_Live_CR_mean_0_4h
+All_Data$Fe_avg_nfoci_1_4h_Normalized = All_Data$Fe_avg_nfoci_1_4h /All_Data$Fe_avg_nfoci_0_4h
+All_Data$Fe_avg_nfoci_3_4h_Normalized =All_Data$Fe_avg_nfoci_3_4h / All_Data$Fe_avg_nfoci_0_4h
+
+# Ar 4h------------------------------------
+All_Data$Ar_Live_CR_mean_1_4h_Normalized = All_Data$Ar_Live_CR_mean_1_4h / All_Data$Ar_Live_CR_mean_0_4h
+All_Data$Ar_Live_CR_mean_3_4h_Normalized = All_Data$Ar_Live_CR_mean_3_4h / All_Data$Ar_Live_CR_mean_0_4h
+All_Data$Ar_avg_nfoci_1_4h_Normalized = All_Data$Ar_avg_nfoci_1_4h / All_Data$Ar_avg_nfoci_0_4h
+All_Data$Ar_avg_nfoci_3_4h_Normalized = All_Data$Ar_avg_nfoci_3_4h / All_Data$Ar_avg_nfoci_0_4h
+
+# Si 4h------------------------------------
+All_Data$Si_Live_CR_mean_1_4h_Normalized = All_Data$Si_Live_CR_mean_1_4h / All_Data$Si_Live_CR_mean_0_4h
+All_Data$Si_Live_CR_mean_3_4h_Normalized = All_Data$Si_Live_CR_mean_3_4h / All_Data$Si_Live_CR_mean_0_4h
+All_Data$Si_avg_nfoci_1_4h_Normalized = All_Data$Si_avg_nfoci_1_4h / All_Data$Si_avg_nfoci_0_4h
+All_Data$Si_avg_nfoci_3_4h_Normalized = All_Data$Si_avg_nfoci_3_4h / All_Data$Si_avg_nfoci_0_4h
+
+# Gamma 4h------------------------------------
+All_Data$Gamma_Live_CR_mean_0.1_4h_Normalized = All_Data$Gamma_Live_CR_mean_0.1_4h / All_Data$Gamma_Live_CR_mean_0_4h
+All_Data$Gamma_Live_CR_mean_1_4h_Normalized = All_Data$Gamma_Live_CR_mean_1_4h / All_Data$Gamma_Live_CR_mean_0_4h
+All_Data$Gamma_avg_nfoci_0.1_4h_Normalized = All_Data$Gamma_avg_nfoci_0.1_4h / All_Data$Gamma_avg_nfoci_0_4h
+All_Data$Gamma_avg_nfoci_1_4h_Normalized = All_Data$Gamma_avg_nfoci_1_4h / All_Data$Gamma_avg_nfoci_0_4h
+
+# Data formatting
+All_Data_4h_Normalized= All_Data[ , grepl( "Sample_ID|_4h_Normalized" , names(All_Data) ) ]
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Gamma_avg_nfoci_0.1_4h_Normalized"] <- "Low_Dose_DNA_Damage_Gamma"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Gamma_avg_nfoci_1_4h_Normalized"] <- "High_Dose_DNA_Damage_Gamma"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Gamma_Live_CR_mean_0.1_4h_Normalized"] <- "Low_Dose_Oxidative_Stress_Gamma"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Gamma_Live_CR_mean_1_4h_Normalized"] <- "High_Dose_Oxidative_Stress_Gamma"
+
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Fe_avg_nfoci_1_4h_Normalized"] <- "Low_Dose_DNA_Damage_Fe"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Fe_avg_nfoci_3_4h_Normalized"] <- "High_Dose_DNA_Damage_Fe"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Fe_Live_CR_mean_1_4h_Normalized"] <- "Low_Dose_Oxidative_Stress_Fe"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Fe_Live_CR_mean_3_4h_Normalized"] <- "High_Dose_Oxidative_Stress_Fe"
+
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Si_avg_nfoci_1_4h_Normalized"] <- "Low_Dose_DNA_Damage_Si"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Si_avg_nfoci_3_4h_Normalized"] <- "High_Dose_DNA_Damage_Si"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Si_Live_CR_mean_1_4h_Normalized"] <- "Low_Dose_Oxidative_Stress_Si"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Si_Live_CR_mean_3_4h_Normalized"] <- "High_Dose_Oxidative_Stress_Si"
+
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Ar_avg_nfoci_1_4h_Normalized"] <- "Low_Dose_DNA_Damage_Ar"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Ar_avg_nfoci_3_4h_Normalized"] <- "High_Dose_DNA_Damage_Ar"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Ar_Live_CR_mean_1_4h_Normalized"] <- "Low_Dose_Oxidative_Stress_Ar"
+colnames(All_Data_4h_Normalized)[colnames(All_Data_4h_Normalized)=="Ar_Live_CR_mean_3_4h_Normalized"] <- "High_Dose_Oxidative_Stress_Ar"
+
+Fe_rif_low_dose=All_Data_4h_Normalized[, grepl("Sample_ID|Low_Dose_DNA_Damage_Fe", colnames(All_Data_4h_Normalized))]
+Fe_rif_low_dose$RIF <- Fe_rif_low_dose$Low_Dose_DNA_Damage_Fe
+Fe_rif_low_dose$Low_Dose_DNA_Damage_Fe = NULL
+Fe_rif_low_dose$Dose <- Low_Dose_Fe
+Fe_rif_low_dose$Fluence <-"Fluence 1.1"
+Fe_rif_low_dose$Radiation <- "Fe"
+Fe_rif_low_dose=NaRV.omit(Fe_rif_low_dose)
+
+Fe_rif_high_dose=All_Data_4h_Normalized[, grepl("Sample_ID|High_Dose_DNA_Damage_Fe", colnames(All_Data_4h_Normalized))]
+Fe_rif_high_dose$RIF <- Fe_rif_high_dose$High_Dose_DNA_Damage_Fe
+Fe_rif_high_dose$High_Dose_DNA_Damage_Fe = NULL
+Fe_rif_high_dose$Dose <- High_Dose_Fe
+Fe_rif_high_dose$Fluence <-"Fluence 3"
+Fe_rif_high_dose$Radiation <- "Fe"
+Fe_rif_high_dose=NaRV.omit(Fe_rif_high_dose)
+
+Fe_rif_dose= bind_rows(Fe_rif_low_dose, Fe_rif_high_dose)
+
+Ar_rif_low_dose=All_Data_4h_Normalized[, grepl("Sample_ID|Low_Dose_DNA_Damage_Ar", colnames(All_Data_4h_Normalized))]
+Ar_rif_low_dose$RIF <- Ar_rif_low_dose$Low_Dose_DNA_Damage_Ar
+Ar_rif_low_dose$Low_Dose_DNA_Damage_Ar= NULL
+Ar_rif_low_dose$Dose <- Low_Dose_Ar
+Ar_rif_low_dose$Fluence <-"Fluence 1.1"
+Ar_rif_low_dose$Radiation <- "Ar"
+Ar_rif_low_dose=NaRV.omit(Ar_rif_low_dose)
+
+Ar_rif_high_dose=All_Data_4h_Normalized[, grepl("Sample_ID|High_Dose_DNA_Damage_Ar", colnames(All_Data_4h_Normalized))]
+Ar_rif_high_dose$RIF <- Ar_rif_high_dose$High_Dose_DNA_Damage_Ar
+Ar_rif_high_dose$High_Dose_DNA_Damage_Ar = NULL
+Ar_rif_high_dose$Dose <- High_Dose_Ar
+Ar_rif_high_dose$Fluence <-"Fluence 3"
+Ar_rif_high_dose$Radiation <- "Ar"
+Ar_rif_high_dose=NaRV.omit(Ar_rif_high_dose)
+
+Ar_rif_dose= bind_rows(Ar_rif_low_dose, Ar_rif_high_dose)
+
+Si_rif_low_dose=All_Data_4h_Normalized[, grepl("Sample_ID|Low_Dose_DNA_Damage_Si", colnames(All_Data_4h_Normalized))]
+Si_rif_low_dose$RIF <- Si_rif_low_dose$Low_Dose_DNA_Damage_Si
+Si_rif_low_dose$Low_Dose_DNA_Damage_Si= NULL
+Si_rif_low_dose$Dose <- Low_Dose_Si
+Si_rif_low_dose$Fluence <-"Fluence 1.1"
+Si_rif_low_dose$Radiation <- "Si"
+Si_rif_low_dose=NaRV.omit(Si_rif_low_dose)
+
+Si_rif_high_dose=All_Data_4h_Normalized[, grepl("Sample_ID|High_Dose_DNA_Damage_Si", colnames(All_Data_4h_Normalized))]
+Si_rif_high_dose$RIF <- Si_rif_high_dose$High_Dose_DNA_Damage_Si
+Si_rif_high_dose$High_Dose_DNA_Damage_Si = NULL
+Si_rif_high_dose$Dose <- High_Dose_Si
+Si_rif_high_dose$Fluence <-"Fluence 3"
+Si_rif_high_dose$Radiation <- "Si"
+Si_rif_high_dose=NaRV.omit(Si_rif_high_dose)
+
+Si_rif_dose= bind_rows(Si_rif_low_dose, Si_rif_high_dose)
+
+Gamma_rif_low_dose=All_Data_4h_Normalized[, grepl("Sample_ID|Low_Dose_DNA_Damage_Gamma", colnames(All_Data_4h_Normalized))]
+Gamma_rif_low_dose$RIF <- Gamma_rif_low_dose$Low_Dose_DNA_Damage_Gamma
+Gamma_rif_low_dose$Low_Dose_DNA_Damage_Gamma= NULL
+Gamma_rif_low_dose$Dose <- Low_Dose_Gamma
+Gamma_rif_low_dose$Radiation <- "Gamma"
+Gamma_rif_low_dose=NaRV.omit(Gamma_rif_low_dose)
+
+Gamma_rif_high_dose=All_Data_4h_Normalized[, grepl("Sample_ID|High_Dose_DNA_Damage_Gamma", colnames(All_Data_4h_Normalized))]
+Gamma_rif_high_dose$RIF <- Gamma_rif_high_dose$High_Dose_DNA_Damage_Gamma
+Gamma_rif_high_dose$High_Dose_DNA_Damage_Gamma = NULL
+Gamma_rif_high_dose$Dose <- High_Dose_Gamma
+Gamma_rif_high_dose$Radiation <- "Gamma"
+Gamma_rif_high_dose=NaRV.omit(Gamma_rif_high_dose)
+
+Gamma_rif_dose= bind_rows(Gamma_rif_low_dose, Gamma_rif_high_dose)
+
+Rif_Fluence_All= bind_rows(Fe_rif_dose, Ar_rif_dose, Si_rif_dose)
+
+Fe_rif_dose$Fluence=NULL
+Ar_rif_dose$Fluence=NULL
+Si_rif_dose$Fluence=NULL
+Rif_Dose_All= bind_rows(Fe_rif_dose, Ar_rif_dose, Si_rif_dose, Gamma_rif_dose)
+
+Rif_Dose_All$Dose=factor(Rif_Dose_All$Dose, levels=c(0.1, 0.11, 0.18, 0.29, 0.30, 0.5, 0.82, 1))
+Rif_Fluence_All$Fluence=factor(Rif_Fluence_All$Fluence, levels=c("Fluence 1.1", "Fluence 3"))
+Rif_Fluence_All$Radiation=factor(Rif_Fluence_All$Radiation, levels =c("Si", "Ar", "Fe"))
+
+
+######### Figure 4A
+Graph_RIF_Dose_rad <- ggplot(Rif_Dose_All, aes(x=Dose, y=RIF, fill=Radiation)) + geom_boxplot() + scale_fill_manual(breaks = c("Fe", "Ar", "Si", "Gamma"), values=c("indianred1", "orange", "grey", "dodgerblue1")) +labs(x='Dose (Gy)', y="Normalized nb of RIF/nucleus") + theme(axis.text.x = element_text(size = 20, face = "bold")) + theme(axis.text.y = element_text(size = 20, face = "bold")) + theme(axis.title.x = element_text(size = 20, face = "bold")) + theme(axis.title.y = element_text(size = 20, face = "bold")) + theme(legend.title = element_text(size=16))+ theme(legend.text = element_text(size=16)) + theme(plot.title = element_text(size=20, face="bold"))
+print(Graph_RIF_Dose_rad)
+
+### Statistical analysis
+ow_aov <- aov(RIF ~ Dose,  data=Rif_Dose_All)
+summary(ow_aov)
+t_test_ow_aov <- TukeyHSD(ow_aov)
+print(t_test_ow_aov)
+
+
+######### Figure 4B
+Graph_RIF_Fluence_rad <- ggplot(Rif_Fluence_All, aes(x=Fluence, y=RIF, fill=Radiation)) + geom_boxplot() + scale_fill_manual(breaks = c("Fe", "Ar", "Si"), values=c("indianred1", "orange", "grey")) +labs(x='Fluence (particles/100um2)', y="Normalized nb of RIF/nucleus") + theme(axis.text.x = element_text(size = 20, face = "bold")) + theme(axis.text.y = element_text(size = 20, face = "bold")) + theme(axis.title.x = element_text(size = 20, face = "bold")) + theme(axis.title.y = element_text(size = 20, face = "bold")) + theme(legend.title = element_text(size=16))+ theme(legend.text = element_text(size=16)) + theme(plot.title = element_text(size=20, face="bold"))
+print(Graph_RIF_Fluence_rad)
+
+### Statistical analysis
+tw_aov <- aov(RIF ~ Fluence + Radiation,  data=Rif_Fluence_All)
+summary(tw_aov)
+test_tw_aov <- TukeyHSD(tw_aov, which = "Radiation")
+print(test_tw_aov)
+tw_aov_interaction <- aov(RIF ~ Fluence * Radiation,  data=Rif_Fluence_All)
+summary(tw_aov_interaction)
+
+
+######### Figure 4C
+
+# Fe----------------
+Fe_RIF_Baseline= All_Data_4h_Normalized[, grepl("Sample_ID|Low_Dose_DNA_Damage_Fe|High_Dose_DNA_Damage_Fe", colnames(All_Data_4h_Normalized))]
+Fe_RIF_Baseline=NaRV.omit(Fe_RIF_Baseline)
+Fe_RIF_Baseline$DD_response <- NA
+
+for(i in 1:nrow(Fe_RIF_Baseline)){ # We will only consider individuals with increasing RIF with dose
+  if ((Fe_RIF_Baseline$High_Dose_DNA_Damage_Fe[i] - Fe_RIF_Baseline$Low_Dose_DNA_Damage_Fe[i]) >= 0){
+   Fe_RIF_Baseline$DD_response[i] = "DD+"
+  }
+}
+Fe_RIF_Baseline=NaRV.omit(Fe_RIF_Baseline)
+Fe_RIF_Baseline$DD_response=NULL
+
+Fe_RIF_Baseline$DD_Ratio = Fe_RIF_Baseline$High_Dose_DNA_Damage_Fe/Fe_RIF_Baseline$Low_Dose_DNA_Damage_Fe
+Fe_RIF_Baseline=merge(Fe_RIF_Baseline, Baseline, by="Sample_ID", all.x = TRUE, all.y = FALSE)
+Fe_RIF_Baseline$CMV=NULL
+Fe_RIF_Baseline=NaRV.omit(Fe_RIF_Baseline)
+Fe_RIF_Baseline$Baseline_Level <- NA
+
+quantile_baseline = quantile(Fe_RIF_Baseline$baseline_nfoci)
+LB = quantile_baseline[2]
+HB = quantile_baseline[4]
+
+for(i in 1:nrow(Fe_RIF_Baseline)){
+  if (Fe_RIF_Baseline$baseline_nfoci[i] <= LB){
+    Fe_RIF_Baseline$Baseline_Level[i] = "Low Baseline"
+  }
+  if (Fe_RIF_Baseline$baseline_nfoci[i] >= HB){
+    Fe_RIF_Baseline$Baseline_Level[i] = "High Baseline"
+  }
+}
+
+Fe_RIF_Baseline= NaRV.omit(Fe_RIF_Baseline)
+Fe_RIF_Baseline$Baseline_Level=factor(Fe_RIF_Baseline$Baseline_Level, levels=c("Low Baseline", "High Baseline"))
+
+Ratio_DD_Baseline_Level_Fe <- plot_ly(data = Fe_RIF_Baseline, 
+                       x= ~Baseline_Level,
+                       y= ~ DD_Ratio, 
+                       type = "box", boxpoints = "all", 
+                       color = ~ Baseline_Level, colors=c("darkblue","red")) %>% layout(title="56Fe", yaxis=list(title="Ratio of RIF at high versus low fluence",range=c(1,2), titlefont = list(size = 25), tickfont = list(size = 20),zeroline = FALSE), xaxis=list(titlefont = list(size = 25), tickfont = list(size = 20),zeroline = FALSE))
+print(Ratio_DD_Baseline_Level_Fe)
+hide_legend(Ratio_DD_Baseline_Level_Fe)
+
+# Calculate median ratio
+# Low Baseline group-------------------------------
+Fe_RIF_Baseline_Low <- Fe_RIF_Baseline[Fe_RIF_Baseline$Baseline_Level == "Low Baseline",]
+median_baseline_low = median(Fe_RIF_Baseline_Low$DD_Ratio)
+print(median_baseline_low)
+# Low Baseline group-------------------------------
+Fe_RIF_Baseline_High <- Fe_RIF_Baseline[Fe_RIF_Baseline$Baseline_Level == "High Baseline",]
+median_baseline_high = median(Fe_RIF_Baseline_High$DD_Ratio)
+print(median_baseline_high)
+
+###  Statistical analysis 
+test_Fe <- t.test(Fe_RIF_Baseline$DD_Ratio ~Fe_RIF_Baseline$Baseline_Level)
+print(test_Fe )
+
+
+# Ar---------------- 
+Ar_RIF_Baseline= All_Data_4h_Normalized[, grepl("Sample_ID|Low_Dose_DNA_Damage_Ar|High_Dose_DNA_Damage_Ar", colnames(All_Data_4h_Normalized))]
+
+#Selection of DD+ subjects 
+Ar_RIF_Baseline=NaRV.omit(Ar_RIF_Baseline)
+Ar_RIF_Baseline$DD_response <- NA
+
+for(i in 1:nrow(Ar_RIF_Baseline)){
+  if ((Ar_RIF_Baseline$High_Dose_DNA_Damage_Ar[i] - Ar_RIF_Baseline$Low_Dose_DNA_Damage_Ar[i]) >= 0){
+   Ar_RIF_Baseline$DD_response[i] = "DD+"
+  }
+}
+
+Ar_RIF_Baseline=NaRV.omit(Ar_RIF_Baseline)
+Ar_RIF_Baseline$DD_response=NULL
+
+Ar_RIF_Baseline$DD_Ratio = Ar_RIF_Baseline$High_Dose_DNA_Damage_Ar/Ar_RIF_Baseline$Low_Dose_DNA_Damage_Ar
+
+## For those interesting people we associate their baseline value
+Ar_RIF_Baseline=merge(Ar_RIF_Baseline, Baseline, by="Sample_ID", all.x = TRUE, all.y = FALSE)
+Ar_RIF_Baseline$CMV=NULL
+Ar_RIF_Baseline=NaRV.omit(Ar_RIF_Baseline)
+## Select high and low baselines 
+Ar_RIF_Baseline$Baseline_Level <- NA
+
+quantile_baseline = quantile(Ar_RIF_Baseline$baseline_nfoci)
+LB = quantile_baseline[2]
+HB = quantile_baseline[4]
+
+for(i in 1:nrow(Ar_RIF_Baseline)){
+  if (Ar_RIF_Baseline$baseline_nfoci[i] <= LB){
+    Ar_RIF_Baseline$Baseline_Level[i] = "Low Baseline"
+  }
+  if (Ar_RIF_Baseline$baseline_nfoci[i] >= HB){
+    Ar_RIF_Baseline$Baseline_Level[i] = "High Baseline"
+  }
+}
+
+Ar_RIF_Baseline= NaRV.omit(Ar_RIF_Baseline)
+Ar_RIF_Baseline$Baseline_Level=factor(Ar_RIF_Baseline$Baseline_Level, levels=c("Low Baseline", "High Baseline"))
+
+### Calculate Median ratio
+## Low Baseline group
+Ar_RIF_Baseline_Low = Ar_RIF_Baseline
+Ar_RIF_Baseline_Low$Baseline_Level[Ar_RIF_Baseline_Low$Baseline_Level =="High Baseline" ] <- NA
+Ar_RIF_Baseline_Low = NaRV.omit(Ar_RIF_Baseline_Low)
+median_baseline_low = median(Ar_RIF_Baseline_Low$DD_Ratio)
+print(median_baseline_low)
+#High Baseline Group
+Ar_RIF_Baseline_High = Ar_RIF_Baseline
+Ar_RIF_Baseline_High$Baseline_Level[Ar_RIF_Baseline_High$Baseline_Level =="Low Baseline" ] <- NA
+Ar_RIF_Baseline_High = NaRV.omit(Ar_RIF_Baseline_High)
+median_baseline_High = median(Ar_RIF_Baseline_High$DD_Ratio)
+print(median_baseline_High)
+
+###  t.test & P values 
+test_Ar <- t.test(Ar_RIF_Baseline$DD_Ratio ~Ar_RIF_Baseline$Baseline_Level)
+print(test_Ar )
+
+## Plot
+Ratio_DD_Baseline_Level_Ar <- plot_ly(data = Ar_RIF_Baseline, 
+                       x= ~Baseline_Level,
+                       y= ~ DD_Ratio, 
+                       type = "box", boxpoints = "all", 
+                       color = ~ Baseline_Level, colors=c("darkblue","red"))
+Ratio_DD_Baseline_Level_Ar <- Ratio_DD_Baseline_Level_Ar %>% layout(title="40Ar", yaxis=list(title="Ratio of RIF at high versus low fluence",range=c(1,2), titlefont = list(size = 25), tickfont = list(size = 20),zeroline = FALSE),  
+                                                                    xaxis=list(titlefont = list(size = 25), tickfont = list(size = 20),zeroline = FALSE))
+
+Ratio_DD_Baseline_Level_Ar <- hide_legend(Ratio_DD_Baseline_Level_Ar)
+print(Ratio_DD_Baseline_Level_Ar)
+orca(Ratio_DD_Baseline_Level_Ar, "Fig4C_Ar.pdf")
+
+
+# Gamma----------------
+Gamma_RIF_Baseline= All_Data_4h_Normalized[, grepl("Sample_ID|Low_Dose_DNA_Damage_Gamma|High_Dose_DNA_Damage_Gamma", colnames(All_Data_4h_Normalized))]
+
+#Selection of DD+ subjects 
+Gamma_RIF_Baseline=NaRV.omit(Gamma_RIF_Baseline)
+Gamma_RIF_Baseline$DD_response <- NA
+
+for(i in 1:nrow(Gamma_RIF_Baseline)){
+  if ((Gamma_RIF_Baseline$High_Dose_DNA_Damage_Gamma[i] - Gamma_RIF_Baseline$Low_Dose_DNA_Damage_Gamma[i]) >= 0){
+   Gamma_RIF_Baseline$DD_response[i] = "DD+"
+  }
+}
+
+Gamma_RIF_Baseline=NaRV.omit(Gamma_RIF_Baseline)
+Gamma_RIF_Baseline$DD_response=NULL
+
+Gamma_RIF_Baseline$DD_Ratio = Gamma_RIF_Baseline$High_Dose_DNA_Damage_Gamma/Gamma_RIF_Baseline$Low_Dose_DNA_Damage_Gamma
+
+## For those interesting people we associate their baseline value
+Gamma_RIF_Baseline=merge(Gamma_RIF_Baseline, Baseline, by="Sample_ID", all.x = TRUE, all.y = FALSE)
+Gamma_RIF_Baseline$CMV=NULL
+Gamma_RIF_Baseline=NaRV.omit(Gamma_RIF_Baseline)
+## Select high and low baselines 
+Gamma_RIF_Baseline$Baseline_Level <- NA
+
+quantile_baseline = quantile(Gamma_RIF_Baseline$baseline_nfoci)
+LB = quantile_baseline[2]
+HB = quantile_baseline[4]
+
+for(i in 1:nrow(Gamma_RIF_Baseline)){
+  if (Gamma_RIF_Baseline$baseline_nfoci[i] <= LB){
+    Gamma_RIF_Baseline$Baseline_Level[i] = "Low Baseline"
+  }
+  if (Gamma_RIF_Baseline$baseline_nfoci[i] >= HB){
+    Gamma_RIF_Baseline$Baseline_Level[i] = "High Baseline"
+  }
+}
+
+Gamma_RIF_Baseline= NaRV.omit(Gamma_RIF_Baseline)
+Gamma_RIF_Baseline$Baseline_Level=factor(Gamma_RIF_Baseline$Baseline_Level, levels=c("Low Baseline", "High Baseline"))
+
+Ratio_DD_Baseline_Level_Gamma <- plot_ly(data = Gamma_RIF_Baseline, 
+                       x= ~Baseline_Level,
+                       y= ~ DD_Ratio, 
+                       type = "box", boxpoints = "all", 
+                       color = ~ Baseline_Level, colors=c("darkblue","red"))
+Ratio_DD_Baseline_Level_Gamma <- Ratio_DD_Baseline_Level_Gamma %>% layout(title="Gamma", yaxis=list(title="Ratio of RIF at high versus low dose",range=c(1,4), titlefont = list(size = 25), tickfont = list(size = 20),zeroline = FALSE),  
+                                                                    xaxis=list(titlefont = list(size = 20), tickfont = list(size = 25),zeroline = FALSE))
+
+Ratio_DD_Baseline_Level_Gamma <- hide_legend(Ratio_DD_Baseline_Level_Gamma)
+print(Ratio_DD_Baseline_Level_Gamma)
+orca(Ratio_DD_Baseline_Level_Gamma, "Fig4C_Gamma.pdf")
+
+###  t.test & P values 
+test_Gamma <- t.test(Gamma_RIF_Baseline$DD_Ratio ~ Gamma_RIF_Baseline$Baseline_Level)
+print(test_Gamma)
+
+### Calculate Median Ratio 
+## Low Baseline Group
+Gamma_RIF_Baseline_Low = Gamma_RIF_Baseline
+Gamma_RIF_Baseline_Low$Baseline_Level[Gamma_RIF_Baseline_Low$Baseline_Level =="High Baseline" ] <- NA
+Gamma_RIF_Baseline_Low = NaRV.omit(Gamma_RIF_Baseline_Low)
+median_baseline_low = median(Gamma_RIF_Baseline_Low$DD_Ratio)
+print(median_baseline_low)
+## High Baseline Group
+Gamma_RIF_Baseline_High = Gamma_RIF_Baseline
+Gamma_RIF_Baseline_High$Baseline_Level[Gamma_RIF_Baseline_High$Baseline_Level =="Low Baseline" ] <- NA
+Gamma_RIF_Baseline_High = NaRV.omit(Gamma_RIF_Baseline_High)
+median_baseline_High = median(Gamma_RIF_Baseline_High$DD_Ratio)
+print(median_baseline_High)
+```
+
+
+```{r}
+######### Figure OS low-high dose for low and high baseline 
+
+# Fe----------------
+Fe_RIF_Baseline= All_Data_4h_Normalized[, grepl("Sample_ID|Low_Dose_DNA_Damage_Fe|High_Dose_DNA_Damage_Fe|Low_Dose_Oxidative_Stress_Fe|High_Dose_Oxidative_Stress_Fe", colnames(All_Data_4h_Normalized))]
+Fe_RIF_Baseline=NaRV.omit(Fe_RIF_Baseline)
+Fe_RIF_Baseline$DD_response <- NA
+
+for(i in 1:nrow(Fe_RIF_Baseline)){ # We will only consider individuals with increasing RIF with dose
+  if ((Fe_RIF_Baseline$High_Dose_DNA_Damage_Fe[i] - Fe_RIF_Baseline$Low_Dose_DNA_Damage_Fe[i]) >= 0){
+   Fe_RIF_Baseline$DD_response[i] = "DD+"
+  }
+}
+Fe_RIF_Baseline=NaRV.omit(Fe_RIF_Baseline)
+Fe_RIF_Baseline$DD_response=NULL
+
+Fe_RIF_Baseline=merge(Fe_RIF_Baseline, Baseline, by="Sample_ID", all.x = TRUE, all.y = FALSE)
+Fe_RIF_Baseline$CMV=NULL
+Fe_RIF_Baseline=NaRV.omit(Fe_RIF_Baseline)
+Fe_RIF_Baseline$Baseline_Level <- NA
+
+quantile_baseline = quantile(Fe_RIF_Baseline$baseline_nfoci)
+LB = quantile_baseline[2]
+HB = quantile_baseline[4]
+
+for(i in 1:nrow(Fe_RIF_Baseline)){
+  if (Fe_RIF_Baseline$baseline_nfoci[i] <= LB){
+    Fe_RIF_Baseline$Baseline_Level[i] = "Low Baseline"
+  }
+  if (Fe_RIF_Baseline$baseline_nfoci[i] >= HB){
+    Fe_RIF_Baseline$Baseline_Level[i] = "High Baseline"
+  }
+}
+
+Fe_RIF_Baseline= NaRV.omit(Fe_RIF_Baseline)
+Fe_RIF_Baseline$Baseline_Level=factor(Fe_RIF_Baseline$Baseline_Level, levels=c("Low Baseline", "High Baseline"))
+
+Fe_RIF_Baseline_Low = Fe_RIF_Baseline[,grepl("Sample_ID|Baseline_Level|Low_Dose", colnames(Fe_RIF_Baseline))]
+Fe_RIF_Baseline_Low$Dose = "Low Dose"
+Fe_RIF_Baseline_Low$OS= Fe_RIF_Baseline_Low$Low_Dose_Oxidative_Stress_Fe
+Fe_RIF_Baseline_Low$Low_Dose_Oxidative_Stress_Fe=NULL
+Fe_RIF_Baseline_Low$Low_Dose_DNA_Damage_Fe=NULL
+
+Fe_RIF_Baseline_High = Fe_RIF_Baseline[,grepl("Sample_ID|Baseline_Level|High_Dose", colnames(Fe_RIF_Baseline))]
+Fe_RIF_Baseline_High$Dose = "High Dose"
+Fe_RIF_Baseline_High$OS= Fe_RIF_Baseline_High$High_Dose_Oxidative_Stress_Fe
+Fe_RIF_Baseline_High$High_Dose_Oxidative_Stress_Fe=NULL
+Fe_RIF_Baseline_High$High_Dose_DNA_Damage_Fe=NULL
+
+Fe_RIF_Baseline=bind_rows(Fe_RIF_Baseline_Low, Fe_RIF_Baseline_High)
+Fe_RIF_Baseline$Dose= factor(Fe_RIF_Baseline$Dose, levels=c("Low Dose", "High Dose"))
+  
+
+Fe_OS_baseline = ggplot(Fe_RIF_Baseline, aes(x=Dose, y=OS, col=Baseline_Level)) +
+ geom_boxplot() + geom_point(position=position_jitterdodge(),alpha=0.4) + ylab("Mean CellRox (Normalized)") + xlab("Dose") + labs(col = "Baseline level") + theme(axis.text.x = element_text(size = 50)) + theme(axis.text.y = element_text(size = 50)) + theme(axis.title.x = element_text(size = 50, face = "bold")) + theme(axis.title.y = element_text(size = 50, face = "bold"))  + theme(legend.title = element_text(size = 50)) + theme(legend.text = element_text(size = 50)) + ylim(0,2.25) + theme_classic() +ggtitle("Fe")
+print(Fe_OS_baseline)
+
+
+
+
+# Ar----------------
+Ar_RIF_Baseline= All_Data_4h_Normalized[, grepl("Sample_ID|Low_Dose_DNA_Damage_Ar|High_Dose_DNA_Damage_Ar|Low_Dose_Oxidative_Stress_Ar|High_Dose_Oxidative_Stress_Ar", colnames(All_Data_4h_Normalized))]
+Ar_RIF_Baseline=NaRV.omit(Ar_RIF_Baseline)
+Ar_RIF_Baseline$DD_response <- NA
+
+for(i in 1:nrow(Ar_RIF_Baseline)){ # We will only consider individuals with increasing RIF with dose
+  if ((Ar_RIF_Baseline$High_Dose_DNA_Damage_Ar[i] - Ar_RIF_Baseline$Low_Dose_DNA_Damage_Ar[i]) >= 0){
+   Ar_RIF_Baseline$DD_response[i] = "DD+"
+  }
+}
+Ar_RIF_Baseline=NaRV.omit(Ar_RIF_Baseline)
+Ar_RIF_Baseline$DD_response=NULL
+
+Ar_RIF_Baseline=merge(Ar_RIF_Baseline, Baseline, by="Sample_ID", all.x = TRUE, all.y = FALSE)
+Ar_RIF_Baseline$CMV=NULL
+Ar_RIF_Baseline=NaRV.omit(Ar_RIF_Baseline)
+Ar_RIF_Baseline$Baseline_Level <- NA
+
+quantile_baseline = quantile(Ar_RIF_Baseline$baseline_nfoci)
+LB = quantile_baseline[2]
+HB = quantile_baseline[4]
+
+for(i in 1:nrow(Ar_RIF_Baseline)){
+  if (Ar_RIF_Baseline$baseline_nfoci[i] <= LB){
+    Ar_RIF_Baseline$Baseline_Level[i] = "Low Baseline"
+  }
+  if (Ar_RIF_Baseline$baseline_nfoci[i] >= HB){
+    Ar_RIF_Baseline$Baseline_Level[i] = "High Baseline"
+  }
+}
+
+Ar_RIF_Baseline= NaRV.omit(Ar_RIF_Baseline)
+Ar_RIF_Baseline$Baseline_Level=factor(Ar_RIF_Baseline$Baseline_Level, levels=c("Low Baseline", "High Baseline"))
+
+Ar_RIF_Baseline_Low = Ar_RIF_Baseline[,grepl("Sample_ID|Baseline_Level|Low_Dose", colnames(Ar_RIF_Baseline))]
+Ar_RIF_Baseline_Low$Dose = "Low Dose"
+Ar_RIF_Baseline_Low$OS= Ar_RIF_Baseline_Low$Low_Dose_Oxidative_Stress_Ar
+Ar_RIF_Baseline_Low$Low_Dose_Oxidative_Stress_Ar=NULL
+Ar_RIF_Baseline_Low$Low_Dose_DNA_Damage_Ar=NULL
+
+Ar_RIF_Baseline_High = Ar_RIF_Baseline[,grepl("Sample_ID|Baseline_Level|High_Dose", colnames(Ar_RIF_Baseline))]
+Ar_RIF_Baseline_High$Dose = "High Dose"
+Ar_RIF_Baseline_High$OS= Ar_RIF_Baseline_High$High_Dose_Oxidative_Stress_Ar
+Ar_RIF_Baseline_High$High_Dose_Oxidative_Stress_Ar=NULL
+Ar_RIF_Baseline_High$High_Dose_DNA_Damage_Ar=NULL
+
+Ar_RIF_Baseline=bind_rows(Ar_RIF_Baseline_Low, Ar_RIF_Baseline_High)
+Ar_RIF_Baseline$Dose= factor(Ar_RIF_Baseline$Dose, levels=c("Low Dose", "High Dose"))
+  
+
+Ar_OS_baseline = ggplot(Ar_RIF_Baseline, aes(x=Dose, y=OS, col=Baseline_Level)) +
+ geom_boxplot() + geom_point(position=position_jitterdodge(),alpha=0.4) + ylab("Mean CellRox (Normalized)") + xlab("Dose") + labs(col = "Baseline level") + theme(axis.text.x = element_text(size = 50)) + theme(axis.text.y = element_text(size = 50)) + theme(axis.title.x = element_text(size = 50, face = "bold")) + theme(axis.title.y = element_text(size = 50, face = "bold"))  + theme(legend.title = element_text(size = 50)) + theme(legend.text = element_text(size = 50)) + ylim(0,2.25) + theme_classic() +ggtitle("Ar")
+print(Ar_OS_baseline)
+
+
+
+# Si----------------
+Si_RIF_Baseline= All_Data_4h_Normalized[, grepl("Sample_ID|Low_Dose_DNA_Damage_Si|High_Dose_DNA_Damage_Si|Low_Dose_Oxidative_Stress_Si|High_Dose_Oxidative_Stress_Si", colnames(All_Data_4h_Normalized))]
+Si_RIF_Baseline=NaRV.omit(Si_RIF_Baseline)
+Si_RIF_Baseline$DD_response <- NA
+
+for(i in 1:nrow(Si_RIF_Baseline)){ # We will only consider individuals with increasing RIF with dose
+  if ((Si_RIF_Baseline$High_Dose_DNA_Damage_Si[i] - Si_RIF_Baseline$Low_Dose_DNA_Damage_Si[i]) >= 0){
+   Si_RIF_Baseline$DD_response[i] = "DD+"
+  }
+}
+Si_RIF_Baseline=NaRV.omit(Si_RIF_Baseline)
+Si_RIF_Baseline$DD_response=NULL
+
+Si_RIF_Baseline=merge(Si_RIF_Baseline, Baseline, by="Sample_ID", all.x = TRUE, all.y = FALSE)
+Si_RIF_Baseline$CMV=NULL
+Si_RIF_Baseline=NaRV.omit(Si_RIF_Baseline)
+Si_RIF_Baseline$Baseline_Level <- NA
+
+quantile_baseline = quantile(Si_RIF_Baseline$baseline_nfoci)
+LB = quantile_baseline[2]
+HB = quantile_baseline[4]
+
+for(i in 1:nrow(Si_RIF_Baseline)){
+  if (Si_RIF_Baseline$baseline_nfoci[i] <= LB){
+    Si_RIF_Baseline$Baseline_Level[i] = "Low Baseline"
+  }
+  if (Si_RIF_Baseline$baseline_nfoci[i] >= HB){
+    Si_RIF_Baseline$Baseline_Level[i] = "High Baseline"
+  }
+}
+
+Si_RIF_Baseline= NaRV.omit(Si_RIF_Baseline)
+Si_RIF_Baseline$Baseline_Level=factor(Si_RIF_Baseline$Baseline_Level, levels=c("Low Baseline", "High Baseline"))
+
+Si_RIF_Baseline_Low = Si_RIF_Baseline[,grepl("Sample_ID|Baseline_Level|Low_Dose", colnames(Si_RIF_Baseline))]
+Si_RIF_Baseline_Low$Dose = "Low Dose"
+Si_RIF_Baseline_Low$OS= Si_RIF_Baseline_Low$Low_Dose_Oxidative_Stress_Si
+Si_RIF_Baseline_Low$Low_Dose_Oxidative_Stress_Si=NULL
+Si_RIF_Baseline_Low$Low_Dose_DNA_Damage_Si=NULL
+
+Si_RIF_Baseline_High = Si_RIF_Baseline[,grepl("Sample_ID|Baseline_Level|High_Dose", colnames(Si_RIF_Baseline))]
+Si_RIF_Baseline_High$Dose = "High Dose"
+Si_RIF_Baseline_High$OS= Si_RIF_Baseline_High$High_Dose_Oxidative_Stress_Si
+Si_RIF_Baseline_High$High_Dose_Oxidative_Stress_Si=NULL
+Si_RIF_Baseline_High$High_Dose_DNA_Damage_Si=NULL
+
+Si_RIF_Baseline=bind_rows(Si_RIF_Baseline_Low, Si_RIF_Baseline_High)
+Si_RIF_Baseline$Dose= factor(Si_RIF_Baseline$Dose, levels=c("Low Dose", "High Dose"))
+  
+
+Si_OS_baseline = ggplot(Si_RIF_Baseline, aes(x=Dose, y=OS, col=Baseline_Level)) +
+ geom_boxplot() + geom_point(position=position_jitterdodge(),alpha=0.4) + ylab("Mean CellRox (Normalized)") + xlab("Dose") + labs(col = "Baseline level") + theme(axis.text.x = element_text(size = 50)) + theme(axis.text.y = element_text(size = 50)) + theme(axis.title.x = element_text(size = 50, face = "bold")) + theme(axis.title.y = element_text(size = 50, face = "bold"))  + theme(legend.title = element_text(size = 50)) + theme(legend.text = element_text(size = 50)) + ylim(0,2.25) + theme_classic() +ggtitle("Si")
+print(Si_OS_baseline)
+
+
+# Gamma----------------
+Gamma_RIF_Baseline= All_Data_4h_Normalized[, grepl("Sample_ID|Low_Dose_DNA_Damage_Gamma|High_Dose_DNA_Damage_Gamma|Low_Dose_Oxidative_Stress_Gamma|High_Dose_Oxidative_Stress_Gamma", colnames(All_Data_4h_Normalized))]
+Gamma_RIF_Baseline=NaRV.omit(Gamma_RIF_Baseline)
+Gamma_RIF_Baseline$DD_response <- NA
+
+for(i in 1:nrow(Gamma_RIF_Baseline)){ # We will only consider individuals with increasing RIF with dose
+  if ((Gamma_RIF_Baseline$High_Dose_DNA_Damage_Gamma[i] - Gamma_RIF_Baseline$Low_Dose_DNA_Damage_Gamma[i]) >= 0){
+   Gamma_RIF_Baseline$DD_response[i] = "DD+"
+  }
+}
+Gamma_RIF_Baseline=NaRV.omit(Gamma_RIF_Baseline)
+Gamma_RIF_Baseline$DD_response=NULL
+
+Gamma_RIF_Baseline=merge(Gamma_RIF_Baseline, Baseline, by="Sample_ID", all.x = TRUE, all.y = FALSE)
+Gamma_RIF_Baseline$CMV=NULL
+Gamma_RIF_Baseline=NaRV.omit(Gamma_RIF_Baseline)
+Gamma_RIF_Baseline$Baseline_Level <- NA
+
+quantile_baseline = quantile(Gamma_RIF_Baseline$baseline_nfoci)
+LB = quantile_baseline[2]
+HB = quantile_baseline[4]
+
+for(i in 1:nrow(Gamma_RIF_Baseline)){
+  if (Gamma_RIF_Baseline$baseline_nfoci[i] <= LB){
+    Gamma_RIF_Baseline$Baseline_Level[i] = "Low Baseline"
+  }
+  if (Gamma_RIF_Baseline$baseline_nfoci[i] >= HB){
+    Gamma_RIF_Baseline$Baseline_Level[i] = "High Baseline"
+  }
+}
+
+Gamma_RIF_Baseline= NaRV.omit(Gamma_RIF_Baseline)
+Gamma_RIF_Baseline$Baseline_Level=factor(Gamma_RIF_Baseline$Baseline_Level, levels=c("Low Baseline", "High Baseline"))
+
+Gamma_RIF_Baseline_Low = Gamma_RIF_Baseline[,grepl("Sample_ID|Baseline_Level|Low_Dose", colnames(Gamma_RIF_Baseline))]
+Gamma_RIF_Baseline_Low$Dose = "Low Dose"
+Gamma_RIF_Baseline_Low$OS= Gamma_RIF_Baseline_Low$Low_Dose_Oxidative_Stress_Gamma
+Gamma_RIF_Baseline_Low$Low_Dose_Oxidative_Stress_Gamma=NULL
+Gamma_RIF_Baseline_Low$Low_Dose_DNA_Damage_Gamma=NULL
+
+Gamma_RIF_Baseline_High = Gamma_RIF_Baseline[,grepl("Sample_ID|Baseline_Level|High_Dose", colnames(Gamma_RIF_Baseline))]
+Gamma_RIF_Baseline_High$Dose = "High Dose"
+Gamma_RIF_Baseline_High$OS= Gamma_RIF_Baseline_High$High_Dose_Oxidative_Stress_Gamma
+Gamma_RIF_Baseline_High$High_Dose_Oxidative_Stress_Gamma=NULL
+Gamma_RIF_Baseline_High$High_Dose_DNA_Damage_Gamma=NULL
+
+Gamma_RIF_Baseline=bind_rows(Gamma_RIF_Baseline_Low, Gamma_RIF_Baseline_High)
+Gamma_RIF_Baseline$Dose= factor(Gamma_RIF_Baseline$Dose, levels=c("Low Dose", "High Dose"))
+  
+
+Gamma_OS_baseline = ggplot(Si_RIF_Baseline, aes(x=Dose, y=OS, col=Baseline_Level)) +
+ geom_boxplot() + geom_point(position=position_jitterdodge(),alpha=0.4) + ylab("Mean CellRox (Normalized)") + xlab("Dose") + labs(col = "Baseline level") + theme(axis.text.x = element_text(size = 50)) + theme(axis.text.y = element_text(size = 50)) + theme(axis.title.x = element_text(size = 50, face = "bold")) + theme(axis.title.y = element_text(size = 50, face = "bold"))  + theme(legend.title = element_text(size = 50)) + theme(legend.text = element_text(size = 50)) + ylim(0,2.25) + theme_classic() +ggtitle("Gamma")
+print(Gamma_OS_baseline)
+
+
+
+```
+
+```{r}
+######### Figure 5
+
+# Fe ------------------------------------------------------
+Fe_OS_fluence = All_Data_4h_Normalized[, grepl("Sample_ID|Low_Dose_DNA_Damage_Fe|High_Dose_DNA_Damage_Fe|Low_Dose_Oxidative_Stress_Fe|High_Dose_Oxidative_Stress_Fe", colnames(All_Data_4h_Normalized))]
+Fe_OS_fluence=NaRV.omit(Fe_OS_fluence)
+Fe_OS_fluence$DD_response <- NA
+
+for(i in 1:nrow(Fe_OS_fluence)){ # We will only consider individuals with increasing RIF with dose
+  if ((Fe_OS_fluence$High_Dose_DNA_Damage_Fe[i] - Fe_OS_fluence$Low_Dose_DNA_Damage_Fe[i]) >= 0){
+   Fe_OS_fluence$DD_response[i] = "DD+"
+  }
+}
+Fe_OS_fluence=NaRV.omit(Fe_OS_fluence)
+Fe_OS_fluence$DD_response=NULL
+
+OS_Fluence_Fe_4h <- plot_ly(data=Fe_OS_fluence, 
+               y = ~ Low_Dose_Oxidative_Stress_Fe, 
+               name = "Low Dose", 
+               type = "box", boxpoints = "all") %>% add_trace(y = ~  High_Dose_Oxidative_Stress_Fe, name= "High Dose ") %>% layout(title="56Fe", yaxis=list(title="Normalized mean CellROX in live cells",range=c(0,3.5),zeroline = FALSE, titlefont = list(size = 25), tickfont = list(size = 20)), xaxis=list(titlefont = list(size = 25), tickfont = list(size = 20),zeroline = FALSE))
+print(OS_Fluence_Fe_4h)
+hide_legend(OS_Fluence_Fe_4h)
+
+#Significance Analysis: paired t-test on normalized data 
+test_Fe <- t.test(Fe_OS_fluence$Low_Dose_Oxidative_Stress_Fe, Fe_OS_fluence$High_Dose_Oxidative_Stress_Fe, paired=TRUE)
+print(test_Fe)
+
+
+# Ar ------------------------------------------------------
+Ar_OS_fluence = All_Data_4h_Normalized[, grepl("Sample_ID|Low_Dose_DNA_Damage_Ar|High_Dose_DNA_Damage_Ar|Low_Dose_Oxidative_Stress_Ar|High_Dose_Oxidative_Stress_Ar", colnames(All_Data_4h_Normalized))]
+Ar_OS_fluence=NaRV.omit(Ar_OS_fluence)
+Ar_OS_fluence$DD_response <- NA
+
+for(i in 1:nrow(Ar_OS_fluence)){ # We will only consider individuals with increasing RIF with dose
+  if ((Ar_OS_fluence$High_Dose_DNA_Damage_Ar[i] - Ar_OS_fluence$Low_Dose_DNA_Damage_Ar[i]) >= 0){
+   Ar_OS_fluence$DD_response[i] = "DD+"
+  }
+}
+Ar_OS_fluence=NaRV.omit(Ar_OS_fluence)
+Ar_OS_fluence$DD_response=NULL
+
+OS_Fluence_Ar_4h <- plot_ly(data=Ar_OS_fluence, 
+               y = ~ Low_Dose_Oxidative_Stress_Ar, 
+               name = "Low Dose", 
+               type = "box", boxpoints = "all") %>% add_trace(y = ~  High_Dose_Oxidative_Stress_Ar, name= "High Dose ") %>% layout(title="56Ar", yaxis=list(title="Normalized mean CellROX in live cells",range=c(0,3.5),zeroline = FALSE, titlefont = list(size = 25), tickfont = list(size = 20)), xaxis=list(titlefont = list(size = 25), tickfont = list(size = 20),zeroline = FALSE))
+print(OS_Fluence_Ar_4h)
+hide_legend(OS_Fluence_Ar_4h)
+
+#Significance Analysis: paired t-test on normalized data 
+test_Ar <- t.test(Ar_OS_fluence$Low_Dose_Oxidative_Stress_Ar,Ar_OS_fluence$High_Dose_Oxidative_Stress_Ar, paired=TRUE)
+print(test_Ar)
+
+
+# Si ------------------------------------------------------
+Si_OS_fluence = All_Data_4h_Normalized[, grepl("Sample_ID|Low_Dose_DNA_Damage_Si|High_Dose_DNA_Damage_Si|Low_Dose_Oxidative_Stress_Si|High_Dose_Oxidative_Stress_Si", colnames(All_Data_4h_Normalized))]
+Si_OS_fluence=NaRV.omit(Si_OS_fluence)
+Si_OS_fluence$DD_response <- NA
+
+for(i in 1:nrow(Si_OS_fluence)){ # We will only consider individuals with increasing RIF with dose
+  if ((Si_OS_fluence$High_Dose_DNA_Damage_Si[i] - Si_OS_fluence$Low_Dose_DNA_Damage_Si[i]) >= 0){
+   Si_OS_fluence$DD_response[i] = "DD+"
+  }
+}
+Si_OS_fluence=NaRV.omit(Si_OS_fluence)
+Si_OS_fluence$DD_response=NULL
+
+OS_Fluence_Si_4h <- plot_ly(data=Si_OS_fluence, 
+               y = ~ Low_Dose_Oxidative_Stress_Si, 
+               name = "Low Dose", 
+               type = "box", boxpoints = "all") %>% add_trace(y = ~  High_Dose_Oxidative_Stress_Si, name= "High Dose ") %>% layout(title="56Si", yaxis=list(title="Normalized mean CellROX in live cells",range=c(0,3.5),zeroline = FALSE, titlefont = list(size = 25), tickfont = list(size = 20)), xaxis=list(titlefont = list(size = 25), tickfont = list(size = 20),zeroline = FALSE))
+print(OS_Fluence_Si_4h)
+hide_legend(OS_Fluence_Si_4h)
+
+#Significance Analysis: paired t-test on normalized data 
+test_Si <- t.test(Si_OS_fluence$Low_Dose_Oxidative_Stress_Si, Si_OS_fluence$High_Dose_Oxidative_Stress_Si, paired=TRUE)
+print(test_Si)
+
+# Gamma ------------------------------------------------------
+Gamma_OS_fluence = All_Data_4h_Normalized[, grepl("Sample_ID|Low_Dose_DNA_Damage_Gamma|High_Dose_DNA_Damage_Gamma|Low_Dose_Oxidative_Stress_Gamma|High_Dose_Oxidative_Stress_Gamma", colnames(All_Data_4h_Normalized))]
+Gamma_OS_fluence=NaRV.omit(Gamma_OS_fluence)
+Gamma_OS_fluence$DD_response <- NA
+
+for(i in 1:nrow(Gamma_OS_fluence)){ # We will only conGammader individuals with increaGammang RIF with dose
+  if ((Gamma_OS_fluence$High_Dose_DNA_Damage_Gamma[i] - Gamma_OS_fluence$Low_Dose_DNA_Damage_Gamma[i]) >= 0){
+   Gamma_OS_fluence$DD_response[i] = "DD+"
+  }
+}
+Gamma_OS_fluence=NaRV.omit(Gamma_OS_fluence)
+Gamma_OS_fluence$DD_response=NULL
+
+OS_Fluence_Gamma_4h <- plot_ly(data=Gamma_OS_fluence, 
+               y = ~ Low_Dose_Oxidative_Stress_Gamma, 
+               name = "Low Dose", 
+               type = "box", boxpoints = "all") %>% add_trace(y = ~  High_Dose_Oxidative_Stress_Gamma, name= "High Dose ") %>% layout(title="56Gamma", yaxis=list(title="Normalized mean CellROX in live cells",range=c(0,3.5),zeroline = FALSE, titlefont = list(Gammaze = 25), tickfont = list(Gammaze = 20)), xaxis=list(titlefont = list(Gammaze = 25), tickfont = list(Gammaze = 20),zeroline = FALSE))
+print(OS_Fluence_Gamma_4h)
+hide_legend(OS_Fluence_Gamma_4h)
+
+#Significance Analysis: paired t-test on normalized data 
+test_Gamma <- t.test(Gamma_OS_fluence$Low_Dose_Oxidative_Stress_Gamma, Gamma_OS_fluence$High_Dose_Oxidative_Stress_Gamma, paired=TRUE)
+print(test_Gamma)
+
+```
+
+```{r}
+
+#### Fig6 : For each radiation type, we plot for "OS-" and "OS+" their baseline level (for "DD+" subjects only)
+
+### Classes as defined on DD vs OS plots 
+#### we class individual within four class depending on the sign of the difference between high dose and low dose
+# (OS+,DD-) : oxidative stress increases with the dose and DNA decreases with the dose 
+# (OS-,DD-) : Both oxidative stress and DNA damage decrease with the dose 
+# (OS-,DD+) : oxidative stress decreases with the dose and DNA increases with the dose 
+# (OS+,DD+) : Both oxidative stress and DNA damage increase with the dose 
+
+### Fe 
+Fe_Response_OS_Class = All_Data_4h_Normalized[, grepl("Sample_ID|Fe", colnames(All_Data_4h_Normalized))]
+Fe_Response_OS_Class$Low_Dose_Cell_Death_Fe=NULL
+Fe_Response_OS_Class$High_Dose_Cell_Death_Fe=NULL
+
+Fe_Response_OS_Class = merge(Fe_Response_OS_Class, Baseline_data, by="Sample_ID", all.x = TRUE)
+
+## Selection of DD+ subjects 
+Fe_Response_OS_Class=NaRV.omit(Fe_Response_OS_Class)
+Fe_Response_OS_Class$DD_response <- NA
+
+for (i in 1:nrow(Fe_Response_OS_Class)){
+  if ((Fe_Response_OS_Class$High_Dose_DNA_Damage_Fe[i] - Fe_Response_OS_Class$Low_Dose_DNA_Damage_Fe[i]) >= 0){
+    Fe_Response_OS_Class$DD_response[i] = "DD+"
+  }
+}
+Fe_Response_OS_Class=NaRV.omit(Fe_Response_OS_Class)
+Fe_Response_OS_Class$DD_response = NULL
+
+## Create two class OS+ and OS- 
+Fe_Response_OS_Class$OS_response <- NA
+
+for ( i in 1:nrow(Fe_Response_OS_Class)){
+  if ((Fe_Response_OS_Class$High_Dose_Oxidative_Stress_Fe[i] - Fe_Response_OS_Class$Low_Dose_Oxidative_Stress_Fe[i]) >= 0){
+    Fe_Response_OS_Class$OS_response[i] = "OS+"
+  }
+  if ((Fe_Response_OS_Class$High_Dose_Oxidative_Stress_Fe[i] - Fe_Response_OS_Class$Low_Dose_Oxidative_Stress_Fe[i]) < 0){
+    Fe_Response_OS_Class$OS_response[i] = "OS-"
+  }
+}
+
+#Plot 
+OS_Baseline_Fe_4h <- plot_ly(data = Fe_Response_OS_Class) %>% add_trace (x = ~ OS_response,
+                                                                        y = ~ avg_nfoci_mean,
+                                                                        type = "box", boxpoints = "all", 
+                                                                        color=~ OS_response, colors=c("darkgreen", "blue"))
+OS_Baseline_Fe_4h <- OS_Baseline_Fe_4h %>% layout(title="56Fe", yaxis=list(title="Baseline nb of foci/nucleus",range=c(0,2),zeroline = FALSE, titlefont = list(size = 25), tickfont = list(size = 20)), xaxis=list(title="Trend of mean CellROX with increasing dose", titlefont = list(size = 25), tickfont = list(size = 20),zeroline = FALSE))
+OS_Baseline_Fe_4h <- hide_legend(OS_Baseline_Fe_4h)
+print(OS_Baseline_Fe_4h)
+orca(OS_Baseline_Fe_4h, "Fig6_Fe.pdf")
+
+###  t.test & P values 
+test_Fe <- t.test(Fe_Response_OS_Class$avg_nfoci_mean ~ Fe_Response_OS_Class$OS_response)
+print(test_Fe )
+
+### Baseline median value for OS- and OS+  
+Fe_Response_OS_Class_neg <- Fe_Response_OS_Class
+Fe_Response_OS_Class_neg$OS_response[Fe_Response_OS_Class_neg$OS_response == "OS+"] <- NA
+Fe_Response_OS_Class_neg=NaRV.omit(Fe_Response_OS_Class_neg)
+median_OSneg = median(Fe_Response_OS_Class_neg$avg_nfoci_mean)
+print(median_OSneg)
+
+Fe_Response_OS_Class_pos <- Fe_Response_OS_Class
+Fe_Response_OS_Class_pos$OS_response[Fe_Response_OS_Class_pos$OS_response == "OS-"] <- NA
+Fe_Response_OS_Class_pos=NaRV.omit(Fe_Response_OS_Class_pos)
+median_OSpos = median(Fe_Response_OS_Class_pos$avg_nfoci_mean)
+print(median_OSpos)
+
+### Ar 
+Ar_Response_OS_Class = All_Data_4h_Normalized[, grepl("Sample_ID|Ar", colnames(All_Data_4h_Normalized))]
+Ar_Response_OS_Class$Low_Dose_Cell_Death_Ar=NULL
+Ar_Response_OS_Class$High_Dose_Cell_Death_Ar=NULL
+
+Ar_Response_OS_Class = merge(Ar_Response_OS_Class, Baseline_data, by="Sample_ID", all.x = TRUE)
+
+
+## Selection of DD+ subjects 
+Ar_Response_OS_Class=NaRV.omit(Ar_Response_OS_Class)
+Ar_Response_OS_Class$DD_response <- NA
+
+for (i in 1:nrow(Ar_Response_OS_Class)){
+  if ((Ar_Response_OS_Class$High_Dose_DNA_Damage_Ar[i] - Ar_Response_OS_Class$Low_Dose_DNA_Damage_Ar[i]) >= 0){
+    Ar_Response_OS_Class$DD_response[i] = "DD+"
+  }
+}
+Ar_Response_OS_Class=NaRV.omit(Ar_Response_OS_Class)
+Ar_Response_OS_Class$DD_response = NULL
+
+## Create two class OS+ and OS- 
+Ar_Response_OS_Class$OS_response <- NA
+
+for ( i in 1:nrow(Ar_Response_OS_Class)){
+  if ((Ar_Response_OS_Class$High_Dose_Oxidative_Stress_Ar[i] - Ar_Response_OS_Class$Low_Dose_Oxidative_Stress_Ar[i]) >= 0){
+    Ar_Response_OS_Class$OS_response[i] = "OS+"
+  }
+  if ((Ar_Response_OS_Class$High_Dose_Oxidative_Stress_Ar[i] - Ar_Response_OS_Class$Low_Dose_Oxidative_Stress_Ar[i]) < 0){
+    Ar_Response_OS_Class$OS_response[i] = "OS-"
+  }
+}
+
+#Plot 
+OS_Baseline_Ar_4h <- plot_ly(data = Ar_Response_OS_Class) %>% add_trace (x = ~ OS_response,
+                                                                        y = ~ avg_nfoci_mean,
+                                                                        type = "box", boxpoints = "all", 
+                                                                        color=~ OS_response, colors=c("darkgreen", "blue"))
+OS_Baseline_Ar_4h <- OS_Baseline_Ar_4h %>% layout(title="40Ar", yaxis=list(title="Baseline nb of foci/nucleus",range=c(0,2),zeroline = FALSE, titlefont = list(size = 25), tickfont = list(size = 20)), xaxis=list(title="Trend of mean CellROX with increasing dose", titlefont = list(size = 25), tickfont = list(size = 20),zeroline = FALSE))
+print(OS_Baseline_Ar_4h)
+OS_Baseline_Ar_4h <- hide_legend(OS_Baseline_Ar_4h)
+orca(OS_Baseline_Ar_4h, "Fig6_Ar.pdf")
+
+### Baseline median value for OS- and OS+  
+Ar_Response_OS_Class_neg <- Ar_Response_OS_Class
+Ar_Response_OS_Class_neg$OS_response[Ar_Response_OS_Class_neg$OS_response == "OS+"] <- NA
+Ar_Response_OS_Class_neg=NaRV.omit(Ar_Response_OS_Class_neg)
+median_OSneg = median(Ar_Response_OS_Class_neg$avg_nfoci_mean)
+print(median_OSneg)
+
+Ar_Response_OS_Class_pos <- Ar_Response_OS_Class
+Ar_Response_OS_Class_pos$OS_response[Ar_Response_OS_Class_pos$OS_response == "OS-"] <- NA
+Ar_Response_OS_Class_pos=NaRV.omit(Ar_Response_OS_Class_pos)
+median_OSpos = median(Ar_Response_OS_Class_pos$avg_nfoci_mean)
+print(median_OSpos)
+
+###  t.test & P values 
+test_Ar <- t.test(Ar_Response_OS_Class$avg_nfoci_mean ~ Ar_Response_OS_Class$OS_response)
+print(test_Ar)
+
+
+### Si 
+Si_Response_OS_Class = All_Data_4h_Normalized[, grepl("Sample_ID|Si", colnames(All_Data_4h_Normalized))]
+Si_Response_OS_Class$Low_Dose_Cell_Death_Si=NULL
+Si_Response_OS_Class$High_Dose_Cell_Death_Si=NULL
+
+Si_Response_OS_Class = merge(Si_Response_OS_Class, Baseline_data, by="Sample_ID", all.x = TRUE)
+
+
+## Selection of DD+ subjects 
+Si_Response_OS_Class=NaRV.omit(Si_Response_OS_Class)
+Si_Response_OS_Class$DD_response <- NA
+
+for (i in 1:nrow(Si_Response_OS_Class)){
+  if ((Si_Response_OS_Class$High_Dose_DNA_Damage_Si[i] - Si_Response_OS_Class$Low_Dose_DNA_Damage_Si[i]) >= 0){
+    Si_Response_OS_Class$DD_response[i] = "DD+"
+  }
+}
+Si_Response_OS_Class=NaRV.omit(Si_Response_OS_Class)
+Si_Response_OS_Class$DD_response = NULL
+
+## Create two class OS+ and OS- 
+Si_Response_OS_Class$OS_response <- NA
+
+for ( i in 1:nrow(Si_Response_OS_Class)){
+  if ((Si_Response_OS_Class$High_Dose_Oxidative_Stress_Si[i] - Si_Response_OS_Class$Low_Dose_Oxidative_Stress_Si[i]) >= 0){
+    Si_Response_OS_Class$OS_response[i] = "OS+"
+  }
+  if ((Si_Response_OS_Class$High_Dose_Oxidative_Stress_Si[i] - Si_Response_OS_Class$Low_Dose_Oxidative_Stress_Si[i]) < 0){
+    Si_Response_OS_Class$OS_response[i] = "OS-"
+  }
+}
+
+
+#Plot 
+OS_Baseline_Si_4h <- plot_ly(data = Si_Response_OS_Class) %>% add_trace (x = ~ OS_response,
+                                                                        y = ~ avg_nfoci_mean,
+                                                                        type = "box", boxpoints = "all", 
+                                                                        color=~ OS_response, colors=c("darkgreen", "blue"))
+OS_Baseline_Si_4h <- OS_Baseline_Si_4h %>% layout(title="28Si", yaxis=list(title="Baseline nb of foci/nucleus",range=c(0,2),zeroline = FALSE, titlefont = list(size = 25), tickfont = list(size = 20)), xaxis=list(title="Trend of mean CellROX with increasing dose", titlefont = list(size = 25), tickfont = list(size = 20),zeroline = FALSE))
+print(OS_Baseline_Si_4h)
+OS_Baseline_Si_4h <- hide_legend(OS_Baseline_Si_4h)
+orca(OS_Baseline_Si_4h, "Fig6_Si.pdf")
+
+### Baseline median value for OS- and OS+  
+Si_Response_OS_Class_neg <- Si_Response_OS_Class
+Si_Response_OS_Class_neg$OS_response[Si_Response_OS_Class_neg$OS_response == "OS+"] <- NA
+Si_Response_OS_Class_neg=NaRV.omit(Si_Response_OS_Class_neg)
+median_OSneg = median(Si_Response_OS_Class_neg$avg_nfoci_mean)
+print(median_OSneg)
+
+Si_Response_OS_Class_pos <- Si_Response_OS_Class
+Si_Response_OS_Class_pos$OS_response[Si_Response_OS_Class_pos$OS_response == "OS-"] <- NA
+Si_Response_OS_Class_pos=NaRV.omit(Si_Response_OS_Class_pos)
+median_OSpos = median(Si_Response_OS_Class_pos$avg_nfoci_mean)
+print(median_OSpos)
+
+###  t.test & P values 
+test_Si <- t.test(Si_Response_OS_Class$avg_nfoci_mean ~ Si_Response_OS_Class$OS_response)
+print(test_Si)
+
+### Gamma 
+Gamma_Response_OS_Class = All_Data_4h_Normalized[, grepl("Sample_ID|Gamma", colnames(All_Data_4h_Normalized))]
+Gamma_Response_OS_Class$Low_Dose_Cell_Death_Gamma=NULL
+Gamma_Response_OS_Class$High_Dose_Cell_Death_Gamma=NULL
+
+Gamma_Response_OS_Class = merge(Gamma_Response_OS_Class, Baseline_data, by="Sample_ID", all.x = TRUE)
+
+
+## Selection of DD+ subjects 
+Gamma_Response_OS_Class=NaRV.omit(Gamma_Response_OS_Class)
+Gamma_Response_OS_Class$DD_response <- NA
+
+for (i in 1:nrow(Gamma_Response_OS_Class)){
+  if ((Gamma_Response_OS_Class$High_Dose_DNA_Damage_Gamma[i] - Gamma_Response_OS_Class$Low_Dose_DNA_Damage_Gamma[i]) >= 0){
+    Gamma_Response_OS_Class$DD_response[i] = "DD+"
+  }
+}
+Gamma_Response_OS_Class=NaRV.omit(Gamma_Response_OS_Class)
+Gamma_Response_OS_Class$DD_response = NULL
+
+## Create two class OS+ and OS- 
+Gamma_Response_OS_Class$OS_response <- NA
+
+for ( i in 1:nrow(Gamma_Response_OS_Class)){
+  if ((Gamma_Response_OS_Class$High_Dose_Oxidative_Stress_Gamma[i] - Gamma_Response_OS_Class$Low_Dose_Oxidative_Stress_Gamma[i]) >= 0){
+    Gamma_Response_OS_Class$OS_response[i] = "OS+"
+  }
+  if ((Gamma_Response_OS_Class$High_Dose_Oxidative_Stress_Gamma[i] - Gamma_Response_OS_Class$Low_Dose_Oxidative_Stress_Gamma[i]) < 0){
+    Gamma_Response_OS_Class$OS_response[i] = "OS-"
+  }
+}
+
+
+#Plot 
+OS_Baseline_Gamma_4h <- plot_ly(data = Gamma_Response_OS_Class) %>% add_trace (x = ~ OS_response,
+                                                                        y = ~ avg_nfoci_mean,
+                                                                        type = "box", boxpoints = "all", 
+                                                                        color=~ OS_response, colors=c("darkgreen", "blue"))
+OS_Baseline_Gamma_4h <- OS_Baseline_Gamma_4h %>% layout(title="Gamma", yaxis=list(title="Baseline nb of foci/nucleus",range=c(0,2),zeroline = FALSE, titlefont = list(size = 25), tickfont = list(size = 20)), xaxis=list(title="Trend of mean CellROX with increasing dose", titlefont = list(size = 25), tickfont = list(size = 20),zeroline = FALSE))
+print(OS_Baseline_Gamma_4h)
+OS_Baseline_Gamma_4h <- hide_legend(OS_Baseline_Gamma_4h)
+orca(OS_Baseline_Gamma_4h, "Fig6_Gamma.pdf")
+
+### Baseline median value for OS- and OS+  
+Gamma_Response_OS_Class_neg <- Gamma_Response_OS_Class
+Gamma_Response_OS_Class_neg$OS_response[Gamma_Response_OS_Class_neg$OS_response == "OS+"] <- NA
+Gamma_Response_OS_Class_neg=NaRV.omit(Gamma_Response_OS_Class_neg)
+median_OSneg = median(Gamma_Response_OS_Class_neg$avg_nfoci_mean)
+print(median_OSneg)
+
+Gamma_Response_OS_Class_pos <- Gamma_Response_OS_Class
+Gamma_Response_OS_Class_pos$OS_response[Gamma_Response_OS_Class_pos$OS_response == "OS-"] <- NA
+Gamma_Response_OS_Class_pos=NaRV.omit(Gamma_Response_OS_Class_pos)
+median_OSpos = median(Gamma_Response_OS_Class_pos$avg_nfoci_mean)
+print(median_OSpos)
+
+###  t.test & P values 
+test_Gamma <- t.test(Gamma_Response_OS_Class$avg_nfoci_mean ~ Gamma_Response_OS_Class$OS_response)
+print(test_Gamma)
+
+```
+
