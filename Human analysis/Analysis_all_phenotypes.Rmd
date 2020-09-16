@@ -399,6 +399,6 @@ merge_metadata$Collection_Date = merge_metadata$Collection_Date.x
 cols_to_drop = c('Run_set_well.x','Run_set_well.y','Age.x','Age.y','Gender.x', 'Gender.y', 'BMI.x', 'BMI.y','BMI_group.x','BMI_group.y','CMV.x','CMV.y','Collection_Date.x','Collection_Date.y')
 merge_metadata = merge_metadata[, !colnames(merge_metadata) %in% cols_to_drop]
 
-write.csv(merge_metadata,"Data_all_Pheno_all_plate.csv")
+write.csv(merge_metadata,"Data_All_Phenotypes_Raw.csv")
 
 ```
