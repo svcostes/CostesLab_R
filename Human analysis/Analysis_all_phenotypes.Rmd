@@ -346,11 +346,13 @@ baseline_w_plate_meta1 = merge(baseline_table, plate_meta, by.x = 'Plate', by.y 
 baseline_w_plate_meta = merge(baseline_w_plate_meta1, subject_meta, by.x = 'Plate_well', by.y = 'Plate_Well', all.x = TRUE, all.y = TRUE)
 colnames(baseline_w_plate_meta)[colnames(baseline_w_plate_meta)=="Plate.x"]<-"Plate"
 colnames(baseline_w_plate_meta)[colnames(baseline_w_plate_meta)=="Well.x"]<-"Well"
+#write.csv(baseline_w_plate_meta,"Baseline_Raw_Data_No_Threshold.csv")
 
 low_bar = 50
 baseline_filt = baseline_w_plate_meta[baseline_w_plate_meta$num_nuc > (low_bar-1),]
 
 baseline_filt_2 = baseline_filt[baseline_filt$avg_nfoci != 0,]
+#write.csv(baseline_filt_2,"all_baseline_raw_filt50_06302020.csv")
 
 
 subject_meta_avg = read.csv('Baseline_metadata_avg.csv', sep = ",", header = TRUE)
