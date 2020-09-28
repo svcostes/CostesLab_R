@@ -1,0 +1,649 @@
+---
+Analysis data from BNL16 run, including Silicon data (impact of confluence)
+June 2020
+---
+
+```{r}
+require('lattice')
+require('ggplot2')
+require('polynom')
+require('corrplot')
+require('ggpubr')
+require('plyr')
+require('nlme')
+require('plyr')
+require('Hmisc')
+require('chngpt')
+require('nlme')
+theme_set(theme_grey(base_size = 12))
+```
+
+```{r}
+# Defines data files: removing 0 Gy Xray control 294 and 301 (24 and 4 hr respectively)
+list_group = c(seq(206,273),seq(278,293), seq(295,300)) 
+```
+
+```{r}
+# Defines experimental irradiation parameters
+let_list = c('Si 350 MeV/n','Ar 350 MeV/n','Fe 600 MeV/n','X-ray')
+num_let = length(let_list)
+let_list_sub = c('Si','Ar','Fe','Xray')
+let_val = c(63,104,170,1) # Set let of X-ray to 1
+low_dose = c(0.11,0.18,0.3,0.1)
+high_dose = c(0.3,0.5,0.82,1)
+xray_dose = c(0.1,1,4)
+num_sample = length(list_group)
+strain_list = c('B6C3','BALBC','C3H','C57','CBA','CC002','CC011','CC013','CC019','CC032','CC037','CC040','CC042','CC051','CC061')
+```
+
+```{r}
+# Reads data
+
+setwd(getwd())
+
+# Reads animal ID with information on collection date, strain and gender
+animal_ID <- read.table('IDvsSpecies.csv',sep=",",header=TRUE)
+animal_ID$Strain = toupper(animal_ID$Strain) # Turn all ID and strain to upper case in case of typo
+animal_ID$Exp_ID = gsub(" ","",toupper(animal_ID$Exp_ID),fixed = TRUE) # Make all identifier upper case and w/o space
+strain_list = unique(animal_ID$Strain)
+num_strain = length(strain_list)
+UserID_list = unique(animal_ID$Exp_ID)
+num_UserID = length(UserID_list)
+
+# Reads first file
+foci <- read.table(paste('average_well/average_well_P',list_group[1],'.txt',sep=""),sep="\t",header=TRUE)
+foci$UserID = gsub(" ","",toupper(foci$UserID),fixed = TRUE) # Make all identifier upper case and w/o space
+foci$duplicate = 1
+foci <- merge(foci, animal_ID, by.x='UserID', by.y='Exp_ID')
+
+# Loop over all the other files. If a duplicate file is found, mark it with duplicate string Dup2. If not mark it with Dup1
+flag_dup = 0
+for(i_sample in 2:num_sample) {
+  filename = paste('average_well/average_well_P',list_group[i_sample],'.txt',sep="")
+  tmp <- read.table(filename,sep="\t",header=TRUE)
+  tmp$UserID = gsub(" ","",toupper(tmp$UserID), fixed = TRUE) # Make all identifier upper case and w/o space
+  duplicate_ind = as.character(foci$Radiation.Type)==as.character(tmp$Radiation.Type[1]) & 
+    foci$Radiation == tmp$Radiation[1] &
+    as.character(tmp$Radiation.Time[1]) == as.character(foci$Radiation.Time)
+  if (sum(duplicate_ind) >0) { # found a duplicate experiment
+    tmp2 = merge(foci[duplicate_ind,],tmp,by.x='UserID',by.y='UserID')
+    if (flag_dup>0) {
+      foci_dup = rbind(foci_dup,tmp2)
+    } else {
+      foci_dup = tmp2
+      flag_dup = 1
+    }
+    tmp$duplicate = 2
+  } else {
+    tmp$duplicate = 1
+  }
+  tmp <- merge(tmp, animal_ID, by.x='UserID', by.y='Exp_ID')
+  foci = rbind(foci, tmp)
+}
+
+# Convert hour factor in actual number. hour is the time post IR in hour
+foci$hour = as.numeric(strsplit(as.character(foci$Radiation.Time),"hr"))
+# Make sure dose is considered numeric
+foci$Radiation = as.numeric(foci$Radiation)
+
+
+# Label high and low dose level for each experiment
+
+foci$dose_level = 'unknown' # Initialization
+foci$fluence = 0 # Initialization
+foci$let = 1 # Initialization
+
+for (i_let in 1:num_let) {
+  keep_ind = foci$Radiation.Type == let_list[i_let]
+  foci[keep_ind,'let'] = let_val[i_let]
+  keep_ind = foci$Radiation == 0 & foci$Radiation.Type == let_list[i_let]
+  foci[keep_ind,'dose_level'] = 'Control'
+  keep_ind = foci$Radiation <= low_dose[i_let] & foci$Radiation >0 & foci$Radiation.Type == let_list[i_let]
+  foci[keep_ind,'dose_level'] = 'Low Dose'
+  foci[keep_ind,'fluence'] = 1.1;
+  keep_ind = foci$Radiation >= high_dose[i_let] & foci$Radiation.Type == let_list[i_let]
+  foci[keep_ind,'dose_level']= 'High Dose'
+  foci[keep_ind,'fluence'] = 3;
+}
+keep_ind = foci$Radiation == 0.41 # this case is only true for Si, it was a mistake
+foci[keep_ind,'fluence'] = 4.1;
+
+# Make sure order of dose level goes from low to high
+foci$dose_level = factor(foci$dose_level,c('Control','Low Dose','High Dose'))
+
+# Set fluence equals to dose for X-ray
+keep_ind = foci$Radiation.Type == let_list[4] & foci$Radiation > 0
+foci[keep_ind,'fluence'] = foci[keep_ind,'Radiation']
+```
+
+```{r Summary graphs}
+# Plots a summary graph for each dose level
+
+dose_level = 'Control'
+keep_ind = foci$Radiation.Type != "Si 350 MeV/n" & foci$dose_level == dose_level
+p<- ggplot(foci[keep_ind,], aes(x=plate, y=avg_nfoci, fill=Radiation.Type )) + 
+  geom_bar(stat = "summary", fun.y = "mean" , width=.8, position = "dodge")  +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  facet_grid(hour~.) +
+  ggtitle(dose_level) 
+print(p)
+
+dose_level = 'Low Dose'
+keep_ind = foci$Radiation.Type != "Si 350 MeV/n" & foci$dose_level == dose_level
+p<- ggplot(foci[keep_ind,], aes(x=plate, y=avg_nfoci, fill=Radiation.Type )) + 
+  geom_bar(stat = "summary", fun.y = "mean" , width=.8, position = "dodge")  +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  facet_grid(hour~.) +
+  ggtitle(dose_level) 
+print(p)
+
+dose_level = 'High Dose'
+keep_ind = foci$Radiation.Type != "Si 350 MeV/n" & foci$dose_level == dose_level
+p<- ggplot(foci[keep_ind,], aes(x=plate, y=avg_nfoci, fill=Radiation.Type )) + 
+  geom_bar(stat = "summary", fun.y = "mean" , width=.8, position = "dodge")  +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  facet_grid(hour~.) +
+  ggtitle(dose_level) 
+print(p)
+```
+
+```{r}
+# Correct for outliers
+
+# P289 4Gy 48 hr is abnormally high compared to 24 hr - scale down to match duplicate average
+keep_ind = foci$plate=='P289' # 1.62 x higher than its duplicate P290
+foci[keep_ind,]$avg_nfoci = foci[keep_ind,]$avg_nfoci/1.62
+foci[keep_ind,]$avg_foci_no_outl = foci[keep_ind,]$avg_foci_no_outl/1.62
+
+# P240 Ar 48h CC013 Male in position B6 is particularly high - remove this outlier
+keep_ind = !(foci$plate=='P240' & foci$Strain == 'CC013' & foci$Gender == "MALE" & foci$Position == "B6")
+foci <- foci[keep_ind,]
+```
+
+```{r}
+# Remove outliers:
+
+keep_ind = !((foci$UserID == "BALBCF" & foci$let == 170)| 
+               (foci$UserID == "BALBCF2" & foci$let == 170)|
+               (foci$UserID == "BALBCF2" & foci$let == 1)|
+               (foci$UserID == "BALBCF2" & foci$let == 170)|
+               (foci$UserID == "BALBCM3" & foci$let == 170)|
+               (foci$UserID == "BALBCM1" & foci$let == 170)|
+               (foci$UserID == "BALBCM2" & foci$let == 170)|
+               (foci$UserID == "C57BLF3" & foci$let == 170)|
+               (foci$UserID == "CBAF3" & foci$let == 104)|
+               (foci$UserID == "247CC" & foci$let == 104)|
+               (foci$UserID == "927CC" & foci$let == 104)|
+               (foci$UserID == "258CC" & foci$let == 104))
+
+foci_filt = foci[keep_ind,]
+foci = foci_filt
+```
+
+```{r}
+# Average number of nuclei for X-ray 0Gy 48h = reference of 100% confluence
+keep_ind = foci$Radiation.Type == 'X-ray' & foci$Radiation.Time == '48 hr' & foci$Radiation == 0
+Xray_48h_0Gy = foci[keep_ind,]
+num_nuc_confluence = mean(Xray_48h_0Gy$num_nuc)
+```
+
+```{r}
+# Merge all doses at same confluence and time point and compute t test for intervals of same confluence
+
+foci_temp = foci
+xray_hour = c(4,24,48)
+let_hour = c(4,8,24,48)
+n_quant = 16 # number of intervals for Confluence (max possible to have enough points = 17 intervals)
+
+# Average duplicates
+foci_temp <- ddply(foci_temp, c("UserID", "Radiation","Radiation.Type","hour","let","fluence","Gender","Strain"), summarise,
+                              nfoci    = mean(avg_nfoci),
+                              count = mean(num_nuc))
+
+# Create a dataframe per irradiation quality and timepoint
+
+foci_all <- data.frame(UserID=factor(),nfoci_dose0=factor(),Confluence=factor(),Confluence_int=factor(),nfoci_dose=factor(),Radiation=factor(),pvalue=factor())
+
+for (i_let in 1:num_let){
+  if (let_val[i_let] == 1){
+    max_hour = length(xray_hour)
+    hour_list = xray_hour
+  }
+  else {
+    max_hour = length(let_hour)
+    hour_list = let_hour
+  }
+    for (i_hour in 1:max_hour){
+      keep_ind = foci_temp$let == let_val[i_let] & foci_temp$Radiation == 0 & foci_temp$hour == hour_list[i_hour]
+      foci_0 =  foci_temp[keep_ind,]
+      colnames(foci_0) <- paste(colnames(foci_0),"dose0",sep="_")
+      foci_0$Confluence = (foci_0$count_dose0 / num_nuc_confluence)*100
+      temp = foci_0$Confluence
+      foci_0$Confluence_int <- cut2(temp,g=n_quant) # creates n_quant confluence intervals of same number of samples
+      list_confluence_int = unique(foci_0$Confluence_int)
+      for (i in 1: length(list_confluence_int)){
+        tmp <- foci_0[foci_0$Confluence_int==list_confluence_int[i],]
+        tmp$Confluence_width <- max(tmp$Confluence)-min(tmp$Confluence)
+        foci_0 = merge(foci_0,tmp, all=TRUE)
+      }
+      foci_0 = na.omit(foci_0)
+      keep_ind = foci_temp$let == let_val[i_let] & foci_temp$Radiation == low_dose[i_let] & foci_temp$hour == hour_list[i_hour]
+      foci_1 =  foci_temp[keep_ind,]
+      colnames(foci_1) <- paste(colnames(foci_1),"dose1",sep="_")
+      
+      high_rad = high_dose[i_let]
+      if (let_val[i_let]==63 & hour_list[i_hour] == 24){high_rad = 0.41} # For Si at 24h, 0.41Gy instead of 0.3Gy (mistake)
+      keep_ind = foci_temp$let == let_val[i_let] & foci_temp$Radiation == high_rad & foci_temp$hour == hour_list[i_hour]
+      foci_2 =  foci_temp[keep_ind,]
+      colnames(foci_2) <- paste(colnames(foci_2),"dose2",sep="_")
+      
+      foci_comb1 = merge(foci_0,foci_1,by.x="UserID_dose0",by.y="UserID_dose1")
+      foci_comb2 = merge(foci_0,foci_2,by.x="UserID_dose0",by.y="UserID_dose2")
+      
+      col_trunc1 = c("UserID_dose0", "Confluence", "Confluence_int", "nfoci_dose0", "nfoci_dose1","hour_dose0","let_dose0","Strain_dose0","Confluence_width")
+      foci_comb1 = foci_comb1[,colnames(foci_comb1) %in% col_trunc1]
+      colnames(foci_comb1)[colnames(foci_comb1) == "UserID_dose0"] <- "UserID"
+      colnames(foci_comb1)[colnames(foci_comb1) == "nfoci_dose1"] <- "nfoci_dose"
+      colnames(foci_comb1)[colnames(foci_comb1) == "hour_dose0"] <- "hour"
+      colnames(foci_comb1)[colnames(foci_comb1) == "let_dose0"] <- "let"
+      colnames(foci_comb1)[colnames(foci_comb1) == "Strain_dose0"] <- "Strain"
+      foci_comb1$Radiation = low_dose[i_let]
+      
+      col_trunc2 = c("UserID_dose0", "Confluence", "Confluence_int", "nfoci_dose0", "nfoci_dose2","hour_dose0","let_dose0","Strain_dose0","Confluence_width")
+      foci_comb2 = foci_comb2[,colnames(foci_comb2) %in% col_trunc2]
+      colnames(foci_comb2)[colnames(foci_comb2) == "UserID_dose0"] <- "UserID"
+      colnames(foci_comb2)[colnames(foci_comb2) == "nfoci_dose2"] <- "nfoci_dose"
+      colnames(foci_comb2)[colnames(foci_comb2) == "hour_dose0"] <- "hour"
+      colnames(foci_comb2)[colnames(foci_comb2) == "let_dose0"] <- "let"
+      colnames(foci_comb2)[colnames(foci_comb2) == "Strain_dose0"] <- "Strain"
+      foci_comb2$Radiation = high_rad
+
+      Interval_list <- unique(foci_comb1$Confluence_int)
+      foci_comb1$pvalue <- NA
+      foci_comb2$pvalue <- NA
+      
+      for (i_int in 1:n_quant){ # For each confluence interval, computes p-value between dose 0 and dose 1 (pvalue1), and between dose 0 and dose 2 (pvalue2)
+        keep_ind1 = foci_comb1$Confluence_int == Interval_list[i_int]
+        keep_ind2 = foci_comb2$Confluence_int == Interval_list[i_int]
+        foci_comb_int1 = foci_comb1[keep_ind1,]
+        foci_comb_int2 = foci_comb2[keep_ind2,]
+        ttest1 = t.test(foci_comb_int1$nfoci_dose0,foci_comb_int1$nfoci_dose, paired = TRUE)
+        ttest2 = t.test(foci_comb_int2$nfoci_dose0,foci_comb_int2$nfoci_dose, paired = TRUE)
+        p1 = ttest1$p.value
+        p2 = ttest2$p.value
+        foci_comb1[foci_comb1$Confluence_int == Interval_list[i_int],]$pvalue = p1
+        foci_comb2[foci_comb2$Confluence_int == Interval_list[i_int],]$pvalue = p2
+      }
+      foci_comb <- rbind(foci_comb1,foci_comb2)
+      foci_all <- rbind(foci_all, foci_comb)
+    }
+}
+
+# Keep only points with significance between the two doses
+keep_ind = foci_all$pvalue < 0.05
+foci_sign <- foci_all[keep_ind,] 
+
+# Separate time points
+keep_ind = foci_all$hour == 4
+foci_all_4h <- foci_all[keep_ind,]
+keep_ind = foci_all_4h$Radiation == 0.11 | foci_all_4h$Radiation == 0.18 | foci_all_4h$Radiation == 0.3 | foci_all_4h$Radiation == 0.5
+foci_all_4h <- foci_all_4h[keep_ind,]
+
+keep_ind = foci_all_4h$Confluence > 40 & foci_all_4h$Confluence < 60
+foci_all_4h_0_LC <- ddply(foci_all_4h[keep_ind,], c("UserID"), summarise,
+                              nfoci_0 = mean(nfoci_dose0))
+
+keep_ind = foci_all_4h$Confluence > 60 & foci_all_4h$Confluence < 100
+foci_all_4h_0_HC <- ddply(foci_all_4h[keep_ind,], c("UserID"), summarise,
+                              nfoci_0 = mean(nfoci_dose0))
+
+#keep_ind = foci_all_4h$Radiation == 0.11 & foci_all_4h$Confluence > 40 & foci_all_4h$Confluence < 60
+#length(keep_ind[keep_ind== TRUE])
+
+#---------------------------------------------------------------------
+keep_ind = foci_all$hour == 8
+foci_all_8h <- foci_all[keep_ind,]
+keep_ind = foci_all_8h$Radiation == 0.11 | foci_all_8h$Radiation == 0.18 | foci_all_8h$Radiation == 0.3 | foci_all_8h$Radiation == 0.5
+foci_all_8h <- foci_all_8h[keep_ind,]
+
+keep_ind = foci_all_8h$Confluence > 40 & foci_all_8h$Confluence < 60
+foci_all_8h_0_LC <- ddply(foci_all_8h[keep_ind,], c("UserID"), summarise,
+                              nfoci_0 = mean(nfoci_dose0))
+
+keep_ind = foci_all_8h$Confluence > 60 & foci_all_8h$Confluence < 100
+foci_all_8h_0_HC <- ddply(foci_all_8h[keep_ind,], c("UserID"), summarise,
+                              nfoci_0 = mean(nfoci_dose0))
+
+#---------------------------------------------------------------------
+keep_ind = foci_all$hour == 24
+foci_all_24h <- foci_all[keep_ind,]
+keep_ind = foci_all_24h$Radiation == 0.11 | foci_all_24h$Radiation == 0.18 | foci_all_24h$Radiation == 0.41 | foci_all_24h$Radiation == 0.5
+foci_all_24h <- foci_all_24h[keep_ind,]
+
+keep_ind = foci_all_24h$Confluence > 40 & foci_all_24h$Confluence < 60
+foci_all_24h_0_LC <- ddply(foci_all_24h[keep_ind,], c("UserID"), summarise,
+                              nfoci_0 = mean(nfoci_dose0))
+
+keep_ind = foci_all_24h$Confluence > 60 & foci_all_24h$Confluence < 100
+foci_all_24h_0_HC <- ddply(foci_all_24h[keep_ind,], c("UserID"), summarise,
+                              nfoci_0 = mean(nfoci_dose0))
+
+#---------------------------------------------------------------------
+keep_ind = foci_all$hour == 48
+foci_all_48h <- foci_all[keep_ind,]
+```
+
+```{r}
+# Minimum number of cells required for significant dose response
+TP <- c(4,8,24)
+dose1 <- c(0.11,0.18,0.3,0.5)
+dose2 <- c(0.11,0.18,0.41,0.5)
+int <- c(0,10,20,30,40,50,60,70,80,90,100)
+
+for (t in 1:3){
+  if (t != 3){
+    dose = dose1
+  }
+  else {dose = dose2}
+  keep_ind = foci_all$hour == TP[t] & foci_all$Radiation %in% dose
+  data <- foci_all[keep_ind,]
+  data$Group <- 0
+  data$N <- 0
+  data$mean <- 0
+  data$sd <- 0
+  data$mean0 <- 0
+  data$sd0 <- 0
+  
+  for (i in 1:length(int)){
+    keep_ind = data$Confluence > int[i] & data$Confluence <= (int[i]+10)
+    data[keep_ind,]$Group = i
+    for (j in 1:length(dose)){
+      keep_ind = data$Group == i & data$Radiation == dose[j]
+      if (any(keep_ind,na.rm=TRUE)){
+        data_tmp <- data[keep_ind,][!is.na(data[keep_ind,]$UserID),]
+        N_temp = nrow(data_tmp)
+        data[keep_ind,][!is.na(data[keep_ind,]$UserID),]$N <- rep(N_temp, N_temp)
+      }
+    }
+  }
+  data[data$Group == length(int),]$Group = length(int)-1
+  data_temp <- ddply(data, c("Group","Radiation"), summarise,
+                              mean = mean(nfoci_dose, na.rm=TRUE),
+                              sd   = sd(nfoci_dose, na.rm=TRUE),
+                              mean0 = mean(nfoci_dose0, na.rm=TRUE),
+                              sd0   = sd(nfoci_dose0, na.rm=TRUE))
+  data <- merge(data,data_temp,by=c("Group","Radiation"),all.x=TRUE)
+  col_to_rmv <- c("mean.x","sd.x","mean0.x","sd0.x")
+  data <- data[,!colnames(data) %in% col_to_rmv]
+  colnames(data)[colnames(data) == "mean.y"] <- "mean"
+  colnames(data)[colnames(data) == "sd.y"] <- "sd"
+  colnames(data)[colnames(data) == "mean0.y"] <- "mean0"
+  colnames(data)[colnames(data) == "sd0.y"] <- "sd0"
+  assign(paste("data", TP[t], "h", sep = "_"), data)
+}
+
+data_0_4_h <- ddply(data_4_h, c("Group"), summarise,
+                              mean = mean(mean0, na.rm=TRUE),
+                              sd   = max(sd0, na.rm=TRUE))
+data_0_4_h$Radiation <- 0
+data_4_h <- rbind.fill(data_4_h,data_0_4_h)
+
+data_0_8_h <- ddply(data_8_h, c("Group"), summarise,
+                              mean = mean(mean0, na.rm=TRUE),
+                              sd   = max(sd0, na.rm=TRUE))
+data_0_8_h$Radiation <- 0
+data_8_h <- rbind.fill(data_8_h,data_0_8_h)
+
+data_0_24_h <- ddply(data_24_h, c("Group"), summarise,
+                              mean = mean(mean0, na.rm=TRUE),
+                              sd   = max(sd0, na.rm=TRUE))
+data_0_24_h$Radiation <- 0
+data_24_h <- rbind.fill(data_24_h,data_0_24_h)
+
+pd = position_dodge(.05)
+p_4h <- ggplot(data_4_h, aes(x=Radiation, y=mean, color=factor(Group))) + 
+  geom_point(position = pd) +
+  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.01, size=0.7, position = pd) + theme_bw() + xlab("Dose (Gy)") + ylab("Foci/cell") + labs(col = "Confluence Group") + ggtitle("4h timepoint") + theme(axis.text.x = element_text(size = 20, face = "bold")) + theme(axis.text.y = element_text(size = 20, face = "bold")) + theme(axis.title.x = element_text(size = 20, face = "bold")) + theme(axis.title.y = element_text(size = 20, face = "bold"))  + theme(legend.title = element_text(size = 16)) + theme(legend.text = element_text(size = 16)) + theme(plot.title = element_text(size = 20, face = "bold")) + scale_x_continuous(breaks=seq(0,0.5,0.1))
+p_4h 
+
+pd = position_dodge(.05)
+p_8h <- ggplot(data_8_h, aes(x=Radiation, y=mean, color=factor(Group))) + 
+  geom_point(position = pd) +
+  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.01, size=0.7, position = pd) + theme_bw() + xlab("Dose (Gy)") + ylab("Foci/cell") + labs(col = "Confluence Group") + ggtitle("8h timepoint") + theme(axis.text.x = element_text(size = 20, face = "bold")) + theme(axis.text.y = element_text(size = 20, face = "bold")) + theme(axis.title.x = element_text(size = 20, face = "bold")) + theme(axis.title.y = element_text(size = 20, face = "bold"))  + theme(legend.title = element_text(size = 16)) + theme(legend.text = element_text(size = 16)) + theme(plot.title = element_text(size = 20, face = "bold")) + scale_x_continuous(breaks=seq(0,0.5,0.1))
+p_8h
+
+pd = position_dodge(.05)
+p_24h <- ggplot(data_24_h, aes(x=Radiation, y=mean, color=factor(Group))) + 
+  geom_point(position = pd) +
+  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.01, size=0.7, position = pd) + theme_bw() + xlab("Dose (Gy)") + ylab("Foci/cell") + labs(col = "Confluence Group") + ggtitle("24h timepoint") + theme(axis.text.x = element_text(size = 16)) + theme(axis.text.y = element_text(size = 16)) + theme(axis.title.x = element_text(size = 16)) + theme(axis.title.y = element_text(size = 16))  + theme(legend.title = element_text(size = 16)) + theme(legend.text = element_text(size = 16)) + theme(plot.title = element_text(size = 20)) + ylim(0,8)
+p_24h
+
+#--------------------------------------------------------------------------------------------------------------------------
+data_4_h_clean <- data_4_h
+keep_ind = data_4_h_clean$Radiation != 0 & data_4_h_clean$N < 10
+data_4_h_clean[keep_ind,]$mean <- NA
+coef_temp <- data.frame(Group=factor(0),intercept=factor(0),slope=factor(0))
+headers<-c("Group","intercept","slope")
+coef_all <- as.data.frame(matrix(,ncol=3,nrow=0))
+names(coef_all)<-headers
+
+for (i_group in 1:10){
+    keep_ind = data_4_h_clean$Group == i_group
+    fit <- lm(formula = mean ~ Radiation, data = data_4_h_clean[keep_ind,])
+    coef_temp$Group = as.factor(i_group)
+    coef_temp$intercept = as.factor(coef(fit)[1])
+    coef_temp$slope = as.factor(coef(fit)[2])
+    coef_all <- rbind(coef_all,coef_temp)
+}
+coef_4h <- coef_all
+
+#--------------------------------------------------------------------------------------------------------------------------
+data_8_h_clean <- data_8_h
+keep_ind = data_8_h_clean$Radiation != 0 & data_8_h_clean$N < 10
+data_8_h_clean[keep_ind,]$mean <- NA
+coef_temp <- data.frame(Group=factor(0),intercept=factor(0),slope=factor(0))
+headers<-c("Group","intercept","slope")
+coef_all <- as.data.frame(matrix(,ncol=3,nrow=0))
+names(coef_all)<-headers
+
+for (i_group in 1:10){
+    keep_ind = data_8_h_clean$Group == i_group
+    fit <- lm(formula = mean ~ Radiation, data = data_8_h_clean[keep_ind,])
+    coef_temp$Group = as.factor(i_group)
+    coef_temp$intercept = as.factor(coef(fit)[1])
+    coef_temp$slope = as.factor(coef(fit)[2])
+    coef_all <- rbind(coef_all,coef_temp)
+}
+coef_8h <- coef_all
+
+#--------------------------------------------------------------------------------------------------------------------------
+data_24_h_clean <- data_24_h
+keep_ind = data_24_h_clean$Radiation != 0 & data_24_h_clean$N < 10
+data_24_h_clean[keep_ind,]$mean <- NA
+coef_temp <- data.frame(Group=factor(0),intercept=factor(0),slope=factor(0))
+headers<-c("Group","intercept","slope")
+coef_all <- as.data.frame(matrix(,ncol=3,nrow=0))
+names(coef_all)<-headers
+
+for (i_group in 1:10){
+    keep_ind = data_24_h_clean$Group == i_group
+    fit <- lm(formula = mean ~ Radiation, data = data_24_h_clean[keep_ind,])
+    coef_temp$Group = as.factor(i_group)
+    coef_temp$intercept = as.factor(coef(fit)[1])
+    coef_temp$slope = as.factor(coef(fit)[2])
+    coef_all <- rbind(coef_all,coef_temp)
+}
+coef_24h <- coef_all
+```
+
+```{r}
+# Apply our model per confluence interval
+
+TP <- c(4,8,24)
+dose1 <- c(0.11,0.18,0.3,0.5)
+dose2 <- c(0.11,0.18,0.41,0.5)
+int <- c(0,10,20,30,40,50,60,70,80,90,100)
+muD <- c(5.25,2.19,1.01) # muD values for t=4h,8h,24h respectively for our model: mu = mu0 + muD * D
+tfactor = 2.355 #for N = 3 replicates
+
+for (t in 1:3){
+  if (t != 3){
+    dose = dose1
+  }
+  else {dose = dose2}
+  keep_ind = foci_all$hour == TP[t] & foci_all$Radiation %in% dose
+  data2 <- foci_all[keep_ind,]
+  data2$Group <- 0
+  data2$num_cell <- 0
+  data2$mean <- 0
+  data2$sd <- 0
+  
+  for (i in 1:length(int)){
+    keep_ind = data2$Confluence > int[i] & data2$Confluence <= (int[i]+10)
+    data2[keep_ind,]$Group = i
+  }
+  data2[data2$Group == length(int),]$Group = length(int)-1 # Any data2 with confluence > 100% is counted in the group of 90-100%
+  
+  for (i in 1:length(dose)){
+    keep_ind = data2$Radiation == dose[i]
+    data2[keep_ind,]$num_cell = tfactor^2*(((2*data2[keep_ind,]$nfoci_dose0)/(muD[t]*data2[keep_ind,]$Radiation))*((data2[keep_ind,]$nfoci_dose0/(muD[t]*data2[keep_ind,]$Radiation))+1)+1) # Minimum number of cells to reach significance based on our model
+  }
+  data2_temp <- ddply(data2, c("Group","Radiation"), summarise,
+                              mean = mean(num_cell, na.rm=TRUE),
+                              sd   = sd(num_cell, na.rm=TRUE))
+  data2 <- merge(data2,data2_temp,by=c("Group","Radiation"),all.x=TRUE)
+  col_to_rmv <- c("mean.x","sd.x")
+  data2 <- data2[,!colnames(data2) %in% col_to_rmv]
+  colnames(data2)[colnames(data2) == "mean.y"] <- "mean"
+  colnames(data2)[colnames(data2) == "sd.y"] <- "sd"
+  assign(paste("data2", TP[t], "h", sep = "_"), data2)
+}
+
+pd = position_dodge(.1)
+keep_ind = !(data2_4_h$Radiation == 0.11 & data2_4_h$Group == 9)
+p_4h <- ggplot(data2_4_h[keep_ind,], aes(x=Group, y=mean, color=factor(Radiation))) + 
+  geom_point(position = pd) +
+  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.01, size=0.7, position = pd) + theme_bw() + xlab("Confluence group") + ylab("Minimum number of cells") + labs(col = "Dose (Gy)") + ggtitle("4h timepoint") + theme(axis.text.x = element_text(size = 16)) + theme(axis.text.y = element_text(size = 16)) + theme(axis.title.x = element_text(size = 16)) + theme(axis.title.y = element_text(size = 16))  + theme(legend.title = element_text(size = 16)) + theme(legend.text = element_text(size = 16)) + theme(plot.title = element_text(size = 20)) 
+p_4h 
+
+pd = position_dodge(.1)
+keep_ind = !(data2_8_h$Radiation == 0.11 & data2_8_h$Group == 9)
+p_8h <- ggplot(data2_8_h[keep_ind,], aes(x=Group, y=mean, color=factor(Radiation))) + 
+  geom_point(position = pd) +
+  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.01, size=0.7, position = pd) + theme_bw() + xlab("Confluence group") + ylab("Minimum number of cells") + labs(col = "Dose (Gy)") + ggtitle("8h timepoint") + theme(axis.text.x = element_text(size = 16)) + theme(axis.text.y = element_text(size = 16)) + theme(axis.title.x = element_text(size = 16)) + theme(axis.title.y = element_text(size = 16))  + theme(legend.title = element_text(size = 16)) + theme(legend.text = element_text(size = 16)) + theme(plot.title = element_text(size = 20)) 
+p_8h
+
+pd = position_dodge(.1)
+keep_ind = !(data2_24_h$Radiation == 0.11 & data2_24_h$Group == 9)
+p_24h <- ggplot(data2_24_h[keep_ind,], aes(x=Group, y=mean, color=factor(Radiation))) + 
+  geom_point(position = pd) +
+  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.01, size=0.7, position = pd) + theme_bw() + xlab("Confluence group") + ylab("Minimum number of cells") + labs(col = "Dose (Gy)") + ggtitle("24h timepoint") + theme(axis.text.x = element_text(size = 16)) + theme(axis.text.y = element_text(size = 16)) + theme(axis.title.x = element_text(size = 16)) + theme(axis.title.y = element_text(size = 16))  + theme(legend.title = element_text(size = 16)) + theme(legend.text = element_text(size = 16)) + theme(plot.title = element_text(size = 20)) + scale_y_continuous(trans='log10')
+p_24h 
+```
+```{r}
+# Plot all cummulative p values based on LET / dose / time post-irradiation / number of quantiles
+
+let = c(63,104)
+hour=c(4,8,24,48)
+low_dose=c(0.11,0.18)
+high_dose=c(0.3,0.5)
+
+for (i_let in 1:2){
+  for (i_hour in 1:4){
+    HD=high_dose[i_let]
+    if (let[i_let]==63 & hour[i_hour]==24){HD = 0.41}
+    keep_ind=foci_all$let==let[i_let] & foci_all$hour==hour[i_hour]
+    data_frame <- foci_all[keep_ind,]
+
+    keep_ind = data_frame$Radiation == low_dose[i_let]
+    data_frame_LD <- data_frame[keep_ind,]
+    col_to_keep <- c("Confluence_width","Confluence_int","pvalue")
+    data_frame_LD <- unique(data_frame_LD[,colnames(data_frame_LD) %in% col_to_keep])
+    data_frame_LD <- data_frame_LD[order(data_frame_LD$Confluence_int),]
+    rmv = data_frame_LD$Confluence_int[1]
+    if (let[i_let]==104 & hour[i_hour]==4){data_frame_LD <- data_frame_LD[data_frame_LD$Confluence_int != data_frame_LD$Confluence_int[1],]}
+    if (let[i_let]==63 & hour[i_hour]==8){data_frame_LD <- data_frame_LD[data_frame_LD$Confluence_int != data_frame_LD$Confluence_int[1],]}
+    if (let[i_let]==63 & hour[i_hour]==4){data_frame_LD <- data_frame_LD[data_frame_LD$Confluence_int != data_frame_LD$Confluence_int[1],]}
+    if (let[i_let]==104 & hour[i_hour]==8){data_frame_LD <- data_frame_LD[data_frame_LD$Confluence_int != data_frame_LD$Confluence_int[1],]}
+    data_frame_LD$log <- (log(data_frame_LD$pvalue)-log(0.05))*data_frame_LD$Confluence_width
+    data_frame_LD$sum <- cumsum(data_frame_LD$log)
+    
+    mypath=paste('/Users/epariset/Desktop/Graphs/Eloise/', let[i_let], hour[i_hour], low_dose[i_let], n_quant, "quant.jpeg", sep="_")
+    jpeg(file=mypath)
+    print(barplot(data_frame_LD$sum,main=paste("LET",let[i_let],hour[i_hour],"h",low_dose[i_let],"Gy",sep=" "),ylab="Cummulative sum of (log(pvalue) - log(0.05))*width(confluence interval)",names.arg=data_frame_LD$Confluence_int,las=2))
+    dev.off()
+    
+    keep_ind = data_frame$Radiation == HD
+    data_frame_HD <- data_frame[keep_ind,]
+    col_to_keep <- c("Confluence_width","Confluence_int","pvalue")
+    data_frame_HD <- unique(data_frame_HD[,colnames(data_frame_HD) %in% col_to_keep])
+    data_frame_HD <- data_frame_HD[order(data_frame_HD$Confluence_int),]
+    if (let[i_let]==104 & hour[i_hour]==4){data_frame_HD <- data_frame_HD[data_frame_HD$Confluence_int != data_frame_HD$Confluence_int[1],]}
+    if (let[i_let]==63 & hour[i_hour]==8){data_frame_HD <- data_frame_HD[data_frame_HD$Confluence_int != data_frame_HD$Confluence_int[1],]}
+    if (let[i_let]==63 & hour[i_hour]==4){data_frame_HD <- data_frame_HD[data_frame_HD$Confluence_int != data_frame_HD$Confluence_int[1],]}
+    if (let[i_let]==104 & hour[i_hour]==8){data_frame_HD <- data_frame_HD[data_frame_HD$Confluence_int != data_frame_HD$Confluence_int[1],]}
+    data_frame_HD$log <- (log(data_frame_HD$pvalue)-log(0.05))*data_frame_HD$Confluence_width
+    data_frame_HD$sum <- cumsum(data_frame_HD$log)
+    
+    mypath=paste('/Users/epariset/Desktop/Graphs/Eloise/', let[i_let], hour[i_hour], HD, n_quant, "quant.jpeg", sep="_")
+    jpeg(file=mypath)
+    print(barplot(data_frame_HD$sum,main=paste("LET",let[i_let],hour[i_hour],"h",HD,"Gy",sep=" "),ylab="Cummulative sum of (log(pvalue) - log(0.05))*width(confluence interval)",names.arg=data_frame_HD$Confluence_int,las=2))
+    dev.off()
+    
+    if (let[i_let]==104 & hour[i_hour]==4){data_frame <- data_frame[data_frame$Confluence_int != rmv,]}
+    if (let[i_let]==63 & hour[i_hour]==8){data_frame <- data_frame[data_frame$Confluence_int != rmv,]}
+    if (let[i_let]==63 & hour[i_hour]==4){data_frame <- data_frame[data_frame$Confluence_int != rmv,]}
+    if (let[i_let]==104 & hour[i_hour]==8){data_frame <- data_frame[data_frame$Confluence_int != rmv,]}
+    
+    mypath=paste('/Users/epariset/Desktop/Graphs/Eloise/ttest_', let[i_let], hour[i_hour], n_quant, "quant.jpeg", sep="_")
+    jpeg(file=mypath)
+    p<- ggplot(data_frame, aes(x=Confluence, y=pvalue)) + geom_point() + scale_y_continuous(trans='log10')
+    print(facet(p, facet.by = "Radiation") + geom_hline(yintercept=0.05, color = "red"))
+    dev.off()
+    
+    name = paste("LET",let[i_let],hour[i_hour],"h",low_dose[i_let],"Gy.csv",sep="_")
+    write.csv(data_frame_LD,name)
+    
+    name = paste("LET",let[i_let],hour[i_hour],"h",HD,"Gy.csv",sep="_")
+    write.csv(data_frame_HD,name)
+
+  }
+}
+
+```
+
+```{r Parabolic fit}
+# For each animal, find the best parabolic fit for plot nfoci_dose0 = f(confluence) with all LET mixed (since they are all 0Gy controls)
+
+fits <- nlsList(nfoci_dose0 ~ a*(Confluence-100)^2 + b | UserID, data=foci_all, start =c(a=0.0035,b=0))
+tmp_fit = coef(fits)
+tmp_fit$UserID = row.names(tmp_fit)
+foci_all <- merge(foci_all,tmp_fit,by="UserID")
+foci_all$fit <- foci_all$a * (foci_all$Confluence - 100)^2 + foci_all$b
+write.csv(tmp_fit,"parabolic_coefs.csv")
+```
+
+```{r}
+# nfoci_dose0 = f(Confluence) with parabolic fit for each UserID
+
+# Remove animals with not enough points
+keep_ind = !(foci_all$UserID == "254CC" | foci_all$UserID == "903CC" | foci_all$UserID == "954CC" | foci_all$UserID == "BALBCM2")
+foci_plot <- foci_all[keep_ind,]
+order = c("B6C3F1","B6C3F2","B6C3F3","B6C3M1","B6C3M2","B6C3M3","BALBCF","BALBCF1","BALBCF2","BALBCM1","BALBCM3","C3HF1","C3HF2","C3HF3","C3HM1","C3HM2","C3HM3","C57BLF1","C57BLF2","C57BLF3","C57BLM1","C57BLM2","C57BLM3","CBAF1","CBAF2","CBAF3","CBAM1","CBAM2","CBAM3","202CC","208CC","247CC","907CC","251CC","934CC","937CC","938CC","213CC","226CC","235CC","236CC","253CC","942CC","919CC","925CC","927CC","928CC","233CC","906CC","220CC","239CC","263CC","882CC","894CC","946CC","258CC","951CC","261CC","915CC","280CC","921CC","922CC","923CC","255CC","256CC","257CC","260CC","893CC")
+foci_plot$UserID = factor(foci_plot$UserID, levels = order)
+
+p<- ggplot(foci_plot, aes(x=Confluence, y=nfoci_dose0)) + 
+  geom_point() +
+  geom_line(aes(x=Confluence, y=fit), color="Red") + theme_bw() + xlab("Confluence [%]") + ylab("Foci/cell")
+facet(p, facet.by = c("UserID"))
+```
+
+```{r}
+# creates a table with parameters a and b for each animal
+
+keep_ind = !(foci_all$UserID == "254CC" | foci_all$UserID == "903CC" | foci_all$UserID == "954CC" | foci_all$UserID == "BALBCM2")
+foci_table <- foci_all[keep_ind,]
+col_to_keep = c("UserID","Strain","a","b")
+foci_table <- unique(foci_table[,(colnames(foci_table) %in% col_to_keep)])
+write.csv(foci_table,"Fit_parameters.csv")
+```
