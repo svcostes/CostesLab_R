@@ -1,4 +1,4 @@
-Well#	Directory	num_nuc	avg_nfoci	std_nfoci	num_nuc_no_outl	avg_foci_no_outl	std_foci_no_outl	avg_fitc	avg_fitc_bg	avg_nuc_area	avg_nuc_dapi	avg_p2a	spot_fitc_sum
+Well	Directory	num_nuc	avg_nfoci	std_nfoci	num_nuc_no_outl	avg_foci_no_outl	std_foci_no_outl	avg_fitc	avg_fitc_bg	avg_nuc_area	avg_nuc_dapi	avg_p2a	spot_fitc_sum
 A1	Foci_processed_27-Jul-2020	801	 0.58	 1.17	636	 0.52	 1.00	544.26	401.94	 0.64	9194.72	 1.09	2254.63
 A10	Foci_processed_27-Jul-2020	801	 1.18	 1.45	653	 1.12	 1.26	664.86	504.01	 0.77	7845.98	 1.12	5219.75
 A11	Foci_processed_27-Jul-2020	787	 0.89	 1.22	641	 0.90	 1.21	625.46	470.63	 0.70	8160.56	 1.10	3925.44
