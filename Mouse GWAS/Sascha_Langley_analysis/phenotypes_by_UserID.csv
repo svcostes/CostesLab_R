@@ -1,4 +1,4 @@
-"","UserID","let","hour","Strain.y","intercept","Bgd","FociPerGy"
+"","UserID","let","hour","Strain","intercept","Bgd","FociPerGy"
 "1","208CC","Si 350 MeV/n",4,"CC002",3.18672575976845,3.335,7.65810419681621
 "2","208CC","Si 350 MeV/n",8,"CC002",3.23596116739026,3.645,1.22467438494935
 "3","208CC","Si 350 MeV/n",24,"CC002",1.96788675055514,2.085,1.23334566987417
