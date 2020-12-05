@@ -1,0 +1,1882 @@
+---
+title: "DNA damage correction"
+---
+
+```{r}
+require('lattice')
+require('ggplot2')
+require('polynom')
+require('plyr')
+require('reshape2')
+require('stringr')
+require('dplyr')
+library('proj4')
+require('ggalt')
+library(IDPmisc)
+library(plotly)
+require('sva')
+library(devtools)
+#library(ggbiplot)
+require('rlist')
+require('gridExtra')
+require('matrixStats')
+require('BiocParallel')
+require('readxl')
+require('rprojroot')
+```
+
+
+```{r}
+setwd(getwd())
+
+theme_set(theme_bw(base_size = 12)) ## For prettier graphs
+theme_update(plot.title = element_text(hjust = 0.5))
+
+### initializes doses in Gy
+low_dose_Fe = 0.3 
+low_dose_Ar = 0.18 
+low_dose_Si = 0.11 
+low_dose_Gamma = 0.1
+
+high_dose_Fe = 0.82 
+high_dose_Ar = 0.5 
+high_dose_Si = 0.29 
+high_dose_Gamma = 1
+```
+
+```{r}
+##################################################################################################
+######################################### Read RIF DATA ##########################################
+##################################################################################################
+
+
+#### Read DNA damage data BNL19A
+gamma_plate_nums_19A = c(433, 435, 437, 439, 441, 444, 445, 447, 449, 451, 453, 455, 457, 459, 461, 463, 465, 467, 469, 471, 473, 475, 477,479)
+gamma_plate_count_19A = length(gamma_plate_nums_19A)
+ar_plate_nums_19A = c(481, 483, 485, 487, 489, 491, 493, 495, 497, 499, 501, 503, 505, 507, 509, 511, 513, 515, 517, 519, 521, 523, 525,527)
+ar_plate_count_19A = length(ar_plate_nums_19A)
+si_plate_nums_19A = c(577, 579, 581, 583, 585, 587, 589, 591, 593, 595, 597, 599, 601, 603, 605,607, 609, 611, 613,615, 617, 619, 621, 623)
+si_plate_count_19A = length(si_plate_nums_19A)
+fe_plate_nums_19A = c(529, 531, 533, 535, 537, 539, 541, 543, 545, 547, 549, 551, 553, 555, 557, 559, 561, 563, 565, 567, 569, 571, 573,575)
+fe_plate_count_19A = length(fe_plate_nums_19A)
+gamma_si_fe_ar_plate_nums_19A = c(gamma_plate_nums_19A, si_plate_nums_19A, fe_plate_nums_19A, ar_plate_nums_19A)
+gamma_si_fe_ar_plate_count_19A = length(gamma_si_fe_ar_plate_nums_19A)
+
+
+#### Read first file
+foci_gamma_first_19A = data.frame(Plate = gamma_plate_nums_19A[1], Plate_well = paste(gamma_plate_nums_19A[1], read.table(paste("average_well/BNL19A/average_well_P", gamma_plate_nums_19A[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("average_well/BNL19A/average_well_P", gamma_plate_nums_19A[1],'.txt', sep=""), sep="\t", header = TRUE))
+
+gamma_table_19A=foci_gamma_first_19A
+
+foci_si_first_19A = data.frame(Plate = si_plate_nums_19A[1], Plate_well = paste(si_plate_nums_19A[1], read.table(paste("average_well/BNL19A/average_well_P", si_plate_nums_19A[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("average_well/BNL19A/average_well_P", si_plate_nums_19A[1],'.txt', sep=""), sep="\t", header = TRUE))
+
+si_table_19A=foci_si_first_19A
+
+foci_ar_first_19A = data.frame(Plate = ar_plate_nums_19A[1], Plate_well = paste(ar_plate_nums_19A[1], read.table(paste("average_well/BNL19A/average_well_P", ar_plate_nums_19A[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("average_well/BNL19A/average_well_P", ar_plate_nums_19A[1],'.txt', sep=""), sep="\t", header = TRUE))
+
+ar_table_19A=foci_ar_first_19A
+
+foci_fe_first_19A = data.frame(Plate = fe_plate_nums_19A[1], Plate_well = paste(fe_plate_nums_19A[1], read.table(paste("average_well/BNL19A/average_well_P", fe_plate_nums_19A[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("average_well/BNL19A/average_well_P", fe_plate_nums_19A[1],'.txt', sep=""), sep="\t", header = TRUE))
+
+fe_table_19A=foci_fe_first_19A
+
+
+#### Read all the other files and combine them into a single giant file with ALL the plates and ALL the wells
+for(ii in 2:gamma_plate_count_19A){
+  temp_gamma_filename = paste('average_well/BNL19A/average_well_P', gamma_plate_nums_19A[ii],'.txt', sep="")
+  temp_gamma_table = data.frame(Plate = gamma_plate_nums_19A[ii], Plate_well = paste(gamma_plate_nums_19A[ii], read.table(paste('average_well/BNL19A/average_well_P', gamma_plate_nums_19A[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('average_well/BNL19A/average_well_P', gamma_plate_nums_19A[ii],'.txt', sep=""), sep="\t", header = TRUE))
+  gamma_table_19A = rbind(gamma_table_19A, temp_gamma_table)
+}
+
+for(ii in 2:si_plate_count_19A){
+  temp_si_filename = paste('average_well/BNL19A/average_well_P', si_plate_nums_19A[ii],'.txt', sep="")
+  temp_si_table = data.frame(Plate = si_plate_nums_19A[ii], Plate_well = paste(si_plate_nums_19A[ii], read.table(paste('average_well/BNL19A/average_well_P', si_plate_nums_19A[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('average_well/BNL19A/average_well_P', si_plate_nums_19A[ii],'.txt', sep=""), sep="\t", header = TRUE))
+  si_table_19A = rbind(si_table_19A, temp_si_table)
+}
+
+for(ii in 2:ar_plate_count_19A){
+  temp_ar_filename = paste('average_well/BNL19A/average_well_P', ar_plate_nums_19A[ii],'.txt', sep="")
+  temp_ar_table = data.frame(Plate = ar_plate_nums_19A[ii], Plate_well = paste(ar_plate_nums_19A[ii], read.table(paste('average_well/BNL19A/average_well_P', ar_plate_nums_19A[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('average_well/BNL19A/average_well_P', ar_plate_nums_19A[ii],'.txt', sep=""), sep="\t", header = TRUE))
+  ar_table_19A = rbind(ar_table_19A, temp_ar_table)
+  }
+
+for(ii in 2:fe_plate_count_19A){
+  temp_fe_filename = paste('average_well/BNL19A/average_well_P', fe_plate_nums_19A[ii],'.txt', sep="")
+  temp_fe_table = data.frame(Plate = fe_plate_nums_19A[ii], Plate_well = paste(fe_plate_nums_19A[ii], read.table(paste('average_well/BNL19A/average_well_P', fe_plate_nums_19A[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('average_well/BNL19A/average_well_P', fe_plate_nums_19A[ii],'.txt', sep=""), sep="\t", header = TRUE))
+  fe_table_19A = rbind(fe_table_19A, temp_fe_table)
+  }
+
+
+#### Read DNA damage data BNL18B
+gamma_plate_nums_18B = c(637,645,653,661,669,677,639,647,655,663,671,679)
+gamma_plate_count_18B = length(gamma_plate_nums_18B)
+ar_plate_nums_18B = c(379,381,382,383,386,387,390,391,394,395,396,399,400,402)
+ar_plate_count_18B = length(ar_plate_nums_18B)
+si_plate_nums_18B = c(333,337,341,345,349,353,342,338,347,346,350,334,354)  
+si_plate_count_18B = length(si_plate_nums_18B)
+fe_plate_nums_18B = c(355,356,357,358,359,360,361,362,363,364,365,366,367,368,369,370,371,372,373,374,375,376,377,378)
+fe_plate_count_18B = length(fe_plate_nums_18B)
+gamma_si_fe_ar_plate_nums_18B = c(gamma_plate_nums_18B, si_plate_nums_18B, fe_plate_nums_18B, ar_plate_nums_18B)
+gamma_si_fe_ar_plate_count_18B = length(gamma_si_fe_ar_plate_nums_18B)
+
+#### Read first file
+foci_ar_first_18B = data.frame(Plate = ar_plate_nums_18B[1], Plate_well = paste(ar_plate_nums_18B[1], read.table(paste("average_well/BNL18B/average_well_P", ar_plate_nums_18B[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("average_well/BNL18B/average_well_P", ar_plate_nums_18B[1],'.txt', sep=""), sep="\t", header = TRUE))
+
+ar_table_18B=foci_ar_first_18B
+
+foci_gamma_first_18B = data.frame(Plate = gamma_plate_nums_18B[1], Plate_well = paste(gamma_plate_nums_18B[1], read.table(paste("average_well/BNL18B/average_well_P", gamma_plate_nums_18B[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("average_well/BNL18B/average_well_P", gamma_plate_nums_18B[1],'.txt', sep=""), sep="\t", header = TRUE))
+
+gamma_table_18B=foci_gamma_first_18B
+
+foci_si_first_18B = data.frame(Plate = si_plate_nums_18B[1], Plate_well = paste(si_plate_nums_18B[1], read.table(paste("average_well/BNL18B/average_well_P", si_plate_nums_18B[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("average_well/BNL18B/average_well_P", si_plate_nums_18B[1],'.txt', sep=""), sep="\t", header = TRUE))
+
+si_table_18B=foci_si_first_18B
+
+foci_fe_first_18B = data.frame(Plate = fe_plate_nums_18B[1], Plate_well = paste(fe_plate_nums_18B[1], read.table(paste("average_well/BNL18B/average_well_P", fe_plate_nums_18B[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("average_well/BNL18B/average_well_P", fe_plate_nums_18B[1],'.txt', sep=""), sep="\t", header = TRUE))
+
+fe_table_18B=foci_fe_first_18B
+
+
+#### Read all the other files and combine them into a single giant file with ALL the plates and ALL the wells
+for(ii in 2:ar_plate_count_18B){
+  temp_ar_filename = paste('average_well/BNL18B/average_well_P', ar_plate_nums_18B[ii],'.txt', sep="")
+  temp_ar_table = data.frame(Plate = ar_plate_nums_18B[ii], Plate_well = paste(ar_plate_nums_18B[ii], read.table(paste('average_well/BNL18B/average_well_P', ar_plate_nums_18B[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('average_well/BNL18B/average_well_P', ar_plate_nums_18B[ii],'.txt', sep=""), sep="\t", header = TRUE))
+  ar_table_18B = rbind(ar_table_18B, temp_ar_table)
+  }
+
+for(ii in 2:si_plate_count_18B){
+  temp_si_filename = paste('average_well/BNL18B/average_well_P', si_plate_nums_18B[ii],'.txt', sep="")
+  temp_si_table = data.frame(Plate = si_plate_nums_18B[ii], Plate_well = paste(si_plate_nums_18B[ii], read.table(paste('average_well/BNL18B/average_well_P', si_plate_nums_18B[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('average_well/BNL18B/average_well_P', si_plate_nums_18B[ii],'.txt', sep=""), sep="\t", header = TRUE))
+  si_table_18B = rbind(si_table_18B, temp_si_table)
+  }
+
+for(ii in 2:fe_plate_count_18B){
+  temp_fe_filename = paste('average_well/BNL18B/average_well_P', fe_plate_nums_18B[ii],'.txt', sep="")
+  temp_fe_table = data.frame(Plate = fe_plate_nums_18B[ii], Plate_well = paste(fe_plate_nums_18B[ii], read.table(paste('average_well/BNL18B/average_well_P', fe_plate_nums_18B[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('average_well/BNL18B/average_well_P', fe_plate_nums_18B[ii],'.txt', sep=""), sep="\t", header = TRUE))
+  fe_table_18B = rbind(fe_table_18B, temp_fe_table)
+  }
+
+for(ii in 2:gamma_plate_count_18B){
+  temp_gamma_filename = paste("average_well/BNL18B/average_well_P", gamma_plate_nums_18B[ii],'.txt', sep="")
+  temp_gamma_table = data.frame(Plate = gamma_plate_nums_18B[ii], Plate_well = paste(gamma_plate_nums_18B[ii], read.table(paste("average_well/BNL18B/average_well_P", gamma_plate_nums_18B[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("average_well/BNL18B/average_well_P", gamma_plate_nums_18B[ii],'.txt', sep=""), sep="\t", header = TRUE))
+  gamma_table_18B = rbind(gamma_table_18B, temp_gamma_table)
+}
+
+#### Read DNA damage data BNL19C
+
+gamma_plate_nums_19C = c(633,641,649,657,665,673,635,643,651,659,667,675)
+gamma_plate_count_19C = length(gamma_plate_nums_19C)
+fe_plate_nums_19C = c(729,733,737,741,745,749,731,735,739,743, 747,751)
+fe_plate_count_19C = length(fe_plate_nums_19C) #copy lines 169 and 170 for Si and Ar chunks for 19C
+gamma_fe_plate_nums_19C = c(gamma_plate_nums_19C,fe_plate_nums_19C) #be sure to add Ar and Si plate nums to this line, refer to 18B chunk 
+gamma_fe_plate_count_19C = length(gamma_fe_plate_nums_19C) #be sure to add Ar and Si plate nums to this line, refer to 18B chunk
+
+#### Read first file
+foci_gamma_first_19C = data.frame(Plate = gamma_plate_nums_19C[1], Plate_well = paste(gamma_plate_nums_19C[1], read.table(paste("average_well/BNL19C/average_well_P", gamma_plate_nums_19C[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("average_well/BNL19C/average_well_P", gamma_plate_nums_19C[1],'.txt', sep=""), sep="\t", header = TRUE))
+
+gamma_table_19C=foci_gamma_first_19C #cop lines 175-177 for Si and Ar chunks, replace radiation with Ar and Si, refer to 18B chunk
+
+foci_fe_first_19C = data.frame(Plate = fe_plate_nums_19C[1], Plate_well = paste(fe_plate_nums_19C[1], read.table(paste("average_well/BNL19C/average_well_P", fe_plate_nums_19C[1],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste("average_well/BNL19C/average_well_P", fe_plate_nums_19C[1],'.txt', sep=""), sep="\t", header = TRUE))
+
+fe_table_19C=foci_fe_first_19C
+
+#### Read all the other files and combine them into a single giant file with ALL the plates and ALL the wells
+for(ii in 2:gamma_plate_count_19C){
+  temp_gamma_filename = paste('average_well/BNL19C/average_well_P', gamma_plate_nums_19C[ii],'.txt', sep="")
+  temp_gamma_table = data.frame(Plate = gamma_plate_nums_19C[ii], Plate_well = paste(gamma_plate_nums_19C[ii], read.table(paste('average_well/BNL19C/average_well_P', gamma_plate_nums_19C[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('average_well/BNL19C/average_well_P', gamma_plate_nums_19C[ii],'.txt', sep=""), sep="\t", header = TRUE))
+  gamma_table_19C = rbind(gamma_table_19C, temp_gamma_table)
+} #copy lines 184-188 for Ar and Si, replace radiation with Ar and Si
+
+for(ii in 2:fe_plate_count_19C){
+  temp_fe_filename = paste('average_well/BNL19C/average_well_P', fe_plate_nums_19C[ii],'.txt', sep="")
+  temp_fe_table = data.frame(Plate = fe_plate_nums_19C[ii], Plate_well = paste(fe_plate_nums_19C[ii], read.table(paste('average_well/BNL19C/average_well_P', fe_plate_nums_19C[ii],'.txt', sep=""), sep="\t", header = TRUE)$Well, sep = "_"), read.table(paste('average_well/BNL19C/average_well_P', fe_plate_nums_19C[ii],'.txt', sep=""), sep="\t", header = TRUE))
+  fe_table_19C = rbind(fe_table_19C, temp_fe_table)
+}
+
+#### We combine 18B, 19A and 19C data
+ar_table = rbind(ar_table_18B, ar_table_19A) #be sure to add ar tables for 19C here, same for the rest of the conditions
+fe_table = rbind(fe_table_18B, fe_table_19A, fe_table_19C)
+si_table = rbind(si_table_18B, si_table_19A)
+gamma_table = rbind(gamma_table_18B, gamma_table_19A, gamma_table_19C)
+
+#### add duplicate info
+Plate_Duplicate <- read.csv('Plate_Duplicate.csv', header = TRUE, sep = ";")
+colnames(Plate_Duplicate)[colnames(Plate_Duplicate)=="ï..Plate_number"]<-"Plate_number"
+Plate_Duplicate$Run=NULL
+ar_table=merge(ar_table, Plate_Duplicate, by.x="Plate", by.y="Plate_number", all.x = TRUE)
+fe_table=merge(fe_table, Plate_Duplicate, by.x="Plate", by.y="Plate_number", all.x = TRUE)
+si_table=merge(si_table, Plate_Duplicate, by.x="Plate", by.y="Plate_number", all.x = TRUE)
+gamma_table=merge(gamma_table, Plate_Duplicate, by.x="Plate", by.y="Plate_number", all.x = TRUE)
+
+#### add plate metadata
+plate_meta = read.csv('Plate_metadata.csv', sep = ",", header = TRUE)
+fe_table_w_plate_meta = merge(fe_table, plate_meta, by.x = 'Plate', by.y = 'Plate_number', all.x = TRUE, all.y = FALSE)
+ar_table_w_plate_meta = merge(ar_table, plate_meta, by.x = 'Plate', by.y = 'Plate_number', all.x = TRUE, all.y = FALSE)
+si_table_w_plate_meta = merge(si_table, plate_meta, by.x = 'Plate', by.y = 'Plate_number', all.x = TRUE, all.y = FALSE)
+gamma_table_w_plate_meta = merge(gamma_table, plate_meta, by.x = 'Plate', by.y = 'Plate_number', all.x = TRUE, all.y = FALSE)
+
+## Wells are different based on sample sets, so we need to make an extra column for Set_Well, and then add well metadata based on it.
+fe_table_w_plate_meta$Run_set_well = paste(fe_table_w_plate_meta$Run, fe_table_w_plate_meta$Sample_sets, fe_table_w_plate_meta$Well, sep = "_")
+ar_table_w_plate_meta$Run_set_well = paste(ar_table_w_plate_meta$Run, ar_table_w_plate_meta$Sample_sets, ar_table_w_plate_meta$Well, sep = "_")
+si_table_w_plate_meta$Run_set_well = paste(si_table_w_plate_meta$Run, si_table_w_plate_meta$Sample_sets, si_table_w_plate_meta$Well, sep = "_")
+gamma_table_w_plate_meta$Run_set_well = paste(gamma_table_w_plate_meta$Run, gamma_table_w_plate_meta$Sample_sets, gamma_table_w_plate_meta$Well, sep = "_")
+
+## create column run_set 
+fe_table_w_plate_meta$Run_set = paste(fe_table_w_plate_meta$Run, fe_table_w_plate_meta$Sample_sets, sep = "_")
+ar_table_w_plate_meta$Run_set = paste(ar_table_w_plate_meta$Run, ar_table_w_plate_meta$Sample_sets, sep = "_")
+si_table_w_plate_meta$Run_set = paste(si_table_w_plate_meta$Run, si_table_w_plate_meta$Sample_sets, sep = "_")
+gamma_table_w_plate_meta$Run_set = paste(gamma_table_w_plate_meta$Run, gamma_table_w_plate_meta$Sample_sets, sep = "_")
+
+#### Set low bar. This is arbitrary! We will ask for at least 50 imaged nuclei per well to consider that well. 
+low_bar = 50
+fe_filt = fe_table_w_plate_meta[fe_table_w_plate_meta$num_nuc > (low_bar-1),]
+ar_filt = ar_table_w_plate_meta[ar_table_w_plate_meta$num_nuc > (low_bar-1),]
+si_filt = si_table_w_plate_meta[si_table_w_plate_meta$num_nuc > (low_bar-1),]
+gamma_filt = gamma_table_w_plate_meta[gamma_table_w_plate_meta$num_nuc > (low_bar-1),]
+
+#### Truncate dataframe to only include the columns of interest
+col_trunc = c("Run_set_well", "avg_nfoci", "avg_foci_no_outl", "Dose_Fluence", "Timepoint", "Duplicate", 'Run_set', 'Staining_date','Plate')
+fe_trunc = fe_filt[,colnames(fe_filt) %in% col_trunc]
+ar_trunc = ar_filt[,colnames(ar_filt) %in% col_trunc]
+si_trunc = si_filt[,colnames(si_filt) %in% col_trunc]
+gamma_trunc = gamma_filt[,colnames(gamma_filt) %in% col_trunc]
+
+### Now we average A and B duplicates
+fe_trunc = ddply(fe_trunc, .(Dose_Fluence, Timepoint, Run_set_well, Run_set), summarise, avg_nfoci = mean(avg_nfoci), avg_foci_no_outl = mean(avg_foci_no_outl))
+ar_trunc = ddply(ar_trunc, .(Dose_Fluence, Timepoint, Run_set_well, Run_set), summarise, avg_nfoci = mean(avg_nfoci), avg_foci_no_outl = mean(avg_foci_no_outl))
+si_trunc = ddply(si_trunc, .(Dose_Fluence, Timepoint, Run_set_well, Run_set), summarise, avg_nfoci = mean(avg_nfoci), avg_foci_no_outl = mean(avg_foci_no_outl))
+gamma_trunc = ddply(gamma_trunc, .(Dose_Fluence, Timepoint, Run_set_well, Run_set), summarise, avg_nfoci = mean(avg_nfoci), avg_foci_no_outl = mean(avg_foci_no_outl))
+
+#### Now we combine all ions in a single matrix
+
+## For Fe:
+fe_reshaped_1 <- dcast(fe_trunc, Run_set_well + Run_set + Timepoint ~ Dose_Fluence, value.var = c('avg_nfoci'))
+colnames(fe_reshaped_1)[colnames(fe_reshaped_1) == "0"] = "avg_nfoci_0"
+colnames(fe_reshaped_1)[colnames(fe_reshaped_1) == "1.1"] = "avg_nfoci_low_dose"
+colnames(fe_reshaped_1)[colnames(fe_reshaped_1) == "3"] = "avg_nfoci_high_dose"
+
+fe_reshaped_2 <- dcast(fe_trunc, Run_set_well+ Run_set + Timepoint ~ Dose_Fluence, value.var = c('avg_foci_no_outl'))
+colnames(fe_reshaped_2)[colnames(fe_reshaped_2) == "0"] = "avg_foci_no_outl_0"
+colnames(fe_reshaped_2)[colnames(fe_reshaped_2) == "1.1"] = "avg_foci_no_outl_low_dose"
+colnames(fe_reshaped_2)[colnames(fe_reshaped_2) == "3"] = "avg_foci_no_outl_high_dose"
+ 
+fe_reshaped = full_join(fe_reshaped_1, fe_reshaped_2, by=c("Run_set_well", "Run_set", "Timepoint"))
+
+## For Ar:
+ar_reshaped_1 <- dcast(ar_trunc, Run_set_well+ Run_set + Timepoint ~ Dose_Fluence, value.var = c('avg_nfoci'))
+colnames(ar_reshaped_1)[colnames(ar_reshaped_1) == "0"] = "avg_nfoci_0"
+colnames(ar_reshaped_1)[colnames(ar_reshaped_1) == "1.1"] = "avg_nfoci_low_dose"
+colnames(ar_reshaped_1)[colnames(ar_reshaped_1) == "3"] = "avg_nfoci_high_dose"
+
+ar_reshaped_2 <- dcast(ar_trunc, Run_set_well+ Run_set + Timepoint ~ Dose_Fluence, value.var = c('avg_foci_no_outl'))
+colnames(ar_reshaped_2)[colnames(ar_reshaped_2) == "0"] = "avg_foci_no_outl_0"
+colnames(ar_reshaped_2)[colnames(ar_reshaped_2) == "1.1"] = "avg_foci_no_outl_low_dose"
+colnames(ar_reshaped_2)[colnames(ar_reshaped_2) == "3"] = "avg_foci_no_outl_high_dose"
+ 
+ar_reshaped = full_join(ar_reshaped_1, ar_reshaped_2, by=c("Run_set_well", "Run_set", "Timepoint"))
+
+## For Si:
+si_reshaped_1 <- dcast(si_trunc, Run_set_well + Run_set + Timepoint ~ Dose_Fluence, value.var = c('avg_nfoci'))
+colnames(si_reshaped_1)[colnames(si_reshaped_1) == "0"] = "avg_nfoci_0"
+colnames(si_reshaped_1)[colnames(si_reshaped_1) == "1.1"] = "avg_nfoci_low_dose"
+colnames(si_reshaped_1)[colnames(si_reshaped_1) == "3"] = "avg_nfoci_high_dose"
+
+si_reshaped_2 <- dcast(si_trunc, Run_set_well + Run_set + Timepoint ~ Dose_Fluence, value.var = c('avg_foci_no_outl'))
+colnames(si_reshaped_2)[colnames(si_reshaped_2) == "0"] = "avg_foci_no_outl_0"
+colnames(si_reshaped_2)[colnames(si_reshaped_2) == "1.1"] = "avg_foci_no_outl_low_dose"
+colnames(si_reshaped_2)[colnames(si_reshaped_2) == "3"] = "avg_foci_no_outl_high_dose"
+ 
+si_reshaped = full_join(si_reshaped_1, si_reshaped_2, by=c("Run_set_well", "Run_set", "Timepoint"))
+
+## For Gamma:
+dose= gamma_trunc$Dose_Fluence
+dose=unique(dose)
+print(dose)
+gamma_reshaped_1 <- dcast(gamma_trunc, Run_set_well + Run_set + Timepoint ~ Dose_Fluence, value.var = c('avg_nfoci'))
+colnames(gamma_reshaped_1)[colnames(gamma_reshaped_1) == "0"] = "avg_nfoci_0"
+colnames(gamma_reshaped_1)[colnames(gamma_reshaped_1) == "0.1"] = "avg_nfoci_low_dose"
+colnames(gamma_reshaped_1)[colnames(gamma_reshaped_1) == "1"] = "avg_nfoci_high_dose"
+
+gamma_reshaped_2 <- dcast(gamma_trunc, Run_set_well + Run_set + Timepoint ~ Dose_Fluence, value.var = c('avg_foci_no_outl'))
+colnames(gamma_reshaped_2)[colnames(gamma_reshaped_2) == "0"] = "avg_foci_no_outl_0"
+colnames(gamma_reshaped_2)[colnames(gamma_reshaped_2) == "0.1"] = "avg_foci_no_outl_low_dose"
+colnames(gamma_reshaped_2)[colnames(gamma_reshaped_2) == "1"] = "avg_foci_no_outl_high_dose"
+ 
+gamma_reshaped = full_join(gamma_reshaped_1, gamma_reshaped_2, by=c("Run_set_well", "Run_set", "Timepoint"))
+
+#### Add info radiation type + Combine in one table 
+fe_reshaped$Radiation_type = "Fe"
+ar_reshaped$Radiation_type = "Ar"
+si_reshaped$Radiation_type = "Si"
+gamma_reshaped$Radiation_type = "Gamma"
+
+all_RIF=bind_rows(fe_reshaped, ar_reshaped)
+all_RIF=bind_rows(all_RIF, si_reshaped)
+all_RIF=bind_rows(all_RIF, gamma_reshaped)
+
+##### Now we add well metadata
+well_meta = read.csv('Well_metadata.csv', sep = ",", header = TRUE)
+all_RIF_Raw = merge(all_RIF, well_meta, by = c("Run_set_well","Run_set"), all.x = TRUE)
+```
+
+```{r Plot raw data for initial check-up}
+
+### Gamma
+raw_gamma <- all_RIF_Raw[all_RIF_Raw$Radiation_type=="Gamma",]
+raw_gamma_0 <- raw_gamma[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_0", colnames(raw_gamma))]
+raw_gamma_0$dose = 0
+colnames(raw_gamma_0)[colnames(raw_gamma_0)=="avg_nfoci_0"]<-"avg_nfoci"
+raw_gamma_LD <- raw_gamma[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_low_dose", colnames(raw_gamma))]
+raw_gamma_LD$dose = low_dose_Gamma
+colnames(raw_gamma_LD)[colnames(raw_gamma_LD)=="avg_nfoci_low_dose"]<-"avg_nfoci"
+raw_gamma_HD <- raw_gamma[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_high_dose", colnames(raw_gamma))]
+raw_gamma_HD$dose = high_dose_Gamma
+colnames(raw_gamma_HD)[colnames(raw_gamma_HD)=="avg_nfoci_high_dose"]<-"avg_nfoci"
+raw_gamma <- rbind(raw_gamma_0,raw_gamma_LD,raw_gamma_HD)
+raw_gamma$Timepoint = factor(raw_gamma$Timepoint, levels = c("4h", "24h"))
+
+raw_data_plot_gamma <- ggplot(raw_gamma, aes(x=Run_set, y=avg_nfoci)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Gamma") + ylim(0,6)
+
+# Check duplicates separately
+gamma_filt$Timepoint = factor(gamma_filt$Timepoint, levels = c("4h", "24h"))
+raw_data_plot_gamma_dup <- ggplot(gamma_filt, aes(x=Run_set, y=avg_nfoci)) + geom_boxplot(aes(fill=as.factor(Dose_Fluence), color = as.factor(Duplicates))) + facet_grid(. ~ Timepoint) + ggtitle("Gamma") + ylim(0,6)
+
+### Silicon
+raw_si <- all_RIF_Raw[all_RIF_Raw$Radiation_type=="Si",]
+raw_si_0 <- raw_si[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_0", colnames(raw_si))]
+raw_si_0$dose = 0
+colnames(raw_si_0)[colnames(raw_si_0)=="avg_nfoci_0"]<-"avg_nfoci"
+raw_si_LD <- raw_si[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_low_dose", colnames(raw_si))]
+raw_si_LD$dose = low_dose_Si
+colnames(raw_si_LD)[colnames(raw_si_LD)=="avg_nfoci_low_dose"]<-"avg_nfoci"
+raw_si_HD <- raw_si[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_high_dose", colnames(raw_si))]
+raw_si_HD$dose = high_dose_Si
+colnames(raw_si_HD)[colnames(raw_si_HD)=="avg_nfoci_high_dose"]<-"avg_nfoci"
+raw_si <- rbind(raw_si_0,raw_si_LD,raw_si_HD)
+raw_si$Timepoint = factor(raw_si$Timepoint, levels = c("4h", "24h"))
+
+raw_data_plot_si <- ggplot(raw_si, aes(x=Run_set, y=avg_nfoci)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Si") + ylim(0,6)
+
+# Check duplicates separately
+si_filt$Timepoint = factor(si_filt$Timepoint, levels = c("4h", "24h"))
+raw_data_plot_si_dup <- ggplot(si_filt, aes(x=Run_set, y=avg_nfoci)) + geom_boxplot(aes(fill=as.factor(Dose_Fluence), color = as.factor(Duplicates))) + facet_grid(. ~ Timepoint) + ggtitle("Si") + ylim(0,6)
+
+### Argon
+raw_ar <- all_RIF_Raw[all_RIF_Raw$Radiation_type=="Ar",]
+raw_ar_0 <- raw_ar[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_0", colnames(raw_ar))]
+raw_ar_0$dose = 0
+colnames(raw_ar_0)[colnames(raw_ar_0)=="avg_nfoci_0"]<-"avg_nfoci"
+raw_ar_LD <- raw_ar[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_low_dose", colnames(raw_ar))]
+raw_ar_LD$dose = low_dose_Ar
+colnames(raw_ar_LD)[colnames(raw_ar_LD)=="avg_nfoci_low_dose"]<-"avg_nfoci"
+raw_ar_HD <- raw_ar[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_high_dose", colnames(raw_ar))]
+raw_ar_HD$dose = high_dose_Ar
+colnames(raw_ar_HD)[colnames(raw_ar_HD)=="avg_nfoci_high_dose"]<-"avg_nfoci"
+raw_ar <- rbind(raw_ar_0,raw_ar_LD,raw_ar_HD)
+raw_ar$Timepoint = factor(raw_ar$Timepoint, levels = c("4h", "24h"))
+
+raw_data_plot_ar <- ggplot(raw_ar, aes(x=Run_set, y=avg_nfoci)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Ar") + ylim(0,6)
+
+# Check duplicates separately
+ar_filt$Timepoint = factor(ar_filt$Timepoint, levels = c("4h", "24h"))
+raw_data_plot_ar_dup <- ggplot(ar_filt, aes(x=Run_set, y=avg_nfoci)) + geom_boxplot(aes(fill=as.factor(Dose_Fluence), color = as.factor(Duplicates))) + facet_grid(. ~ Timepoint) + ggtitle("Ar") + ylim(0,6)
+
+### Iron
+raw_fe <- all_RIF_Raw[all_RIF_Raw$Radiation_type=="Fe",]
+raw_fe_0 <- raw_fe[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_0", colnames(raw_fe))]
+raw_fe_0$dose = 0
+colnames(raw_fe_0)[colnames(raw_fe_0)=="avg_nfoci_0"]<-"avg_nfoci"
+raw_fe_LD <- raw_fe[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_low_dose", colnames(raw_fe))]
+raw_fe_LD$dose = low_dose_Fe
+colnames(raw_fe_LD)[colnames(raw_fe_LD)=="avg_nfoci_low_dose"]<-"avg_nfoci"
+raw_fe_HD <- raw_fe[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_high_dose", colnames(raw_fe))]
+raw_fe_HD$dose = high_dose_Fe
+colnames(raw_fe_HD)[colnames(raw_fe_HD)=="avg_nfoci_high_dose"]<-"avg_nfoci"
+raw_fe <- rbind(raw_fe_0,raw_fe_LD,raw_fe_HD)
+raw_fe$Timepoint = factor(raw_fe$Timepoint, levels = c("4h", "24h"))
+
+raw_data_plot_fe <- ggplot(raw_fe, aes(x=Run_set, y=avg_nfoci)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Fe") + ylim(0,6)
+
+# Check duplicates separately
+fe_filt$Timepoint = factor(fe_filt$Timepoint, levels = c("4h", "24h"))
+raw_data_plot_fe_dup <- ggplot(fe_filt, aes(x=Run_set, y=avg_nfoci)) + geom_boxplot(aes(fill=as.factor(Dose_Fluence), color = as.factor(Duplicates))) + facet_grid(. ~ Timepoint) + ggtitle("Fe") + ylim(0,6)
+```
+
+```{r}
+#############################################################################################################################
+###################################################Correction################################################################
+#############################################################################################################################
+
+### Step1: 0Gy samples-------------------------------------------------------------------------------------------------------------------
+
+#### add batch number by run & set 
+Raw_dd = all_RIF_Raw 
+Raw_dd$Run_set_batch[Raw_dd$Run_set=="Run_18B_Set_1"] <- 1
+Raw_dd$Run_set_batch[Raw_dd$Run_set=="Run_18B_Set_2"] <- 2
+Raw_dd$Run_set_batch[Raw_dd$Run_set=="Run_19A_Set_1"] <- 3
+Raw_dd$Run_set_batch[Raw_dd$Run_set=="Run_19A_Set_2"] <- 4
+Raw_dd$Run_set_batch[Raw_dd$Run_set=="Run_19A_Set_3"] <- 5
+Raw_dd$Run_set_batch[Raw_dd$Run_set=="Run_19A_Set_4"] <- 6
+Raw_dd$Run_set_batch[Raw_dd$Run_set=="Run_19C_Set_1"] <- 7
+Raw_dd$Run_set_batch[Raw_dd$Run_set=="Run_19C_Set_2"] <- 8
+
+## add batch number by radiation
+Raw_dd$Radiation_Batch[Raw_dd$Radiation_type=="Fe"] <- 1
+Raw_dd$Radiation_Batch[Raw_dd$Radiation_type=="Ar"] <- 2
+Raw_dd$Radiation_Batch[Raw_dd$Radiation_type=="Si"] <- 3
+Raw_dd$Radiation_Batch[Raw_dd$Radiation_type=="Gamma"] <- 4
+
+###### for each run & set we apply ComBat, separating 4h and 24h time points, with radiation as a batch effect variable 
+
+for (i in 1:8){
+  #4h timepoint
+  Run_set = Raw_dd %>% filter(Raw_dd$Run_set_batch == i & Raw_dd$Timepoint == "4h")
+  metadata_save=Run_set[,grep("Sample_ID|Run_set_well|Run_set|Radiation_type|Timepoint|Age|BMI|Gender|BMI_group|CMV|Collection_Date",colnames(Run_set))]
+  metadata=Run_set[,grep("Sample_ID|Age|BMI|Gender",colnames(Run_set))]
+  edata_control=Run_set[,grep("avg_nfoci_0|avg_foci_no_outl_0",colnames(Run_set))]
+  edata_control=t(edata_control)
+  modcombat = model.matrix(~1, data= metadata) 
+  Batch_C= Run_set$Radiation_Batch
+  Modified_ComBat = ComBat(dat=edata_control, batch=Batch_C, mod=modcombat)
+
+  Run_Set_Corrected_Controls_temp = t(Modified_ComBat)
+  assign(paste("Corrected_Controls_4h_batch",i,sep=""),cbind(Run_Set_Corrected_Controls_temp, metadata_save))
+  
+  #24h timepoint
+  Run_set = Raw_dd %>% filter(Raw_dd$Run_set_batch == i & Raw_dd$Timepoint == "24h")
+  metadata_save=Run_set[,grep("Sample_ID|Run_set_well|Run_set|Radiation_type|Timepoint|Age|BMI|Gender|BMI_group|CMV|Collection_Date",colnames(Run_set))]
+  metadata=Run_set[,grep("Sample_ID|Age|BMI|Gender",colnames(Run_set))]
+  edata_control=Run_set[,grep("avg_nfoci_0|avg_foci_no_outl_0",colnames(Run_set))]
+  edata_control=t(edata_control)
+  modcombat = model.matrix(~1, data= metadata) 
+  Batch_C= Run_set$Radiation_Batch
+  Modified_ComBat = ComBat(dat=edata_control, batch=Batch_C, mod=modcombat)
+
+  Run_Set_Corrected_Controls_temp = t(Modified_ComBat)
+  assign(paste("Corrected_Controls_24h_batch",i,sep=""),cbind(Run_Set_Corrected_Controls_temp, metadata_save))
+} 
+
+######### regroup corrected controls 
+Corrected_controls= bind_rows(Corrected_Controls_4h_batch1,Corrected_Controls_4h_batch2,Corrected_Controls_4h_batch3,Corrected_Controls_4h_batch4,Corrected_Controls_4h_batch5,Corrected_Controls_4h_batch6,Corrected_Controls_4h_batch7,Corrected_Controls_4h_batch8,Corrected_Controls_24h_batch1,Corrected_Controls_24h_batch2,Corrected_Controls_24h_batch3,Corrected_Controls_24h_batch4,Corrected_Controls_24h_batch5,Corrected_Controls_24h_batch6,Corrected_Controls_24h_batch7,Corrected_Controls_24h_batch8)
+
+colnames(Corrected_controls)[colnames(Corrected_controls)=="avg_nfoci_0"] <- "avg_nfoci_0_corr"
+Corrected_controls_tmp = Corrected_controls[,grep("Sample_ID|Radiation_type|Timepoint|avg_nfoci_0_corr",colnames(Corrected_controls))]
+Raw_dd <- merge(Raw_dd,Corrected_controls_tmp,by=c("Sample_ID","Timepoint","Radiation_type"),all=FALSE)
+
+
+#graphs to check correction step1 of 0Gy samples-----------------------------------------------------------------------------------------------------
+
+Raw_dd$Timepoint = factor(Raw_dd$Timepoint, levels = c("4h", "24h"))
+Raw_dd$Radiation_type = factor(Raw_dd$Radiation_type, levels = c("Gamma", "Si","Ar","Fe"))
+raw_data <- ggplot(Raw_dd, aes(x=Run_set, y=avg_nfoci_0)) + geom_boxplot(aes(fill=Radiation_type)) + facet_grid(. ~ Timepoint) + ylim(0,6)
+
+Corrected_controls$Timepoint = factor(Corrected_controls$Timepoint, levels = c("4h", "24h"))
+Corrected_controls$Radiation_type = factor(Corrected_controls$Radiation_type, levels = c("Gamma", "Si","Ar","Fe"))
+corrected_data <- ggplot(Corrected_controls, aes(x=Run_set, y=avg_nfoci_0_corr)) + geom_boxplot(aes(fill=Radiation_type)) + facet_grid(. ~ Timepoint) + ylim(0,6)
+#----------------------------------------------------------------------------------------------------------------------------------------------------
+
+### Step1: all samples-------------------------------------------------------------------------------------------------------------------
+
+rad <- c("Fe","Ar","Si","Gamma")
+
+for (i in 1:8){ #screen for run & set
+  for (r in 1:4){ #screen for radiation type
+    
+  #4h timepoint
+  Run_set_4h = Raw_dd %>% filter(Raw_dd$Run_set_batch == i & Raw_dd$Timepoint == "4h" & Raw_dd$Radiation_type == rad[r])
+  
+  mu_0Gy = mean(NaRV.omit(Run_set_4h$avg_nfoci_0))
+  mu_0Gy_corr = mean(NaRV.omit(Run_set_4h$avg_nfoci_0_corr))
+  sd_0Gy = sd(NaRV.omit(Run_set_4h$avg_nfoci_0))
+  sd_0Gy_corr = sd(NaRV.omit(Run_set_4h$avg_nfoci_0_corr))
+  
+  Run_set_4h$avg_nfoci_LD_corr <- (Run_set_4h$avg_nfoci_low_dose-mu_0Gy)*(sd_0Gy_corr/sd_0Gy)+mu_0Gy_corr
+  Run_set_4h$avg_nfoci_HD_corr <- (Run_set_4h$avg_nfoci_high_dose-mu_0Gy)*(sd_0Gy_corr/sd_0Gy)+mu_0Gy_corr
+  
+  #24h timepoint
+  Run_set_24h = Raw_dd %>% filter(Raw_dd$Run_set_batch == i & Raw_dd$Timepoint == "24h" & Raw_dd$Radiation_type == rad[r])
+  
+  mu_0Gy = mean(NaRV.omit(Run_set_24h$avg_nfoci_0))
+  mu_0Gy_corr = mean(NaRV.omit(Run_set_24h$avg_nfoci_0_corr))
+  sd_0Gy = sd(NaRV.omit(Run_set_24h$avg_nfoci_0))
+  sd_0Gy_corr = sd(NaRV.omit(Run_set_24h$avg_nfoci_0_corr))
+  
+  Run_set_24h$avg_nfoci_LD_corr <- (Run_set_24h$avg_nfoci_low_dose-mu_0Gy)*(sd_0Gy_corr/sd_0Gy)+mu_0Gy_corr
+  Run_set_24h$avg_nfoci_HD_corr <- (Run_set_24h$avg_nfoci_high_dose-mu_0Gy)*(sd_0Gy_corr/sd_0Gy)+mu_0Gy_corr
+  
+  assign(paste("Corrected_batch",i,rad[r],sep="_"),rbind(Run_set_4h,Run_set_24h))
+  }
+} 
+
+Corrected_all <- rbind(Corrected_batch_1_Ar,Corrected_batch_1_Fe,Corrected_batch_1_Gamma,Corrected_batch_1_Si,Corrected_batch_2_Ar,Corrected_batch_2_Fe,Corrected_batch_2_Gamma,Corrected_batch_2_Si,Corrected_batch_3_Ar,Corrected_batch_3_Fe,Corrected_batch_3_Gamma,Corrected_batch_3_Si,Corrected_batch_4_Ar,Corrected_batch_4_Fe,Corrected_batch_4_Gamma,Corrected_batch_4_Si,Corrected_batch_5_Ar,Corrected_batch_5_Fe,Corrected_batch_5_Gamma,Corrected_batch_5_Si,Corrected_batch_6_Ar,Corrected_batch_6_Fe,Corrected_batch_6_Gamma,Corrected_batch_6_Si,Corrected_batch_7_Fe,Corrected_batch_7_Gamma,Corrected_batch_8_Fe,Corrected_batch_8_Gamma)
+
+#### The correction may generate negative value => we fix those negative value to 0 
+Corrected_all$avg_nfoci_0_corr[Corrected_all$avg_nfoci_0_corr < 0] <- 0 
+Corrected_all$avg_nfoci_LD_corr[Corrected_all$avg_nfoci_LD_corr < 0] <- 0 
+Corrected_all$avg_nfoci_HD_corr[Corrected_all$avg_nfoci_HD_corr < 0] <- 0 
+
+#graphs to check correction step1 of irradiated samples------------------------------------------------------------------------------------------------
+
+### Gamma
+corr_gamma <- Corrected_all[Corrected_all$Radiation_type=="Gamma",]
+corr_gamma_0 <- corr_gamma[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_0_corr", colnames(corr_gamma))]
+corr_gamma_0$dose = 0
+colnames(corr_gamma_0)[colnames(corr_gamma_0)=="avg_nfoci_0_corr"]<-"avg_nfoci_corr"
+corr_gamma_LD <- corr_gamma[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_LD_corr", colnames(corr_gamma))]
+corr_gamma_LD$dose = low_dose_Gamma
+colnames(corr_gamma_LD)[colnames(corr_gamma_LD)=="avg_nfoci_LD_corr"]<-"avg_nfoci_corr"
+corr_gamma_HD <- corr_gamma[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_HD_corr", colnames(corr_gamma))]
+corr_gamma_HD$dose = high_dose_Gamma
+colnames(corr_gamma_HD)[colnames(corr_gamma_HD)=="avg_nfoci_HD_corr"]<-"avg_nfoci_corr"
+corr_gamma = rbind(corr_gamma_0,corr_gamma_LD,corr_gamma_HD)
+corr_gamma$Timepoint = factor(corr_gamma$Timepoint, levels = c("4h", "24h"))
+
+corr_data_plot_gamma <- ggplot(corr_gamma, aes(x=Run_set, y=avg_nfoci_corr)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Gamma")
+
+### Silicon
+corr_si <- Corrected_all[Corrected_all$Radiation_type=="Si",]
+corr_si_0 <- corr_si[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_0_corr", colnames(corr_si))]
+corr_si_0$dose = 0
+colnames(corr_si_0)[colnames(corr_si_0)=="avg_nfoci_0_corr"]<-"avg_nfoci_corr"
+corr_si_LD <- corr_si[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_LD_corr", colnames(corr_si))]
+corr_si_LD$dose = low_dose_Si
+colnames(corr_si_LD)[colnames(corr_si_LD)=="avg_nfoci_LD_corr"]<-"avg_nfoci_corr"
+corr_si_HD <- corr_si[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_HD_corr", colnames(corr_si))]
+corr_si_HD$dose = high_dose_Si
+colnames(corr_si_HD)[colnames(corr_si_HD)=="avg_nfoci_HD_corr"]<-"avg_nfoci_corr"
+corr_si = rbind(corr_si_0,corr_si_LD,corr_si_HD)
+corr_si$Timepoint = factor(corr_si$Timepoint, levels = c("4h", "24h"))
+
+corr_data_plot_si <- ggplot(corr_si, aes(x=Run_set, y=avg_nfoci_corr)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Si")
+
+### Argon
+corr_ar <- Corrected_all[Corrected_all$Radiation_type=="Ar",]
+corr_ar_0 <- corr_ar[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_0_corr", colnames(corr_ar))]
+corr_ar_0$dose = 0
+colnames(corr_ar_0)[colnames(corr_ar_0)=="avg_nfoci_0_corr"]<-"avg_nfoci_corr"
+corr_ar_LD <- corr_ar[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_LD_corr", colnames(corr_ar))]
+corr_ar_LD$dose = low_dose_Ar
+colnames(corr_ar_LD)[colnames(corr_ar_LD)=="avg_nfoci_LD_corr"]<-"avg_nfoci_corr"
+corr_ar_HD <- corr_ar[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_HD_corr", colnames(corr_ar))]
+corr_ar_HD$dose = high_dose_Ar
+colnames(corr_ar_HD)[colnames(corr_ar_HD)=="avg_nfoci_HD_corr"]<-"avg_nfoci_corr"
+corr_ar = rbind(corr_ar_0,corr_ar_LD,corr_ar_HD)
+corr_ar$Timepoint = factor(corr_ar$Timepoint, levels = c("4h", "24h"))
+
+corr_data_plot_ar <- ggplot(corr_ar, aes(x=Run_set, y=avg_nfoci_corr)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Ar") 
+
+### Iron
+corr_fe <- Corrected_all[Corrected_all$Radiation_type=="Fe",]
+corr_fe_0 <- corr_fe[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_0_corr", colnames(corr_fe))]
+corr_fe_0$dose = 0
+colnames(corr_fe_0)[colnames(corr_fe_0)=="avg_nfoci_0_corr"]<-"avg_nfoci_corr"
+corr_fe_LD <- corr_fe[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_LD_corr", colnames(corr_fe))]
+corr_fe_LD$dose = low_dose_Fe
+colnames(corr_fe_LD)[colnames(corr_fe_LD)=="avg_nfoci_LD_corr"]<-"avg_nfoci_corr"
+corr_fe_HD <- corr_fe[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_HD_corr", colnames(corr_fe))]
+corr_fe_HD$dose = high_dose_Fe
+colnames(corr_fe_HD)[colnames(corr_fe_HD)=="avg_nfoci_HD_corr"]<-"avg_nfoci_corr"
+corr_fe = rbind(corr_fe_0,corr_fe_LD,corr_fe_HD)
+corr_fe$Timepoint = factor(corr_fe$Timepoint, levels = c("4h", "24h"))
+
+corr_data_plot_fe <- ggplot(corr_fe, aes(x=Run_set, y=avg_nfoci_corr)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Fe")
+```
+
+```{r}
+### Step2: repeats between runs-------------------------------------------------------------------------
+
+# Select the repeats that overlap between 18B/19A and between 19A/19C
+Subject_18BS2_19AS1 = c(1214, 1215,1216,1217,1218,1219,1220,1221,1222,1223)
+RIF_correct_19A_18B_10p = Corrected_all %>% filter(Corrected_all$Sample_ID %in% Subject_18BS2_19AS1 )
+Samp_19A_10p = RIF_correct_19A_18B_10p %>% filter(RIF_correct_19A_18B_10p$Run_set =="Run_19A_Set_1")
+Samp_18B_10p = RIF_correct_19A_18B_10p %>% filter(RIF_correct_19A_18B_10p$Run_set =="Run_18B_Set_2")
+
+Subject_19AS4_19CS1 = c(1580,1581,1582,1583,1584,1585,1586,1587,1588)
+RIF_correct_19A_19C_10p = Corrected_all %>% filter(Corrected_all$Sample_ID %in% Subject_19AS4_19CS1 )
+Samp_19A_10p_2 = RIF_correct_19A_19C_10p %>% filter(RIF_correct_19A_19C_10p$Run_set =="Run_19A_Set_4")
+Samp_19C_10p = RIF_correct_19A_19C_10p %>% filter(RIF_correct_19A_19C_10p$Run_set =="Run_19C_Set_1")
+
+# Correct each condition of BNL18B and BNL19C
+Corrected_all_2 <- Corrected_all
+
+for (r in 1:4){
+  for (t in c("4h","24h")){
+    temp <- Corrected_all[(Corrected_all$Run_set == "Run_18B_Set_1" | Corrected_all$Run_set == "Run_18B_Set_2") & Corrected_all$Radiation_type == rad[r] & Corrected_all$Timepoint == t,]
+    temp_2 <- Corrected_all[(Corrected_all$Run_set == "Run_19C_Set_1" | Corrected_all$Run_set == "Run_19C_Set_2") & Corrected_all$Radiation_type == rad[r] & Corrected_all$Timepoint == t,]
+    
+    #Controls
+  mu_18B_10p = mean(NaRV.omit(Samp_18B_10p[Samp_18B_10p$Radiation_type == rad[r] & Samp_18B_10p$Timepoint == t,]$avg_nfoci_0_corr))
+  mu_19A_10p = mean(NaRV.omit(Samp_19A_10p[Samp_19A_10p$Radiation_type == rad[r] & Samp_19A_10p$Timepoint == t,]$avg_nfoci_0_corr))
+  sig_18B_10p = sd(NaRV.omit(Samp_18B_10p[Samp_18B_10p$Radiation_type == rad[r] & Samp_18B_10p$Timepoint == t,]$avg_nfoci_0_corr))
+  sig_19A_10p = sd(NaRV.omit(Samp_19A_10p[Samp_19A_10p$Radiation_type == rad[r] & Samp_19A_10p$Timepoint == t,]$avg_nfoci_0_corr))
+  
+  mu_19C_10p = mean(NaRV.omit(Samp_19C_10p[Samp_19C_10p$Radiation_type == rad[r] & Samp_19C_10p$Timepoint == t,]$avg_nfoci_0_corr))
+  mu_19A_10p_2 = mean(NaRV.omit(Samp_19A_10p_2[Samp_19A_10p_2$Radiation_type == rad[r] & Samp_19A_10p_2$Timepoint == t,]$avg_nfoci_0_corr))
+  sig_19C_10p = sd(NaRV.omit(Samp_19C_10p[Samp_19C_10p$Radiation_type == rad[r] & Samp_19C_10p$Timepoint == t,]$avg_nfoci_0_corr))
+  sig_19A_10p_2 = sd(NaRV.omit(Samp_19A_10p_2[Samp_19A_10p$Radiation_type == rad[r] & Samp_19A_10p_2$Timepoint == t,]$avg_nfoci_0_corr))
+  
+  temp$avg_nfoci_0_corr_2 <- (temp$avg_nfoci_0_corr - mu_18B_10p)*(sig_19A_10p/sig_18B_10p)+mu_19A_10p
+  temp_2$avg_nfoci_0_corr_2 <- (temp_2$avg_nfoci_0_corr - mu_19C_10p)*(sig_19A_10p_2/sig_19C_10p)+mu_19A_10p_2
+  
+  #Low dose
+  mu_18B_10p = mean(NaRV.omit(Samp_18B_10p[Samp_18B_10p$Radiation_type == rad[r] & Samp_18B_10p$Timepoint == t,]$avg_nfoci_LD_corr))
+  mu_19A_10p = mean(NaRV.omit(Samp_19A_10p[Samp_19A_10p$Radiation_type == rad[r] & Samp_19A_10p$Timepoint == t,]$avg_nfoci_LD_corr))
+  sig_18B_10p = sd(NaRV.omit(Samp_18B_10p[Samp_18B_10p$Radiation_type == rad[r] & Samp_18B_10p$Timepoint == t,]$avg_nfoci_LD_corr))
+  sig_19A_10p = sd(NaRV.omit(Samp_19A_10p[Samp_19A_10p$Radiation_type == rad[r] & Samp_19A_10p$Timepoint == t,]$avg_nfoci_LD_corr))
+  
+  mu_19C_10p = mean(NaRV.omit(Samp_19C_10p[Samp_19C_10p$Radiation_type == rad[r] & Samp_19C_10p$Timepoint == t,]$avg_nfoci_LD_corr))
+  mu_19A_10p_2 = mean(NaRV.omit(Samp_19A_10p_2[Samp_19A_10p_2$Radiation_type == rad[r] & Samp_19A_10p_2$Timepoint == t,]$avg_nfoci_LD_corr))
+  sig_19C_10p = sd(NaRV.omit(Samp_19C_10p[Samp_19C_10p$Radiation_type == rad[r] & Samp_19C_10p$Timepoint == t,]$avg_nfoci_LD_corr))
+  sig_19A_10p_2 = sd(NaRV.omit(Samp_19A_10p_2[Samp_19A_10p$Radiation_type == rad[r] & Samp_19A_10p_2$Timepoint == t,]$avg_nfoci_LD_corr))
+  
+  temp$avg_nfoci_LD_corr_2 <- (temp$avg_nfoci_LD_corr - mu_18B_10p)*(sig_19A_10p/sig_18B_10p)+mu_19A_10p
+  temp_2$avg_nfoci_LD_corr_2 <- (temp_2$avg_nfoci_LD_corr - mu_19C_10p)*(sig_19A_10p_2/sig_19C_10p)+mu_19A_10p_2
+  
+  #High dose
+  mu_18B_10p = mean(NaRV.omit(Samp_18B_10p[Samp_18B_10p$Radiation_type == rad[r] & Samp_18B_10p$Timepoint == t,]$avg_nfoci_HD_corr))
+  mu_19A_10p = mean(NaRV.omit(Samp_19A_10p[Samp_19A_10p$Radiation_type == rad[r] & Samp_19A_10p$Timepoint == t,]$avg_nfoci_HD_corr))
+  sig_18B_10p = sd(NaRV.omit(Samp_18B_10p[Samp_18B_10p$Radiation_type == rad[r] & Samp_18B_10p$Timepoint == t,]$avg_nfoci_HD_corr))
+  sig_19A_10p = sd(NaRV.omit(Samp_19A_10p[Samp_19A_10p$Radiation_type == rad[r] & Samp_19A_10p$Timepoint == t,]$avg_nfoci_HD_corr))
+  
+  mu_19C_10p = mean(NaRV.omit(Samp_19C_10p[Samp_19C_10p$Radiation_type == rad[r] & Samp_19C_10p$Timepoint == t,]$avg_nfoci_HD_corr))
+  mu_19A_10p_2 = mean(NaRV.omit(Samp_19A_10p_2[Samp_19A_10p_2$Radiation_type == rad[r] & Samp_19A_10p_2$Timepoint == t,]$avg_nfoci_HD_corr))
+  sig_19C_10p = sd(NaRV.omit(Samp_19C_10p[Samp_19C_10p$Radiation_type == rad[r] & Samp_19C_10p$Timepoint == t,]$avg_nfoci_HD_corr))
+  sig_19A_10p_2 = sd(NaRV.omit(Samp_19A_10p_2[Samp_19A_10p$Radiation_type == rad[r] & Samp_19A_10p_2$Timepoint == t,]$avg_nfoci_HD_corr))
+  
+  temp$avg_nfoci_HD_corr_2 <- (temp$avg_nfoci_HD_corr - mu_18B_10p)*(sig_19A_10p/sig_18B_10p)+mu_19A_10p
+  temp_2$avg_nfoci_HD_corr_2 <- (temp_2$avg_nfoci_HD_corr - mu_19C_10p)*(sig_19A_10p_2/sig_19C_10p)+mu_19A_10p_2
+  
+  #### The correction may generate negative value => we fix those negative value to 0 
+  temp$avg_nfoci_0_corr_2[temp$avg_nfoci_0_corr_2 < 0] <- 0 
+  temp$avg_nfoci_LD_corr_2[temp$avg_nfoci_LD_corr_2 < 0] <- 0 
+  temp$avg_nfoci_HD_corr_2[temp$avg_nfoci_HD_corr_2 < 0] <- 0 
+  temp_2$avg_nfoci_0_corr_2[temp_2$avg_nfoci_0_corr_2 < 0] <- 0 
+  temp_2$avg_nfoci_LD_corr_2[temp_2$avg_nfoci_LD_corr_2 < 0] <- 0 
+  temp_2$avg_nfoci_HD_corr_2[temp_2$avg_nfoci_HD_corr_2 < 0] <- 0 
+  
+  if (!exists("temp_all")){
+    temp_all <- rbind(temp,temp_2)
+  } else {
+    temp_all <- rbind(temp_all,temp)
+    temp_all <- rbind(temp_all,temp_2)
+  }
+  }
+}
+
+temp_19A <- Corrected_all[(Corrected_all$Run_set == "Run_19A_Set_1" | Corrected_all$Run_set == "Run_19A_Set_2" | Corrected_all$Run_set == "Run_19A_Set_3" | Corrected_all$Run_set == "Run_19A_Set_4"),]
+temp_19A$avg_nfoci_0_corr_2 <- temp_19A$avg_nfoci_0_corr
+temp_19A$avg_nfoci_LD_corr_2 <- temp_19A$avg_nfoci_LD_corr
+temp_19A$avg_nfoci_HD_corr_2 <- temp_19A$avg_nfoci_HD_corr
+
+temp_18B_19A_19C <- rbind(temp_all,temp_19A)
+
+temp_18B_19A_19C <- temp_18B_19A_19C[,grepl("Sample_ID|Timepoint|Radiation_type|Run_set_well|avg_nfoci_0_corr_2|avg_nfoci_LD_corr_2|avg_nfoci_HD_corr_2",colnames(temp_18B_19A_19C))]
+
+Corrected_all_2 <- merge(Corrected_all_2,temp_18B_19A_19C,all=TRUE)
+
+#graphs to check correction step2------------------------------------------------------------------------------------------------
+
+### Gamma
+corr_gamma <- Corrected_all_2[Corrected_all_2$Radiation_type=="Gamma",]
+corr_gamma_0 <- corr_gamma[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_0_corr_2", colnames(corr_gamma))]
+corr_gamma_0$dose = 0
+colnames(corr_gamma_0)[colnames(corr_gamma_0)=="avg_nfoci_0_corr_2"]<-"avg_nfoci_corr_2"
+corr_gamma_LD <- corr_gamma[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_LD_corr_2", colnames(corr_gamma))]
+corr_gamma_LD$dose = low_dose_Gamma
+colnames(corr_gamma_LD)[colnames(corr_gamma_LD)=="avg_nfoci_LD_corr_2"]<-"avg_nfoci_corr_2"
+corr_gamma_HD <- corr_gamma[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_HD_corr_2", colnames(corr_gamma))]
+corr_gamma_HD$dose = high_dose_Gamma
+colnames(corr_gamma_HD)[colnames(corr_gamma_HD)=="avg_nfoci_HD_corr_2"]<-"avg_nfoci_corr_2"
+corr_gamma = rbind(corr_gamma_0,corr_gamma_LD,corr_gamma_HD)
+corr_gamma$Timepoint = factor(corr_gamma$Timepoint, levels = c("4h", "24h"))
+
+corr_data_plot_gamma <- ggplot(corr_gamma, aes(x=Run_set, y=avg_nfoci_corr_2)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Gamma")
+
+### Silicon
+corr_si <- Corrected_all_2[Corrected_all_2$Radiation_type=="Si",]
+corr_si_0 <- corr_si[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_0_corr_2", colnames(corr_si))]
+corr_si_0$dose = 0
+colnames(corr_si_0)[colnames(corr_si_0)=="avg_nfoci_0_corr_2"]<-"avg_nfoci_corr_2"
+corr_si_LD <- corr_si[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_LD_corr_2", colnames(corr_si))]
+corr_si_LD$dose = low_dose_Si
+colnames(corr_si_LD)[colnames(corr_si_LD)=="avg_nfoci_LD_corr_2"]<-"avg_nfoci_corr_2"
+corr_si_HD <- corr_si[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_HD_corr_2", colnames(corr_si))]
+corr_si_HD$dose = high_dose_Si
+colnames(corr_si_HD)[colnames(corr_si_HD)=="avg_nfoci_HD_corr_2"]<-"avg_nfoci_corr_2"
+corr_si = rbind(corr_si_0,corr_si_LD,corr_si_HD)
+corr_si$Timepoint = factor(corr_si$Timepoint, levels = c("4h", "24h"))
+
+corr_data_plot_si <- ggplot(corr_si, aes(x=Run_set, y=avg_nfoci_corr_2)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Si")
+
+### Argon
+corr_ar <- Corrected_all_2[Corrected_all_2$Radiation_type=="Ar",]
+corr_ar_0 <- corr_ar[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_0_corr_2", colnames(corr_ar))]
+corr_ar_0$dose = 0
+colnames(corr_ar_0)[colnames(corr_ar_0)=="avg_nfoci_0_corr_2"]<-"avg_nfoci_corr_2"
+corr_ar_LD <- corr_ar[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_LD_corr_2", colnames(corr_ar))]
+corr_ar_LD$dose = low_dose_Ar
+colnames(corr_ar_LD)[colnames(corr_ar_LD)=="avg_nfoci_LD_corr_2"]<-"avg_nfoci_corr_2"
+corr_ar_HD <- corr_ar[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_HD_corr_2", colnames(corr_ar))]
+corr_ar_HD$dose = high_dose_Ar
+colnames(corr_ar_HD)[colnames(corr_ar_HD)=="avg_nfoci_HD_corr_2"]<-"avg_nfoci_corr_2"
+corr_ar = rbind(corr_ar_0,corr_ar_LD,corr_ar_HD)
+corr_ar$Timepoint = factor(corr_ar$Timepoint, levels = c("4h", "24h"))
+
+corr_data_plot_ar <- ggplot(corr_ar, aes(x=Run_set, y=avg_nfoci_corr_2)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Ar") 
+
+### Iron
+corr_fe <- Corrected_all_2[Corrected_all_2$Radiation_type=="Fe",]
+corr_fe_0 <- corr_fe[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_0_corr_2", colnames(corr_fe))]
+corr_fe_0$dose = 0
+colnames(corr_fe_0)[colnames(corr_fe_0)=="avg_nfoci_0_corr_2"]<-"avg_nfoci_corr_2"
+corr_fe_LD <- corr_fe[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_LD_corr_2", colnames(corr_fe))]
+corr_fe_LD$dose = low_dose_Fe
+colnames(corr_fe_LD)[colnames(corr_fe_LD)=="avg_nfoci_LD_corr_2"]<-"avg_nfoci_corr_2"
+corr_fe_HD <- corr_fe[,grepl("Sample_ID|Run_set|Timepoint|avg_nfoci_HD_corr_2", colnames(corr_fe))]
+corr_fe_HD$dose = high_dose_Fe
+colnames(corr_fe_HD)[colnames(corr_fe_HD)=="avg_nfoci_HD_corr_2"]<-"avg_nfoci_corr_2"
+corr_fe = rbind(corr_fe_0,corr_fe_LD,corr_fe_HD)
+corr_fe$Timepoint = factor(corr_fe$Timepoint, levels = c("4h", "24h"))
+
+corr_data_plot_fe <- ggplot(corr_fe, aes(x=Run_set, y=avg_nfoci_corr_2)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Fe")
+```
+
+
+
+```{r}
+##################################################################################################
+####################################### Read Cell Death DATA ##########################################
+################################################################################################
+
+all_flow_meta = read.csv('all_flow_20201123.csv', sep = ",", header = TRUE)
+
+Cell_Death_Raw=all_flow_meta[,grepl("Dead_percentage|Sample_ID|Timepoint|Run|Age|Gender|BMI|CMV", colnames(all_flow_meta))]
+
+## we add quartile values as secondary data 
+sheet_names <- excel_sheets(here::here("Human analysis/Flow_CRmedian_DeathQuartiles_20201123.xlsx"))
+nbr_of_sheet = length(sheet_names)
+
+for (i in 1:nbr_of_sheet){
+  data <- read_excel(here::here("Human analysis/Flow_CRmedian_DeathQuartiles_20201123.xlsx"), sheet=i, col_types = "text") 
+  name <- paste0("Sheet_", sheet_names[i])
+  assign(name, data)                   
+  rm(name, data)
+}
+
+Cell_death_extra_Fe = bind_rows(Sheet_18B_Dead_Fe, Sheet_19A_Dead_Fe, Sheet_19C_Dead_Fe) 
+Cell_death_extra_Ar = bind_rows(Sheet_18B_Dead_Ar, Sheet_19A_Dead_Ar, Sheet_19C_Dead_Ar) 
+Cell_death_extra_Si = bind_rows(Sheet_18B_Dead_Si, Sheet_19A_Dead_Si, Sheet_19C_Dead_Si) 
+Cell_death_extra_Gamma = bind_rows(Sheet_18B_Dead_Gamma, Sheet_19A_Dead_Gamma, Sheet_19C_Dead_Gamma) 
+                    
+Cell_death_extra= merge(Cell_death_extra_Fe, Cell_death_extra_Ar,by=c("Sample_number", "Set"), all=TRUE)
+Cell_death_extra= merge(Cell_death_extra, Cell_death_extra_Si,by=c("Sample_number", "Set"), all=TRUE )
+Cell_death_extra= merge(Cell_death_extra, Cell_death_extra_Gamma,by=c("Sample_number", "Set"), all=TRUE)
+Cell_death_extra <- Cell_death_extra %>% select_if(function(x){!all(is.na(x))})
+Cell_death_extra <- filter(Cell_death_extra, rowSums(is.na(Cell_death_extra)) != ncol(Cell_death_extra))
+
+## Separate 4h and 24h and create variable time point 
+Cell_death_extra_4h = Cell_death_extra[,grepl("Sample|Set|_4h", colnames(Cell_death_extra))]
+Cell_death_extra_4h$Timepoint="4h"
+colnames(Cell_death_extra_4h)[colnames(Cell_death_extra_4h)=="Fe_Dead_Q1Q4_0_4h"] <- "Fe_Dead_Q1Q4_0"
+colnames(Cell_death_extra_4h)[colnames(Cell_death_extra_4h)=="Fe_Dead_Q1Q4_1_4h"] <- "Fe_Dead_Q1Q4_1"
+colnames(Cell_death_extra_4h)[colnames(Cell_death_extra_4h)=="Fe_Dead_Q1Q4_3_4h"] <- "Fe_Dead_Q1Q4_3"
+colnames(Cell_death_extra_4h)[colnames(Cell_death_extra_4h)=="Ar_Dead_Q1Q4_0_4h"] <- "Ar_Dead_Q1Q4_0"
+colnames(Cell_death_extra_4h)[colnames(Cell_death_extra_4h)=="Ar_Dead_Q1Q4_1_4h"] <- "Ar_Dead_Q1Q4_1"
+colnames(Cell_death_extra_4h)[colnames(Cell_death_extra_4h)=="Ar_Dead_Q1Q4_3_4h"] <- "Ar_Dead_Q1Q4_3"
+colnames(Cell_death_extra_4h)[colnames(Cell_death_extra_4h)=="Si_Dead_Q1Q4_0_4h"] <- "Si_Dead_Q1Q4_0"
+colnames(Cell_death_extra_4h)[colnames(Cell_death_extra_4h)=="Si_Dead_Q1Q4_1_4h"] <- "Si_Dead_Q1Q4_1"
+colnames(Cell_death_extra_4h)[colnames(Cell_death_extra_4h)=="Si_Dead_Q1Q4_3_4h"] <- "Si_Dead_Q1Q4_3"
+colnames(Cell_death_extra_4h)[colnames(Cell_death_extra_4h)=="Gamma_Dead_Q1Q4_0_4h"] <- "Gamma_Dead_Q1Q4_0"
+colnames(Cell_death_extra_4h)[colnames(Cell_death_extra_4h)=="Gamma_Dead_Q1Q4_01_4h"] <- "Gamma_Dead_Q1Q4_01"
+colnames(Cell_death_extra_4h)[colnames(Cell_death_extra_4h)=="Gamma_Dead_Q1Q4_1_4h"] <- "Gamma_Dead_Q1Q4_1"
+
+Cell_death_extra_24h = Cell_death_extra[,grepl("Sample|Set|_24h", colnames(Cell_death_extra))]
+Cell_death_extra_24h$Timepoint="24h"
+colnames(Cell_death_extra_24h)[colnames(Cell_death_extra_24h)=="Fe_Dead_Q1Q4_0_24h"] <- "Fe_Dead_Q1Q4_0"
+colnames(Cell_death_extra_24h)[colnames(Cell_death_extra_24h)=="Fe_Dead_Q1Q4_1_24h"] <- "Fe_Dead_Q1Q4_1"
+colnames(Cell_death_extra_24h)[colnames(Cell_death_extra_24h)=="Fe_Dead_Q1Q4_3_24h"] <- "Fe_Dead_Q1Q4_3"
+colnames(Cell_death_extra_24h)[colnames(Cell_death_extra_24h)=="Ar_Dead_Q1Q4_0_24h"] <- "Ar_Dead_Q1Q4_0"
+colnames(Cell_death_extra_24h)[colnames(Cell_death_extra_24h)=="Ar_Dead_Q1Q4_1_24h"] <- "Ar_Dead_Q1Q4_1"
+colnames(Cell_death_extra_24h)[colnames(Cell_death_extra_24h)=="Ar_Dead_Q1Q4_3_24h"] <- "Ar_Dead_Q1Q4_3"
+colnames(Cell_death_extra_24h)[colnames(Cell_death_extra_24h)=="Si_Dead_Q1Q4_0_24h"] <- "Si_Dead_Q1Q4_0"
+colnames(Cell_death_extra_24h)[colnames(Cell_death_extra_24h)=="Si_Dead_Q1Q4_1_24h"] <- "Si_Dead_Q1Q4_1"
+colnames(Cell_death_extra_24h)[colnames(Cell_death_extra_24h)=="Si_Dead_Q1Q4_3_24h"] <- "Si_Dead_Q1Q4_3"
+colnames(Cell_death_extra_24h)[colnames(Cell_death_extra_24h)=="Gamma_Dead_Q1Q4_0_24h"] <- "Gamma_Dead_Q1Q4_0"
+colnames(Cell_death_extra_24h)[colnames(Cell_death_extra_24h)=="Gamma_Dead_Q1Q4_01_24h"] <- "Gamma_Dead_Q1Q4_01"
+colnames(Cell_death_extra_24h)[colnames(Cell_death_extra_24h)=="Gamma_Dead_Q1Q4_1_24h"] <- "Gamma_Dead_Q1Q4_1"
+
+Cell_death_extra=bind_rows(Cell_death_extra_4h, Cell_death_extra_24h)
+colnames(Cell_death_extra)[colnames(Cell_death_extra) == "Sample_number"] = "Sample_ID"
+colnames(Cell_death_extra)[colnames(Cell_death_extra) == "Set"] = "Run_set"
+
+All_Cell_Death_Raw = merge(Cell_Death_Raw, Cell_death_extra,by=c("Sample_ID", "Run_set", 'Timepoint'), all=TRUE )
+
+### Formatting: creating column with irradiation type
+
+CD_Fe = All_Cell_Death_Raw[,grepl("Fe|Sample_ID|Run_set|Timepoint|Run_set_well|Age|Gender|BMI|BMI_group|Collection_Date|CMV", colnames(All_Cell_Death_Raw))]
+CD_Fe$Radiation_type="Fe"
+colnames(CD_Fe)[colnames(CD_Fe)=="Fe_Dead_Q1Q4_0"] = "Dead_Q1Q4_0"
+colnames(CD_Fe)[colnames(CD_Fe)=="Fe_Dead_Q1Q4_1"] = "Dead_Q1Q4_low_dose"
+colnames(CD_Fe)[colnames(CD_Fe)=="Fe_Dead_Q1Q4_3"] = "Dead_Q1Q4_high_dose"
+colnames(CD_Fe)[colnames(CD_Fe)=="Fe_Dead_percentage_0"] = "Dead_Cells_0"
+colnames(CD_Fe)[colnames(CD_Fe)=="Fe_Dead_percentage_1"] = "Dead_Cells_low_dose"
+colnames(CD_Fe)[colnames(CD_Fe)=="Fe_Dead_percentage_3"] = "Dead_Cells_high_dose"
+
+CD_Ar = All_Cell_Death_Raw[,grepl("Ar|Sample_ID|Run_set|Timepoint|Run_set_well|Age|Gender|BMI|BMI_group|Collection_Date|CMV", colnames(All_Cell_Death_Raw))]
+CD_Ar$Radiation_type="Ar"
+colnames(CD_Ar)[colnames(CD_Ar)=="Ar_Dead_Q1Q4_0"] = "Dead_Q1Q4_0"
+colnames(CD_Ar)[colnames(CD_Ar)=="Ar_Dead_Q1Q4_1"] = "Dead_Q1Q4_low_dose"
+colnames(CD_Ar)[colnames(CD_Ar)=="Ar_Dead_Q1Q4_3"] = "Dead_Q1Q4_high_dose"
+colnames(CD_Ar)[colnames(CD_Ar)=="Ar_Dead_percentage_0"] = "Dead_Cells_0"
+colnames(CD_Ar)[colnames(CD_Ar)=="Ar_Dead_percentage_1"] = "Dead_Cells_low_dose"
+colnames(CD_Ar)[colnames(CD_Ar)=="Ar_Dead_percentage_3"] = "Dead_Cells_high_dose"
+
+CD_Si = All_Cell_Death_Raw[,grepl("Si|Sample_ID|Run_set|Timepoint|Run_set_well|Age|Gender|BMI|BMI_group|Collection_Date|CMV", colnames(All_Cell_Death_Raw))]
+CD_Si$Radiation_type="Si"
+colnames(CD_Si)[colnames(CD_Si)=="Si_Dead_Q1Q4_0"] = "Dead_Q1Q4_0"
+colnames(CD_Si)[colnames(CD_Si)=="Si_Dead_Q1Q4_1"] = "Dead_Q1Q4_low_dose"
+colnames(CD_Si)[colnames(CD_Si)=="Si_Dead_Q1Q4_3"] = "Dead_Q1Q4_high_dose"
+colnames(CD_Si)[colnames(CD_Si)=="Si_Dead_percentage_0"] = "Dead_Cells_0"
+colnames(CD_Si)[colnames(CD_Si)=="Si_Dead_percentage_1"] = "Dead_Cells_low_dose"
+colnames(CD_Si)[colnames(CD_Si)=="Si_Dead_percentage_3"] = "Dead_Cells_high_dose"
+
+CD_Gamma = All_Cell_Death_Raw[,grepl("Gamma|Sample_ID|Run_set|Timepoint|Run_set_well|Age|Gender|BMI|BMI_group|Collection_Date|CMV", colnames(All_Cell_Death_Raw))]
+CD_Gamma$Radiation_type="Gamma"
+colnames(CD_Gamma)[colnames(CD_Gamma)=="Gamma_Dead_Q1Q4_0"] = "Dead_Q1Q4_0"
+colnames(CD_Gamma)[colnames(CD_Gamma)=="Gamma_Dead_Q1Q4_01"] = "Dead_Q1Q4_low_dose"
+colnames(CD_Gamma)[colnames(CD_Gamma)=="Gamma_Dead_Q1Q4_1"] = "Dead_Q1Q4_high_dose"
+colnames(CD_Gamma)[colnames(CD_Gamma)=="Gamma_Dead_percentage_0"] = "Dead_Cells_0"
+colnames(CD_Gamma)[colnames(CD_Gamma)=="Gamma_Dead_percentage_10"] = "Dead_Cells_low_dose"
+colnames(CD_Gamma)[colnames(CD_Gamma)=="Gamma_Dead_percentage_100"] = "Dead_Cells_high_dose"
+
+All_Cell_Death_Raw=bind_rows(CD_Fe, CD_Ar, CD_Si, CD_Gamma)
+All_Cell_Death_Raw <- All_Cell_Death_Raw[!(All_Cell_Death_Raw$Radiation_type == "Gamma" & All_Cell_Death_Raw$Timepoint == "24h" & All_Cell_Death_Raw$Run_set =="19A_Set1"),]
+All_Cell_Death_Raw <- All_Cell_Death_Raw[!(All_Cell_Death_Raw$Radiation_type == "Si" & All_Cell_Death_Raw$Timepoint == "24h" & All_Cell_Death_Raw$Run_set =="19A_Set1"),]
+All_Cell_Death_Raw <- All_Cell_Death_Raw[!(All_Cell_Death_Raw$Radiation_type == "Ar" & All_Cell_Death_Raw$Timepoint == "24h" & All_Cell_Death_Raw$Run_set =="19A_Set1"),]
+All_Cell_Death_Raw <- All_Cell_Death_Raw[!(All_Cell_Death_Raw$Radiation_type == "Fe" & All_Cell_Death_Raw$Timepoint == "24h" & All_Cell_Death_Raw$Run_set =="19A_Set1"),]
+```
+
+```{r Plot raw data for initial check-up}
+
+### Gamma
+raw_gamma <- All_Cell_Death_Raw[All_Cell_Death_Raw$Radiation_type=="Gamma",]
+raw_gamma_0 <- raw_gamma[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_0", colnames(raw_gamma))]
+raw_gamma_0$dose = 0
+colnames(raw_gamma_0)[colnames(raw_gamma_0)=="Dead_Cells_0"]<-"Dead_Cells"
+raw_gamma_LD <- raw_gamma[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_low_dose", colnames(raw_gamma))]
+raw_gamma_LD$dose = low_dose_Gamma
+colnames(raw_gamma_LD)[colnames(raw_gamma_LD)=="Dead_Cells_low_dose"]<-"Dead_Cells"
+raw_gamma_HD <- raw_gamma[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_high_dose", colnames(raw_gamma))]
+raw_gamma_HD$dose = high_dose_Gamma
+colnames(raw_gamma_HD)[colnames(raw_gamma_HD)=="Dead_Cells_high_dose"]<-"Dead_Cells"
+raw_gamma <- rbind(raw_gamma_0,raw_gamma_LD,raw_gamma_HD)
+raw_gamma$Timepoint = factor(raw_gamma$Timepoint, levels = c("4h", "24h"))
+
+raw_data_plot_gamma <- ggplot(raw_gamma, aes(x=Run_set, y=Dead_Cells)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Gamma") + ylim(0,60)
+
+### Silicon
+raw_si <- All_Cell_Death_Raw[All_Cell_Death_Raw$Radiation_type=="Si",]
+raw_si_0 <- raw_si[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_0", colnames(raw_si))]
+raw_si_0$dose = 0
+colnames(raw_si_0)[colnames(raw_si_0)=="Dead_Cells_0"]<-"Dead_Cells"
+raw_si_LD <- raw_si[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_low_dose", colnames(raw_si))]
+raw_si_LD$dose = low_dose_Si
+colnames(raw_si_LD)[colnames(raw_si_LD)=="Dead_Cells_low_dose"]<-"Dead_Cells"
+raw_si_HD <- raw_si[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_high_dose", colnames(raw_si))]
+raw_si_HD$dose = high_dose_Si
+colnames(raw_si_HD)[colnames(raw_si_HD)=="Dead_Cells_high_dose"]<-"Dead_Cells"
+raw_si <- rbind(raw_si_0,raw_si_LD,raw_si_HD)
+raw_si$Timepoint = factor(raw_si$Timepoint, levels = c("4h", "24h"))
+
+raw_data_plot_si <- ggplot(raw_si, aes(x=Run_set, y=Dead_Cells)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Si") + ylim(0,60)
+
+### Argon
+raw_ar <- All_Cell_Death_Raw[All_Cell_Death_Raw$Radiation_type=="Ar",]
+raw_ar_0 <- raw_ar[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_0", colnames(raw_ar))]
+raw_ar_0$dose = 0
+colnames(raw_ar_0)[colnames(raw_ar_0)=="Dead_Cells_0"]<-"Dead_Cells"
+raw_ar_LD <- raw_ar[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_low_dose", colnames(raw_ar))]
+raw_ar_LD$dose = low_dose_Ar
+colnames(raw_ar_LD)[colnames(raw_ar_LD)=="Dead_Cells_low_dose"]<-"Dead_Cells"
+raw_ar_HD <- raw_ar[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_high_dose", colnames(raw_ar))]
+raw_ar_HD$dose = high_dose_Ar
+colnames(raw_ar_HD)[colnames(raw_ar_HD)=="Dead_Cells_high_dose"]<-"Dead_Cells"
+raw_ar <- rbind(raw_ar_0,raw_ar_LD,raw_ar_HD)
+raw_ar$Timepoint = factor(raw_ar$Timepoint, levels = c("4h", "24h")) 
+
+raw_data_plot_ar <- ggplot(raw_ar, aes(x=Run_set, y=Dead_Cells)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Ar") + ylim(0,60)
+
+### Iron
+raw_fe <- All_Cell_Death_Raw[All_Cell_Death_Raw$Radiation_type=="Fe",]
+raw_fe_0 <- raw_fe[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_0", colnames(raw_fe))]
+raw_fe_0$dose = 0
+colnames(raw_fe_0)[colnames(raw_fe_0)=="Dead_Cells_0"]<-"Dead_Cells"
+raw_fe_LD <- raw_fe[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_low_dose", colnames(raw_fe))]
+raw_fe_LD$dose = low_dose_Fe
+colnames(raw_fe_LD)[colnames(raw_fe_LD)=="Dead_Cells_low_dose"]<-"Dead_Cells"
+raw_fe_HD <- raw_fe[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_high_dose", colnames(raw_fe))]
+raw_fe_HD$dose = high_dose_Fe
+colnames(raw_fe_HD)[colnames(raw_fe_HD)=="Dead_Cells_high_dose"]<-"Dead_Cells"
+raw_fe <- rbind(raw_fe_0,raw_fe_LD,raw_fe_HD)
+raw_fe$Timepoint = factor(raw_fe$Timepoint, levels = c("4h", "24h"))
+
+raw_data_plot_fe <- ggplot(raw_fe, aes(x=Run_set, y=Dead_Cells)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Fe") + ylim(0,60)
+```
+
+```{r}
+#############################################################################################################################
+###################################################Correction################################################################
+#############################################################################################################################
+
+### Step1: 0Gy samples-------------------------------------------------------------------------------------------------------------------
+
+#### add batch number by run & set 
+Raw_cd = All_Cell_Death_Raw 
+Raw_cd$Run_set_batch[Raw_cd$Run_set=="18B_Set1"] <- 1
+Raw_cd$Run_set_batch[Raw_cd$Run_set=="18B_Set2"] <- 2
+Raw_cd$Run_set_batch[Raw_cd$Run_set=="19A_Set1"] <- 3
+Raw_cd$Run_set_batch[Raw_cd$Run_set=="19A_Set2"] <- 4
+Raw_cd$Run_set_batch[Raw_cd$Run_set=="19A_Set3"] <- 5
+Raw_cd$Run_set_batch[Raw_cd$Run_set=="19A_Set4"] <- 6
+Raw_cd$Run_set_batch[Raw_cd$Run_set=="19C_Set1"] <- 7
+Raw_cd$Run_set_batch[Raw_cd$Run_set=="19C_Set2"] <- 8
+
+## add batch number by radiation
+Raw_cd$Radiation_Batch[Raw_cd$Radiation_type=="Fe"] <- 1
+Raw_cd$Radiation_Batch[Raw_cd$Radiation_type=="Ar"] <- 2
+Raw_cd$Radiation_Batch[Raw_cd$Radiation_type=="Si"] <- 3
+Raw_cd$Radiation_Batch[Raw_cd$Radiation_type=="Gamma"] <- 4
+
+Raw_cd$Dead_Cells_0 <- as.numeric(Raw_cd$Dead_Cells_0)
+Raw_cd$Dead_Q1Q4_0 <- as.numeric(Raw_cd$Dead_Q1Q4_0)
+
+###### for each run & set we apply ComBat, separating 4h and 24h time points, with radiation as a batch effect variable 
+
+for (i in 1:8){
+  
+  if (i %in% c(3,4,5,6,7,8)){ #18B_Set1 and 18B_Set2 only have 4h timepoint for gamma: no correction possible
+  Run_set = Raw_cd %>% filter(Raw_cd$Run_set_batch == i & Raw_cd$Timepoint == "4h")
+  Run_set <- Run_set[!is.na(Run_set$Dead_Cells_0) & !is.na(Run_set$Dead_Q1Q4_0),]
+  metadata_save=Run_set[,grep("Sample_ID|Run_set_well|Run_set|Radiation_type|Timepoint|Age|BMI|Gender|BMI_group|CMV|Collection_Date",colnames(Run_set))]
+  metadata=Run_set[,grep("Sample_ID|Age|BMI|Gender",colnames(Run_set))]
+  edata_control=Run_set[,grep("Dead_Cells_0|Dead_Q1Q4_0",colnames(Run_set))]
+  edata_control=t(edata_control)
+  modcombat = model.matrix(~1, data= metadata) 
+  Batch_C= Run_set$Radiation_Batch
+  Modified_ComBat = ComBat(dat=edata_control, batch=Batch_C, mod=modcombat)
+
+  Run_Set_Corrected_Controls_temp = t(Modified_ComBat)
+  assign(paste("Corrected_Controls_4h_batch",i,sep=""),cbind(Run_Set_Corrected_Controls_temp, metadata_save))
+  }
+  
+  if (i %in% c(1,2,7,8)){ #No 24h timepoint for all 19A sets
+  Run_set = Raw_cd %>% filter(Raw_cd$Run_set_batch == i & Raw_cd$Timepoint == "24h")
+  Run_set <- Run_set[!is.na(Run_set$Dead_Cells_0) & !is.na(Run_set$Dead_Q1Q4_0),]
+  metadata_save=Run_set[,grep("Sample_ID|Run_set_well|Run_set|Radiation_type|Timepoint|Age|BMI|Gender|BMI_group|CMV|Collection_Date",colnames(Run_set))]
+  metadata=Run_set[,grep("Sample_ID|Age|BMI|Gender",colnames(Run_set))]
+  edata_control=Run_set[,grep("Dead_Cells_0|Dead_Q1Q4_0",colnames(Run_set))]
+  edata_control=t(edata_control)
+  modcombat = model.matrix(~1, data= metadata) 
+  Batch_C= Run_set$Radiation_Batch
+  Modified_ComBat = ComBat(dat=edata_control, batch=Batch_C, mod=modcombat)
+
+  Run_Set_Corrected_Controls_temp = t(Modified_ComBat)
+  assign(paste("Corrected_Controls_24h_batch",i,sep=""),cbind(Run_Set_Corrected_Controls_temp, metadata_save))
+  }
+} 
+
+######### regroup corrected controls 
+Corrected_controls_cd= bind_rows(Corrected_Controls_4h_batch3,Corrected_Controls_4h_batch4,Corrected_Controls_4h_batch5,Corrected_Controls_4h_batch6,Corrected_Controls_4h_batch7,Corrected_Controls_4h_batch8,Corrected_Controls_24h_batch1,Corrected_Controls_24h_batch2,Corrected_Controls_24h_batch7,Corrected_Controls_24h_batch8)
+
+colnames(Corrected_controls_cd)[colnames(Corrected_controls_cd)=="Dead_Cells_0"] <- "Dead_Cells_0_corr"
+Corrected_controls_tmp = select(Corrected_controls_cd,Sample_ID,Run_set,Radiation_type,Timepoint,Dead_Cells_0_corr)
+Raw_cd <- merge(Raw_cd,Corrected_controls_tmp,by=c("Sample_ID","Timepoint","Radiation_type","Run_set"),all=TRUE)
+
+# Gamma 18B 4h is not corrected: values of cell death remain unchanged after Step1 correction
+Raw_cd[Raw_cd$Radiation_type == "Gamma" & Raw_cd$Timepoint == "4h" & (Raw_cd$Run_set == "18B_Set1" | Raw_cd$Run_set == "18B_Set2"),]$Dead_Cells_0_corr = Raw_cd[Raw_cd$Radiation_type == "Gamma" & Raw_cd$Timepoint == "4h" & (Raw_cd$Run_set == "18B_Set1" | Raw_cd$Run_set == "18B_Set2"),]$Dead_Cells_0
+
+
+#graphs to check correction step1 of 0Gy samples-----------------------------------------------------------------------------------------------------
+
+Raw_cd$Timepoint = factor(Raw_cd$Timepoint, levels = c("4h", "24h"))
+Raw_cd$Radiation_type = factor(Raw_cd$Radiation_type, levels = c("Gamma", "Si","Ar","Fe"))
+raw_data <- ggplot(Raw_cd, aes(x=Run_set, y=Dead_Cells_0)) + geom_boxplot(aes(fill=Radiation_type)) + facet_grid(. ~ Timepoint) + ylim(0,60)
+
+corrected_data <- ggplot(Raw_cd, aes(x=Run_set, y=Dead_Cells_0_corr)) + geom_boxplot(aes(fill=Radiation_type)) + facet_grid(. ~ Timepoint) + ylim(0,60)
+#----------------------------------------------------------------------------------------------------------------------------------------------------
+
+### Step1: all samples-------------------------------------------------------------------------------------------------------------------
+
+rad <- c("Fe","Ar","Si","Gamma")
+
+for (i in 1:8){ #screen for run & set
+  for (r in 1:4){ #screen for radiation type
+    
+  if (i %in% c(3,4,5,6,7,8)){
+    Run_set_4h = Raw_cd %>% filter(Raw_cd$Run_set_batch == i & Raw_cd$Timepoint == "4h" & Raw_cd$Radiation_type == rad[r])
+  
+  mu_0Gy = mean(NaRV.omit(Run_set_4h$Dead_Cells_0))
+  mu_0Gy_corr = mean(NaRV.omit(Run_set_4h$Dead_Cells_0_corr))
+  sd_0Gy = sd(NaRV.omit(Run_set_4h$Dead_Cells_0))
+  sd_0Gy_corr = sd(NaRV.omit(Run_set_4h$Dead_Cells_0_corr))
+  
+  Run_set_4h$Dead_Cells_LD_corr <- (Run_set_4h$Dead_Cells_low_dose-mu_0Gy)*(sd_0Gy_corr/sd_0Gy)+mu_0Gy_corr
+  Run_set_4h$Dead_Cells_HD_corr <- (Run_set_4h$Dead_Cells_high_dose-mu_0Gy)*(sd_0Gy_corr/sd_0Gy)+mu_0Gy_corr
+  
+  assign(paste("Corrected_4h_batch",i,rad[r],sep="_"),Run_set_4h)
+  }
+  
+  if (i %in% c(1,2,7,8)){
+    Run_set_24h = Raw_cd %>% filter(Raw_cd$Run_set_batch == i & Raw_cd$Timepoint == "24h" & Raw_cd$Radiation_type == rad[r])
+  
+  mu_0Gy = mean(NaRV.omit(Run_set_24h$Dead_Cells_0))
+  mu_0Gy_corr = mean(NaRV.omit(Run_set_24h$Dead_Cells_0_corr))
+  sd_0Gy = sd(NaRV.omit(Run_set_24h$Dead_Cells_0))
+  sd_0Gy_corr = sd(NaRV.omit(Run_set_24h$Dead_Cells_0_corr))
+  
+  Run_set_24h$Dead_Cells_LD_corr <- (Run_set_24h$Dead_Cells_low_dose-mu_0Gy)*(sd_0Gy_corr/sd_0Gy)+mu_0Gy_corr
+  Run_set_24h$Dead_Cells_HD_corr <- (Run_set_24h$Dead_Cells_high_dose-mu_0Gy)*(sd_0Gy_corr/sd_0Gy)+mu_0Gy_corr
+  
+  assign(paste("Corrected_24h_batch",i,rad[r],sep="_"),Run_set_24h)
+  }
+  }
+} 
+
+#Gamma 4h 18B remains unchanged:
+Corrected_4h_batch_1_Gamma <- Raw_cd %>% filter(Raw_cd$Run_set_batch == 1 & Raw_cd$Timepoint == "4h" & Raw_cd$Radiation_type == "Gamma")
+Corrected_4h_batch_1_Gamma$Dead_Cells_LD_corr <- Corrected_4h_batch_1_Gamma$Dead_Cells_low_dose
+Corrected_4h_batch_1_Gamma$Dead_Cells_HD_corr <- Corrected_4h_batch_1_Gamma$Dead_Cells_high_dose
+
+Corrected_4h_batch_2_Gamma <- Raw_cd %>% filter(Raw_cd$Run_set_batch == 2 & Raw_cd$Timepoint == "4h" & Raw_cd$Radiation_type == "Gamma")
+Corrected_4h_batch_2_Gamma$Dead_Cells_LD_corr <- Corrected_4h_batch_2_Gamma$Dead_Cells_low_dose
+Corrected_4h_batch_2_Gamma$Dead_Cells_HD_corr <- Corrected_4h_batch_2_Gamma$Dead_Cells_high_dose
+
+Corrected_all_cd <- rbind(Corrected_4h_batch_1_Gamma,Corrected_4h_batch_2_Gamma,Corrected_4h_batch_3_Ar,Corrected_4h_batch_3_Fe,Corrected_4h_batch_3_Gamma,Corrected_4h_batch_3_Si,Corrected_4h_batch_4_Ar,Corrected_4h_batch_4_Fe,Corrected_4h_batch_4_Gamma,Corrected_4h_batch_4_Si,Corrected_4h_batch_5_Ar,Corrected_4h_batch_5_Fe,Corrected_4h_batch_5_Gamma,Corrected_4h_batch_5_Si,Corrected_4h_batch_6_Ar,Corrected_4h_batch_6_Fe,Corrected_4h_batch_6_Gamma,Corrected_4h_batch_6_Si,Corrected_4h_batch_7_Ar,Corrected_4h_batch_7_Fe,Corrected_4h_batch_7_Gamma,Corrected_4h_batch_7_Si,Corrected_4h_batch_8_Ar,Corrected_4h_batch_8_Fe,Corrected_4h_batch_8_Gamma,Corrected_4h_batch_8_Si,Corrected_24h_batch_1_Ar,Corrected_24h_batch_1_Fe,Corrected_24h_batch_1_Gamma,Corrected_24h_batch_1_Si,Corrected_24h_batch_2_Ar,Corrected_24h_batch_2_Fe,Corrected_24h_batch_2_Gamma,Corrected_24h_batch_2_Si,Corrected_24h_batch_7_Ar,Corrected_24h_batch_7_Fe,Corrected_24h_batch_7_Gamma,Corrected_24h_batch_7_Si,Corrected_24h_batch_8_Ar,Corrected_24h_batch_8_Fe,Corrected_24h_batch_8_Gamma,Corrected_24h_batch_8_Si)
+
+#### The correction may generate negative value => we fix those negative value to 0 
+Corrected_all_cd$Dead_Cells_0_corr[Corrected_all_cd$Dead_Cells_0_corr < 0] <- 0 
+Corrected_all_cd$Dead_Cells_LD_corr[Corrected_all_cd$Dead_Cells_LD_corr < 0] <- 0 
+Corrected_all_cd$Dead_Cells_HD_corr[Corrected_all_cd$Dead_Cells_HD_corr < 0] <- 0 
+
+#graphs to check correction step1 of irradiated samples------------------------------------------------------------------------------------------------
+
+### Gamma
+corr_gamma <- Corrected_all_cd[Corrected_all_cd$Radiation_type=="Gamma",]
+corr_gamma_0 <- corr_gamma[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_0_corr", colnames(corr_gamma))]
+corr_gamma_0$dose = 0
+colnames(corr_gamma_0)[colnames(corr_gamma_0)=="Dead_Cells_0_corr"]<-"Dead_Cells_corr"
+corr_gamma_LD <- corr_gamma[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_LD_corr", colnames(corr_gamma))]
+corr_gamma_LD$dose = low_dose_Gamma
+colnames(corr_gamma_LD)[colnames(corr_gamma_LD)=="Dead_Cells_LD_corr"]<-"Dead_Cells_corr"
+corr_gamma_HD <- corr_gamma[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_HD_corr", colnames(corr_gamma))]
+corr_gamma_HD$dose = high_dose_Gamma
+colnames(corr_gamma_HD)[colnames(corr_gamma_HD)=="Dead_Cells_HD_corr"]<-"Dead_Cells_corr"
+corr_gamma = rbind(corr_gamma_0,corr_gamma_LD,corr_gamma_HD)
+corr_gamma$Timepoint = factor(corr_gamma$Timepoint, levels = c("4h", "24h"))
+
+corr_data_plot_gamma <- ggplot(corr_gamma, aes(x=Run_set, y=Dead_Cells_corr)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Gamma")
+
+### Silicon
+corr_si <- Corrected_all_cd[Corrected_all_cd$Radiation_type=="Si",]
+corr_si_0 <- corr_si[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_0_corr", colnames(corr_si))]
+corr_si_0$dose = 0
+colnames(corr_si_0)[colnames(corr_si_0)=="Dead_Cells_0_corr"]<-"Dead_Cells_corr"
+corr_si_LD <- corr_si[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_LD_corr", colnames(corr_si))]
+corr_si_LD$dose = low_dose_Si
+colnames(corr_si_LD)[colnames(corr_si_LD)=="Dead_Cells_LD_corr"]<-"Dead_Cells_corr"
+corr_si_HD <- corr_si[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_HD_corr", colnames(corr_si))]
+corr_si_HD$dose = high_dose_Si
+colnames(corr_si_HD)[colnames(corr_si_HD)=="Dead_Cells_HD_corr"]<-"Dead_Cells_corr"
+corr_si = rbind(corr_si_0,corr_si_LD,corr_si_HD)
+corr_si$Timepoint = factor(corr_si$Timepoint, levels = c("4h", "24h"))
+
+corr_data_plot_si <- ggplot(corr_si, aes(x=Run_set, y=Dead_Cells_corr)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Si")
+
+### Argon
+corr_ar <- Corrected_all_cd[Corrected_all_cd$Radiation_type=="Ar",]
+corr_ar_0 <- corr_ar[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_0_corr", colnames(corr_ar))]
+corr_ar_0$dose = 0
+colnames(corr_ar_0)[colnames(corr_ar_0)=="Dead_Cells_0_corr"]<-"Dead_Cells_corr"
+corr_ar_LD <- corr_ar[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_LD_corr", colnames(corr_ar))]
+corr_ar_LD$dose = low_dose_Ar
+colnames(corr_ar_LD)[colnames(corr_ar_LD)=="Dead_Cells_LD_corr"]<-"Dead_Cells_corr"
+corr_ar_HD <- corr_ar[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_HD_corr", colnames(corr_ar))]
+corr_ar_HD$dose = high_dose_Ar
+colnames(corr_ar_HD)[colnames(corr_ar_HD)=="Dead_Cells_HD_corr"]<-"Dead_Cells_corr"
+corr_ar = rbind(corr_ar_0,corr_ar_LD,corr_ar_HD)
+corr_ar$Timepoint = factor(corr_ar$Timepoint, levels = c("4h", "24h"))
+
+corr_data_plot_ar <- ggplot(corr_ar, aes(x=Run_set, y=Dead_Cells_corr)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Ar")
+
+### Iron
+corr_fe <- Corrected_all_cd[Corrected_all_cd$Radiation_type=="Fe",]
+corr_fe_0 <- corr_fe[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_0_corr", colnames(corr_fe))]
+corr_fe_0$dose = 0
+colnames(corr_fe_0)[colnames(corr_fe_0)=="Dead_Cells_0_corr"]<-"Dead_Cells_corr"
+corr_fe_LD <- corr_fe[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_LD_corr", colnames(corr_fe))]
+corr_fe_LD$dose = low_dose_Fe
+colnames(corr_fe_LD)[colnames(corr_fe_LD)=="Dead_Cells_LD_corr"]<-"Dead_Cells_corr"
+corr_fe_HD <- corr_fe[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_HD_corr", colnames(corr_fe))]
+corr_fe_HD$dose = high_dose_Fe
+colnames(corr_fe_HD)[colnames(corr_fe_HD)=="Dead_Cells_HD_corr"]<-"Dead_Cells_corr"
+corr_fe = rbind(corr_fe_0,corr_fe_LD,corr_fe_HD)
+corr_fe$Timepoint = factor(corr_fe$Timepoint, levels = c("4h", "24h"))
+
+corr_data_plot_fe <- ggplot(corr_fe, aes(x=Run_set, y=Dead_Cells_corr)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Fe")
+```
+
+```{r}
+### Step2: repeats between runs-------------------------------------------------------------------------
+
+# Select the repeats that overlap between 18B/19A and between 19A/19C
+Subject_18BS2_19AS1 = c(1214, 1215,1216,1217,1218,1219,1220,1221,1222,1223)
+CD_correct_19A_18B_10p = Corrected_all_cd %>% filter(Corrected_all_cd$Sample_ID %in% Subject_18BS2_19AS1 )
+Samp_19A_10p = CD_correct_19A_18B_10p %>% filter(CD_correct_19A_18B_10p$Run_set =="19A_Set1")
+Samp_18B_10p = CD_correct_19A_18B_10p %>% filter(CD_correct_19A_18B_10p$Run_set =="18B_Set2")
+
+# For Fe and Si
+Subject_19AS4_19CS1_Fe_Si = c(1580,1581,1582,1583,1584,1585,1586,1587,1588)
+CD_correct_19A_19C_10p_Fe_Si = Corrected_all_cd %>% filter(Corrected_all_cd$Sample_ID %in% Subject_19AS4_19CS1_Fe_Si)
+Samp_19A_10p_Fe_Si = CD_correct_19A_19C_10p_Fe_Si %>% filter(CD_correct_19A_19C_10p_Fe_Si$Run_set =="19A_Set4")
+Samp_19C_10p_Fe_Si = CD_correct_19A_19C_10p_Fe_Si %>% filter(CD_correct_19A_19C_10p_Fe_Si$Run_set =="19C_Set1")
+
+# For Gamma and Ar
+Subject_19AS4_19CS1_Gam_Ar = c(1589,1590,1591,1592,1593,1594,1595,1596,1597)
+CD_correct_19A_19C_10p_Gam_Ar = Corrected_all_cd %>% filter(Corrected_all_cd$Sample_ID %in% Subject_19AS4_19CS1_Gam_Ar)
+Samp_19A_10p_Gam_Ar = CD_correct_19A_19C_10p_Gam_Ar %>% filter(CD_correct_19A_19C_10p_Gam_Ar$Run_set =="19A_Set4")
+Samp_19C_10p_Gam_Ar = CD_correct_19A_19C_10p_Gam_Ar %>% filter(CD_correct_19A_19C_10p_Gam_Ar$Run_set =="19C_Set1")
+
+# Correct each condition of BNL18B and BNL19C: at 24h for all irradiation types we have only 18B and 19C (no repeats, no step2 correction). At 4h for all irradiation types we have 19A and 19C (step2 correction). At 4h for gamma we also have 18B and 19A (additional step2 correction).
+Corrected_all_cd_2 <- Corrected_all_cd
+
+for (r in 1:4){
+  if (r == 4){
+    temp <- Corrected_all_cd[(Corrected_all_cd$Run_set == "18B_Set1" | Corrected_all_cd$Run_set == "18B_Set2") & Corrected_all_cd$Radiation_type == rad[r] & Corrected_all_cd$Timepoint == "4h",]
+    
+    #Controls
+  mu_18B_10p = mean(NaRV.omit(Samp_18B_10p[Samp_18B_10p$Radiation_type == rad[r] & Samp_18B_10p$Timepoint == "4h",]$Dead_Cells_0_corr))
+  mu_19A_10p = mean(NaRV.omit(Samp_19A_10p[Samp_19A_10p$Radiation_type == rad[r] & Samp_19A_10p$Timepoint == "4h",]$Dead_Cells_0_corr))
+  sig_18B_10p = sd(NaRV.omit(Samp_18B_10p[Samp_18B_10p$Radiation_type == rad[r] & Samp_18B_10p$Timepoint == "4h",]$Dead_Cells_0_corr))
+  sig_19A_10p = sd(NaRV.omit(Samp_19A_10p[Samp_19A_10p$Radiation_type == rad[r] & Samp_19A_10p$Timepoint == "4h",]$Dead_Cells_0_corr))
+  
+    temp$Dead_Cells_0_corr_2 <- (temp$Dead_Cells_0_corr - mu_18B_10p)*(sig_19A_10p/sig_18B_10p)+mu_19A_10p
+    
+    #Low dose
+  mu_18B_10p = mean(NaRV.omit(Samp_18B_10p[Samp_18B_10p$Radiation_type == rad[r] & Samp_18B_10p$Timepoint == "4h",]$Dead_Cells_LD_corr))
+  mu_19A_10p = mean(NaRV.omit(Samp_19A_10p[Samp_19A_10p$Radiation_type == rad[r] & Samp_19A_10p$Timepoint == "4h",]$Dead_Cells_LD_corr))
+  sig_18B_10p = sd(NaRV.omit(Samp_18B_10p[Samp_18B_10p$Radiation_type == rad[r] & Samp_18B_10p$Timepoint == "4h",]$Dead_Cells_LD_corr))
+  sig_19A_10p = sd(NaRV.omit(Samp_19A_10p[Samp_19A_10p$Radiation_type == rad[r] & Samp_19A_10p$Timepoint == "4h",]$Dead_Cells_LD_corr))
+  
+  temp$Dead_Cells_LD_corr_2 <- (temp$Dead_Cells_LD_corr - mu_18B_10p)*(sig_19A_10p/sig_18B_10p)+mu_19A_10p
+  
+  #High dose
+  mu_18B_10p = mean(NaRV.omit(Samp_18B_10p[Samp_18B_10p$Radiation_type == rad[r] & Samp_18B_10p$Timepoint == "4h",]$Dead_Cells_HD_corr))
+  mu_19A_10p = mean(NaRV.omit(Samp_19A_10p[Samp_19A_10p$Radiation_type == rad[r] & Samp_19A_10p$Timepoint == "4h",]$Dead_Cells_HD_corr))
+  sig_18B_10p = sd(NaRV.omit(Samp_18B_10p[Samp_18B_10p$Radiation_type == rad[r] & Samp_18B_10p$Timepoint == "4h",]$Dead_Cells_HD_corr))
+  sig_19A_10p = sd(NaRV.omit(Samp_19A_10p[Samp_19A_10p$Radiation_type == rad[r] & Samp_19A_10p$Timepoint == "4h",]$Dead_Cells_HD_corr))
+  
+    temp$Dead_Cells_HD_corr_2 <- (temp$Dead_Cells_HD_corr - mu_18B_10p)*(sig_19A_10p/sig_18B_10p)+mu_19A_10p
+    
+  #### The correction may generate negative value => we fix those negative value to 0 
+  temp$Dead_Cells_0_corr_2[temp$Dead_Cells_0_corr_2 < 0] <- 0 
+  temp$Dead_Cells_LD_corr_2[temp$Dead_Cells_LD_corr_2 < 0] <- 0 
+  temp$Dead_Cells_HD_corr_2[temp$Dead_Cells_HD_corr_2 < 0] <- 0 
+  
+  temp_all <- rbind(temp_all,temp)
+  }
+    
+    temp_2 <- Corrected_all_cd[(Corrected_all_cd$Run_set == "19C_Set1" | Corrected_all_cd$Run_set == "19C_Set2") & Corrected_all_cd$Radiation_type == rad[r] & Corrected_all_cd$Timepoint == "4h",]
+    
+    if (r == 1 | r == 3){
+      Samp_19C_10p <- Samp_19C_10p_Fe_Si
+      Samp_19A_10p_2 <- Samp_19A_10p_Fe_Si
+    }
+    if (r == 2 | r == 4){
+      Samp_19C_10p <- Samp_19C_10p_Gam_Ar
+      Samp_19A_10p_2 <- Samp_19A_10p_Gam_Ar
+    }
+    
+    #Controls
+  mu_19C_10p = mean(NaRV.omit(Samp_19C_10p[Samp_19C_10p$Radiation_type == rad[r] & Samp_19C_10p$Timepoint == "4h",]$Dead_Cells_0_corr))
+  mu_19A_10p_2 = mean(NaRV.omit(Samp_19A_10p_2[Samp_19A_10p_2$Radiation_type == rad[r] & Samp_19A_10p_2$Timepoint == "4h",]$Dead_Cells_0_corr))
+  sig_19C_10p = sd(NaRV.omit(Samp_19C_10p[Samp_19C_10p$Radiation_type == rad[r] & Samp_19C_10p$Timepoint == "4h",]$Dead_Cells_0_corr))
+  sig_19A_10p_2 = sd(NaRV.omit(Samp_19A_10p_2[Samp_19A_10p$Radiation_type == rad[r] & Samp_19A_10p_2$Timepoint == "4h",]$Dead_Cells_0_corr))
+  
+  temp_2$Dead_Cells_0_corr_2 <- (temp_2$Dead_Cells_0_corr - mu_19C_10p)*(sig_19A_10p_2/sig_19C_10p)+mu_19A_10p_2
+  
+  #Low dose
+  mu_19C_10p = mean(NaRV.omit(Samp_19C_10p[Samp_19C_10p$Radiation_type == rad[r] & Samp_19C_10p$Timepoint == "4h",]$Dead_Cells_LD_corr))
+  mu_19A_10p_2 = mean(NaRV.omit(Samp_19A_10p_2[Samp_19A_10p_2$Radiation_type == rad[r] & Samp_19A_10p_2$Timepoint == "4h",]$Dead_Cells_LD_corr))
+  sig_19C_10p = sd(NaRV.omit(Samp_19C_10p[Samp_19C_10p$Radiation_type == rad[r] & Samp_19C_10p$Timepoint == "4h",]$Dead_Cells_LD_corr))
+  sig_19A_10p_2 = sd(NaRV.omit(Samp_19A_10p_2[Samp_19A_10p$Radiation_type == rad[r] & Samp_19A_10p_2$Timepoint == "4h",]$Dead_Cells_LD_corr))
+  
+  temp_2$Dead_Cells_LD_corr_2 <- (temp_2$Dead_Cells_LD_corr - mu_19C_10p)*(sig_19A_10p_2/sig_19C_10p)+mu_19A_10p_2
+  
+  #High dose
+  mu_19C_10p = mean(NaRV.omit(Samp_19C_10p[Samp_19C_10p$Radiation_type == rad[r] & Samp_19C_10p$Timepoint == "4h",]$Dead_Cells_HD_corr))
+  mu_19A_10p_2 = mean(NaRV.omit(Samp_19A_10p_2[Samp_19A_10p_2$Radiation_type == rad[r] & Samp_19A_10p_2$Timepoint == "4h",]$Dead_Cells_HD_corr))
+  sig_19C_10p = sd(NaRV.omit(Samp_19C_10p[Samp_19C_10p$Radiation_type == rad[r] & Samp_19C_10p$Timepoint == "4h",]$Dead_Cells_HD_corr))
+  sig_19A_10p_2 = sd(NaRV.omit(Samp_19A_10p_2[Samp_19A_10p$Radiation_type == rad[r] & Samp_19A_10p_2$Timepoint == "4h",]$Dead_Cells_HD_corr))
+  
+  temp_2$Dead_Cells_HD_corr_2 <- (temp_2$Dead_Cells_HD_corr - mu_19C_10p)*(sig_19A_10p_2/sig_19C_10p)+mu_19A_10p_2
+  
+  #### The correction may generate negative value => we fix those negative value to 0 
+  temp_2$Dead_Cells_0_corr_2[temp_2$Dead_Cells_0_corr_2 < 0] <- 0 
+  temp_2$Dead_Cells_LD_corr_2[temp_2$Dead_Cells_LD_corr_2 < 0] <- 0 
+  temp_2$Dead_Cells_HD_corr_2[temp_2$Dead_Cells_HD_corr_2 < 0] <- 0 
+  
+  if (!exists("temp_all")){
+    temp_all <- temp_2
+  } else {
+    temp_all <- rbind(temp_all,temp_2)
+  }
+}
+
+
+temp_no_step2 <- Corrected_all_cd[Corrected_all_cd$Run_set == "19A_Set1" | Corrected_all_cd$Run_set == "19A_Set2" | Corrected_all_cd$Run_set == "19A_Set3" | Corrected_all_cd$Run_set == "19A_Set4" | Corrected_all_cd$Timepoint == "24h" | ((Corrected_all_cd$Run_set == "18B_Set1" | Corrected_all_cd$Run_set == "18B_Set2") & (Corrected_all_cd$Radiation_type == "Si" | Corrected_all_cd$Radiation_type == "Ar" | Corrected_all_cd$Radiation_type == "Fe")),]
+temp_no_step2$Dead_Cells_0_corr_2 <- temp_no_step2$Dead_Cells_0_corr
+temp_no_step2$Dead_Cells_LD_corr_2 <- temp_no_step2$Dead_Cells_LD_corr
+temp_no_step2$Dead_Cells_HD_corr_2 <- temp_no_step2$Dead_Cells_HD_corr
+
+temp_18B_19A_19C <- rbind(temp_all,temp_no_step2)
+
+temp_18B_19A_19C <- temp_18B_19A_19C[,grepl("Sample_ID|Timepoint|Radiation_type|Run_set|Dead_Cells_0_corr_2|Dead_Cells_LD_corr_2|Dead_Cells_HD_corr_2",colnames(temp_18B_19A_19C))]
+
+Corrected_all_cd_2 <- merge(Corrected_all_cd_2,temp_18B_19A_19C,all=TRUE)
+
+#graphs to check correction step2------------------------------------------------------------------------------------------------
+
+### Gamma
+corr_gamma <- Corrected_all_cd_2[Corrected_all_cd_2$Radiation_type=="Gamma",]
+corr_gamma_0 <- corr_gamma[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_0_corr_2", colnames(corr_gamma))]
+corr_gamma_0$dose = 0
+colnames(corr_gamma_0)[colnames(corr_gamma_0)=="Dead_Cells_0_corr_2"]<-"Dead_Cells_corr_2"
+corr_gamma_LD <- corr_gamma[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_LD_corr_2", colnames(corr_gamma))]
+corr_gamma_LD$dose = low_dose_Gamma
+colnames(corr_gamma_LD)[colnames(corr_gamma_LD)=="Dead_Cells_LD_corr_2"]<-"Dead_Cells_corr_2"
+corr_gamma_HD <- corr_gamma[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_HD_corr_2", colnames(corr_gamma))]
+corr_gamma_HD$dose = high_dose_Gamma
+colnames(corr_gamma_HD)[colnames(corr_gamma_HD)=="Dead_Cells_HD_corr_2"]<-"Dead_Cells_corr_2"
+corr_gamma = rbind(corr_gamma_0,corr_gamma_LD,corr_gamma_HD)
+corr_gamma$Timepoint = factor(corr_gamma$Timepoint, levels = c("4h", "24h"))
+
+corr_data_plot_gamma <- ggplot(corr_gamma, aes(x=Run_set, y=Dead_Cells_corr_2)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Gamma")
+
+### Silicon
+corr_si <- Corrected_all_cd_2[Corrected_all_cd_2$Radiation_type=="Si",]
+corr_si_0 <- corr_si[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_0_corr_2", colnames(corr_si))]
+corr_si_0$dose = 0
+colnames(corr_si_0)[colnames(corr_si_0)=="Dead_Cells_0_corr_2"]<-"Dead_Cells_corr_2"
+corr_si_LD <- corr_si[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_LD_corr_2", colnames(corr_si))]
+corr_si_LD$dose = low_dose_Si
+colnames(corr_si_LD)[colnames(corr_si_LD)=="Dead_Cells_LD_corr_2"]<-"Dead_Cells_corr_2"
+corr_si_HD <- corr_si[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_HD_corr_2", colnames(corr_si))]
+corr_si_HD$dose = high_dose_Si
+colnames(corr_si_HD)[colnames(corr_si_HD)=="Dead_Cells_HD_corr_2"]<-"Dead_Cells_corr_2"
+corr_si = rbind(corr_si_0,corr_si_LD,corr_si_HD)
+corr_si$Timepoint = factor(corr_si$Timepoint, levels = c("4h", "24h"))
+
+corr_data_plot_si <- ggplot(corr_si, aes(x=Run_set, y=Dead_Cells_corr_2)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Si")
+
+### Argon
+corr_ar <- Corrected_all_cd_2[Corrected_all_cd_2$Radiation_type=="Ar",]
+corr_ar_0 <- corr_ar[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_0_corr_2", colnames(corr_ar))]
+corr_ar_0$dose = 0
+colnames(corr_ar_0)[colnames(corr_ar_0)=="Dead_Cells_0_corr_2"]<-"Dead_Cells_corr_2"
+corr_ar_LD <- corr_ar[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_LD_corr_2", colnames(corr_ar))]
+corr_ar_LD$dose = low_dose_Ar
+colnames(corr_ar_LD)[colnames(corr_ar_LD)=="Dead_Cells_LD_corr_2"]<-"Dead_Cells_corr_2"
+corr_ar_HD <- corr_ar[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_HD_corr_2", colnames(corr_ar))]
+corr_ar_HD$dose = high_dose_Ar
+colnames(corr_ar_HD)[colnames(corr_ar_HD)=="Dead_Cells_HD_corr_2"]<-"Dead_Cells_corr_2"
+corr_ar = rbind(corr_ar_0,corr_ar_LD,corr_ar_HD)
+corr_ar$Timepoint = factor(corr_ar$Timepoint, levels = c("4h", "24h"))
+
+corr_data_plot_ar <- ggplot(corr_ar, aes(x=Run_set, y=Dead_Cells_corr_2)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Ar")
+
+### Iron
+corr_fe <- Corrected_all_cd_2[Corrected_all_cd_2$Radiation_type=="Fe",]
+corr_fe_0 <- corr_fe[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_0_corr_2", colnames(corr_fe))]
+corr_fe_0$dose = 0
+colnames(corr_fe_0)[colnames(corr_fe_0)=="Dead_Cells_0_corr_2"]<-"Dead_Cells_corr_2"
+corr_fe_LD <- corr_fe[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_LD_corr_2", colnames(corr_fe))]
+corr_fe_LD$dose = low_dose_Fe
+colnames(corr_fe_LD)[colnames(corr_fe_LD)=="Dead_Cells_LD_corr_2"]<-"Dead_Cells_corr_2"
+corr_fe_HD <- corr_fe[,grepl("Sample_ID|Run_set|Timepoint|Dead_Cells_HD_corr_2", colnames(corr_fe))]
+corr_fe_HD$dose = high_dose_Fe
+colnames(corr_fe_HD)[colnames(corr_fe_HD)=="Dead_Cells_HD_corr_2"]<-"Dead_Cells_corr_2"
+corr_fe = rbind(corr_fe_0,corr_fe_LD,corr_fe_HD)
+corr_fe$Timepoint = factor(corr_fe$Timepoint, levels = c("4h", "24h"))
+
+corr_data_plot_fe <- ggplot(corr_fe, aes(x=Run_set, y=Dead_Cells_corr_2)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Fe")
+```
+
+
+```{r}
+##################################################################################################
+####################################### Read Oxidative Stress DATA ##########################################
+################################################################################################
+
+all_flow_meta = read.csv('all_flow_20201123.csv', sep = ",", header = TRUE)
+
+CellROX_Raw=all_flow_meta[,grepl("Live_CR_mean|Sample_ID|Timepoint|Run|Age|Gender|BMI|CMV", colnames(all_flow_meta))]
+
+## we add median values as secondary data 
+sheet_names <- excel_sheets(here::here("Human analysis/Flow_CRmedian_DeathQuartiles_20201123.xlsx"))
+nbr_of_sheet = length(sheet_names)
+
+for (i in 1:nbr_of_sheet){
+  data <- read_excel(here::here("Human analysis/Flow_CRmedian_DeathQuartiles_20201123.xlsx"), sheet=i, col_types = "text") 
+  name <- paste0("Sheet_", sheet_names[i])
+  assign(name, data)                   
+  rm(name, data)
+}
+
+CellROX_extra_Fe = bind_rows(Sheet_18B_CR_median_Fe, Sheet_19A_CR_median_Fe, Sheet_19C_CR_median_Fe) 
+CellROX_extra_Ar = bind_rows(Sheet_18B_CR_median_Ar, Sheet_19A_CR_median_Ar, Sheet_19C_CR_median_Ar) 
+CellROX_extra_Si = bind_rows(Sheet_18B_CR_median_Si, Sheet_19A_CR_median_Si, Sheet_19C_CR_median_Si) 
+CellROX_extra_Gamma = bind_rows(Sheet_18B_CR_median_Gamma, Sheet_19A_CR_median_Gamma, Sheet_19C_CR_median_Gamma) 
+                    
+CellROX_extra= merge(CellROX_extra_Fe, CellROX_extra_Ar,by=c("Sample_number", "Set"), all=TRUE)
+CellROX_extra= merge(CellROX_extra, CellROX_extra_Si,by=c("Sample_number", "Set"), all=TRUE )
+CellROX_extra= merge(CellROX_extra, CellROX_extra_Gamma,by=c("Sample_number", "Set"), all=TRUE)
+CellROX_extra <- CellROX_extra %>% select_if(function(x){!all(is.na(x))})
+CellROX_extra <- filter(CellROX_extra, rowSums(is.na(CellROX_extra)) != ncol(CellROX_extra))
+
+## Separate 4h and 24h and create variable time point 
+CellROX_extra_4h = CellROX_extra[,grepl("Sample|Set|_4h", colnames(CellROX_extra))]
+CellROX_extra_4h$Timepoint="4h"
+colnames(CellROX_extra_4h)[colnames(CellROX_extra_4h)=="Fe_Live_CR_median_0_4h"] <- "Fe_Live_CR_median_0"
+colnames(CellROX_extra_4h)[colnames(CellROX_extra_4h)=="Fe_Live_CR_median_1_4h"] <- "Fe_Live_CR_median_1"
+colnames(CellROX_extra_4h)[colnames(CellROX_extra_4h)=="Fe_Live_CR_median_3_4h"] <- "Fe_Live_CR_median_3"
+colnames(CellROX_extra_4h)[colnames(CellROX_extra_4h)=="Ar_Live_CR_median_0_4h"] <- "Ar_Live_CR_median_0"
+colnames(CellROX_extra_4h)[colnames(CellROX_extra_4h)=="Ar_Live_CR_median_1_4h"] <- "Ar_Live_CR_median_1"
+colnames(CellROX_extra_4h)[colnames(CellROX_extra_4h)=="Ar_Live_CR_median_3_4h"] <- "Ar_Live_CR_median_3"
+colnames(CellROX_extra_4h)[colnames(CellROX_extra_4h)=="Si_Live_CR_median_0_4h"] <- "Si_Live_CR_median_0"
+colnames(CellROX_extra_4h)[colnames(CellROX_extra_4h)=="Si_Live_CR_median_1_4h"] <- "Si_Live_CR_median_1"
+colnames(CellROX_extra_4h)[colnames(CellROX_extra_4h)=="Si_Live_CR_median_3_4h"] <- "Si_Live_CR_median_3"
+colnames(CellROX_extra_4h)[colnames(CellROX_extra_4h)=="Gamma_Live_CR_median_0_4h"] <- "Gamma_Live_CR_median_0"
+colnames(CellROX_extra_4h)[colnames(CellROX_extra_4h)=="Gamma_Live_CR_median_01_4h"] <- "Gamma_Live_CR_median_01"
+colnames(CellROX_extra_4h)[colnames(CellROX_extra_4h)=="Gamma_Live_CR_median_1_4h"] <- "Gamma_Live_CR_median_1"
+
+CellROX_extra_24h = CellROX_extra[,grepl("Sample|Set|_24h", colnames(CellROX_extra))]
+CellROX_extra_24h$Timepoint="24h"
+colnames(CellROX_extra_24h)[colnames(CellROX_extra_24h)=="Fe_Live_CR_median_0_24h"] <- "Fe_Live_CR_median_0"
+colnames(CellROX_extra_24h)[colnames(CellROX_extra_24h)=="Fe_Live_CR_median_1_24h"] <- "Fe_Live_CR_median_1"
+colnames(CellROX_extra_24h)[colnames(CellROX_extra_24h)=="Fe_Live_CR_median_3_24h"] <- "Fe_Live_CR_median_3"
+colnames(CellROX_extra_24h)[colnames(CellROX_extra_24h)=="Ar_Live_CR_median_0_24h"] <- "Ar_Live_CR_median_0"
+colnames(CellROX_extra_24h)[colnames(CellROX_extra_24h)=="Ar_Live_CR_median_1_24h"] <- "Ar_Live_CR_median_1"
+colnames(CellROX_extra_24h)[colnames(CellROX_extra_24h)=="Ar_Live_CR_median_3_24h"] <- "Ar_Live_CR_median_3"
+colnames(CellROX_extra_24h)[colnames(CellROX_extra_24h)=="Si_Live_CR_median_0_24h"] <- "Si_Live_CR_median_0"
+colnames(CellROX_extra_24h)[colnames(CellROX_extra_24h)=="Si_Live_CR_median_1_24h"] <- "Si_Live_CR_median_1"
+colnames(CellROX_extra_24h)[colnames(CellROX_extra_24h)=="Si_Live_CR_median_3_24h"] <- "Si_Live_CR_median_3"
+colnames(CellROX_extra_24h)[colnames(CellROX_extra_24h)=="Gamma_Live_CR_median_0_24h"] <- "Gamma_Live_CR_median_0"
+colnames(CellROX_extra_24h)[colnames(CellROX_extra_24h)=="Gamma_Live_CR_median_01_24h"] <- "Gamma_Live_CR_median_01"
+colnames(CellROX_extra_24h)[colnames(CellROX_extra_24h)=="Gamma_Live_CR_median_1_24h"] <- "Gamma_Live_CR_median_1"
+
+CellROX_extra=bind_rows(CellROX_extra_4h, CellROX_extra_24h)
+colnames(CellROX_extra)[colnames(CellROX_extra) == "Sample_number"] = "Sample_ID"
+colnames(CellROX_extra)[colnames(CellROX_extra) == "Set"] = "Run_set"
+
+All_CellROX_Raw = merge(CellROX_Raw, CellROX_extra,by=c("Sample_ID", "Run_set", 'Timepoint'), all=TRUE )
+
+### Formatting: creating column with irradiation type
+
+CR_Fe = All_CellROX_Raw[,grepl("Fe|Sample_ID|Run_set|Timepoint|Run_set_well|Age|Gender|BMI|BMI_group|Collection_Date|CMV", colnames(All_CellROX_Raw))]
+CR_Fe$Radiation_type="Fe"
+colnames(CR_Fe)[colnames(CR_Fe)=="Fe_Live_CR_median_0"] = "Live_CR_median_0"
+colnames(CR_Fe)[colnames(CR_Fe)=="Fe_Live_CR_median_1"] = "Live_CR_median_low_dose"
+colnames(CR_Fe)[colnames(CR_Fe)=="Fe_Live_CR_median_3"] = "Live_CR_median_high_dose"
+colnames(CR_Fe)[colnames(CR_Fe)=="Fe_Live_CR_mean_0"] = "Live_CR_mean_0"
+colnames(CR_Fe)[colnames(CR_Fe)=="Fe_Live_CR_mean_1"] = "Live_CR_mean_low_dose"
+colnames(CR_Fe)[colnames(CR_Fe)=="Fe_Live_CR_mean_3"] = "Live_CR_mean_high_dose"
+
+CR_Ar = All_CellROX_Raw[,grepl("Ar|Sample_ID|Run_set|Timepoint|Run_set_well|Age|Gender|BMI|BMI_group|Collection_Date|CMV", colnames(All_CellROX_Raw))]
+CR_Ar$Radiation_type="Ar"
+colnames(CR_Ar)[colnames(CR_Ar)=="Ar_Live_CR_median_0"] = "Live_CR_median_0"
+colnames(CR_Ar)[colnames(CR_Ar)=="Ar_Live_CR_median_1"] = "Live_CR_median_low_dose"
+colnames(CR_Ar)[colnames(CR_Ar)=="Ar_Live_CR_median_3"] = "Live_CR_median_high_dose"
+colnames(CR_Ar)[colnames(CR_Ar)=="Ar_Live_CR_mean_0"] = "Live_CR_mean_0"
+colnames(CR_Ar)[colnames(CR_Ar)=="Ar_Live_CR_mean_1"] = "Live_CR_mean_low_dose"
+colnames(CR_Ar)[colnames(CR_Ar)=="Ar_Live_CR_mean_3"] = "Live_CR_mean_high_dose"
+
+CR_Si = All_CellROX_Raw[,grepl("Si|Sample_ID|Run_set|Timepoint|Run_set_well|Age|Gender|BMI|BMI_group|Collection_Date|CMV", colnames(All_CellROX_Raw))]
+CR_Si$Radiation_type="Si"
+colnames(CR_Si)[colnames(CR_Si)=="Si_Live_CR_median_0"] = "Live_CR_median_0"
+colnames(CR_Si)[colnames(CR_Si)=="Si_Live_CR_median_1"] = "Live_CR_median_low_dose"
+colnames(CR_Si)[colnames(CR_Si)=="Si_Live_CR_median_3"] = "Live_CR_median_high_dose"
+colnames(CR_Si)[colnames(CR_Si)=="Si_Live_CR_mean_0"] = "Live_CR_mean_0"
+colnames(CR_Si)[colnames(CR_Si)=="Si_Live_CR_mean_1"] = "Live_CR_mean_low_dose"
+colnames(CR_Si)[colnames(CR_Si)=="Si_Live_CR_mean_3"] = "Live_CR_mean_high_dose"
+
+CR_Gamma = All_CellROX_Raw[,grepl("Gamma|Sample_ID|Run_set|Timepoint|Run_set_well|Age|Gender|BMI|BMI_group|Collection_Date|CMV", colnames(All_CellROX_Raw))]
+CR_Gamma$Radiation_type="Gamma"
+colnames(CR_Gamma)[colnames(CR_Gamma)=="Gamma_Live_CR_median_0"] = "Live_CR_median_0"
+colnames(CR_Gamma)[colnames(CR_Gamma)=="Gamma_Live_CR_median_01"] = "Live_CR_median_low_dose"
+colnames(CR_Gamma)[colnames(CR_Gamma)=="Gamma_Live_CR_median_1"] = "Live_CR_median_high_dose"
+colnames(CR_Gamma)[colnames(CR_Gamma)=="Gamma_Live_CR_mean_0"] = "Live_CR_mean_0"
+colnames(CR_Gamma)[colnames(CR_Gamma)=="Gamma_Live_CR_mean_10"] = "Live_CR_mean_low_dose"
+colnames(CR_Gamma)[colnames(CR_Gamma)=="Gamma_Live_CR_mean_100"] = "Live_CR_mean_high_dose"
+
+All_CellROX_Raw=bind_rows(CR_Fe, CR_Ar, CR_Si, CR_Gamma)
+All_CellROX_Raw <- All_CellROX_Raw[!(All_CellROX_Raw$Radiation_type == "Gamma" & All_CellROX_Raw$Timepoint == "24h" & All_CellROX_Raw$Run_set =="19A_Set1"),]
+All_CellROX_Raw <- All_CellROX_Raw[!(All_CellROX_Raw$Radiation_type == "Si" & All_CellROX_Raw$Timepoint == "24h" & All_CellROX_Raw$Run_set =="19A_Set1"),]
+All_CellROX_Raw <- All_CellROX_Raw[!(All_CellROX_Raw$Radiation_type == "Ar" & All_CellROX_Raw$Timepoint == "24h" & All_CellROX_Raw$Run_set =="19A_Set1"),]
+All_CellROX_Raw <- All_CellROX_Raw[!(All_CellROX_Raw$Radiation_type == "Fe" & All_CellROX_Raw$Timepoint == "24h" & All_CellROX_Raw$Run_set =="19A_Set1"),]
+```
+
+```{r Plot raw data for initial check-up}
+
+### Gamma
+raw_gamma <- All_CellROX_Raw[All_CellROX_Raw$Radiation_type=="Gamma",]
+raw_gamma_0 <- raw_gamma[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_0", colnames(raw_gamma))]
+raw_gamma_0$dose = 0
+colnames(raw_gamma_0)[colnames(raw_gamma_0)=="Live_CR_mean_0"]<-"Live_CR_mean"
+raw_gamma_LD <- raw_gamma[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_low_dose", colnames(raw_gamma))]
+raw_gamma_LD$dose = low_dose_Gamma
+colnames(raw_gamma_LD)[colnames(raw_gamma_LD)=="Live_CR_mean_low_dose"]<-"Live_CR_mean"
+raw_gamma_HD <- raw_gamma[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_high_dose", colnames(raw_gamma))]
+raw_gamma_HD$dose = high_dose_Gamma
+colnames(raw_gamma_HD)[colnames(raw_gamma_HD)=="Live_CR_mean_high_dose"]<-"Live_CR_mean"
+raw_gamma <- rbind(raw_gamma_0,raw_gamma_LD,raw_gamma_HD)
+raw_gamma$Timepoint = factor(raw_gamma$Timepoint, levels = c("4h", "24h"))
+
+raw_data_plot_gamma <- ggplot(raw_gamma, aes(x=Run_set, y=Live_CR_mean)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Gamma")
+
+### Silicon
+raw_si <- All_CellROX_Raw[All_CellROX_Raw$Radiation_type=="Si",]
+raw_si_0 <- raw_si[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_0", colnames(raw_si))]
+raw_si_0$dose = 0
+colnames(raw_si_0)[colnames(raw_si_0)=="Live_CR_mean_0"]<-"Live_CR_mean"
+raw_si_LD <- raw_si[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_low_dose", colnames(raw_si))]
+raw_si_LD$dose = low_dose_Si
+colnames(raw_si_LD)[colnames(raw_si_LD)=="Live_CR_mean_low_dose"]<-"Live_CR_mean"
+raw_si_HD <- raw_si[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_high_dose", colnames(raw_si))]
+raw_si_HD$dose = high_dose_Si
+colnames(raw_si_HD)[colnames(raw_si_HD)=="Live_CR_mean_high_dose"]<-"Live_CR_mean"
+raw_si <- rbind(raw_si_0,raw_si_LD,raw_si_HD)
+raw_si$Timepoint = factor(raw_si$Timepoint, levels = c("4h", "24h"))
+
+raw_data_plot_si <- ggplot(raw_si, aes(x=Run_set, y=Live_CR_mean)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Si")
+
+### Argon
+raw_ar <- All_CellROX_Raw[All_CellROX_Raw$Radiation_type=="Ar",]
+raw_ar_0 <- raw_ar[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_0", colnames(raw_ar))]
+raw_ar_0$dose = 0
+colnames(raw_ar_0)[colnames(raw_ar_0)=="Live_CR_mean_0"]<-"Live_CR_mean"
+raw_ar_LD <- raw_ar[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_low_dose", colnames(raw_ar))]
+raw_ar_LD$dose = low_dose_Ar
+colnames(raw_ar_LD)[colnames(raw_ar_LD)=="Live_CR_mean_low_dose"]<-"Live_CR_mean"
+raw_ar_HD <- raw_ar[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_high_dose", colnames(raw_ar))]
+raw_ar_HD$dose = high_dose_Ar
+colnames(raw_ar_HD)[colnames(raw_ar_HD)=="Live_CR_mean_high_dose"]<-"Live_CR_mean"
+raw_ar <- rbind(raw_ar_0,raw_ar_LD,raw_ar_HD)
+raw_ar$Timepoint = factor(raw_ar$Timepoint, levels = c("4h", "24h"))
+
+raw_data_plot_ar <- ggplot(raw_ar, aes(x=Run_set, y=Live_CR_mean)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Ar")
+
+### Iron
+raw_fe <- All_CellROX_Raw[All_CellROX_Raw$Radiation_type=="Fe",]
+raw_fe_0 <- raw_fe[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_0", colnames(raw_fe))]
+raw_fe_0$dose = 0
+colnames(raw_fe_0)[colnames(raw_fe_0)=="Live_CR_mean_0"]<-"Live_CR_mean"
+raw_fe_LD <- raw_fe[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_low_dose", colnames(raw_fe))]
+raw_fe_LD$dose = low_dose_Fe
+colnames(raw_fe_LD)[colnames(raw_fe_LD)=="Live_CR_mean_low_dose"]<-"Live_CR_mean"
+raw_fe_HD <- raw_fe[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_high_dose", colnames(raw_fe))]
+raw_fe_HD$dose = high_dose_Fe
+colnames(raw_fe_HD)[colnames(raw_fe_HD)=="Live_CR_mean_high_dose"]<-"Live_CR_mean"
+raw_fe <- rbind(raw_fe_0,raw_fe_LD,raw_fe_HD)
+raw_fe$Timepoint = factor(raw_fe$Timepoint, levels = c("4h", "24h"))
+
+raw_data_plot_fe <- ggplot(raw_fe, aes(x=Run_set, y=Live_CR_mean)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Fe")
+```
+
+```{r}
+#############################################################################################################################
+###################################################Correction################################################################
+#############################################################################################################################
+
+### Step1: 0Gy samples-------------------------------------------------------------------------------------------------------------------
+
+#### add batch number by run & set 
+Raw_os = All_CellROX_Raw
+Raw_os$Run_set_batch[Raw_os$Run_set=="18B_Set1"] <- 1
+Raw_os$Run_set_batch[Raw_os$Run_set=="18B_Set2"] <- 2
+Raw_os$Run_set_batch[Raw_os$Run_set=="19A_Set1"] <- 3
+Raw_os$Run_set_batch[Raw_os$Run_set=="19A_Set2"] <- 4
+Raw_os$Run_set_batch[Raw_os$Run_set=="19A_Set3"] <- 5
+Raw_os$Run_set_batch[Raw_os$Run_set=="19A_Set4"] <- 6
+Raw_os$Run_set_batch[Raw_os$Run_set=="19C_Set1"] <- 7
+Raw_os$Run_set_batch[Raw_os$Run_set=="19C_Set2"] <- 8
+
+## add batch number by radiation
+Raw_os$Radiation_Batch[Raw_os$Radiation_type=="Fe"] <- 1
+Raw_os$Radiation_Batch[Raw_os$Radiation_type=="Ar"] <- 2
+Raw_os$Radiation_Batch[Raw_os$Radiation_type=="Si"] <- 3
+Raw_os$Radiation_Batch[Raw_os$Radiation_type=="Gamma"] <- 4
+
+Raw_os$Live_CR_mean_0 <- as.numeric(Raw_os$Live_CR_mean_0)
+Raw_os$Live_CR_median_0 <- as.numeric(Raw_os$Live_CR_median_0)
+
+###### for each run & set we apply ComBat, separating 4h and 24h time points, with radiation as a batch effect variable 
+
+for (i in 1:8){
+  
+  if (i %in% c(3,4,5,6,7,8)){ #18B_Set1 and 18B_Set2 only have 4h timepoint for gamma: no correction possible
+  Run_set = Raw_os %>% filter(Raw_os$Run_set_batch == i & Raw_os$Timepoint == "4h")
+  Run_set <- Run_set[!is.na(Run_set$Live_CR_mean_0) & !is.na(Run_set$Live_CR_median_0),]
+  metadata_save=Run_set[,grep("Sample_ID|Run_set_well|Run_set|Radiation_type|Timepoint|Age|BMI|Gender|BMI_group|CMV|Collection_Date",colnames(Run_set))]
+  metadata=Run_set[,grep("Sample_ID|Age|BMI|Gender",colnames(Run_set))]
+  edata_control=Run_set[,grep("Live_CR_mean_0|Live_CR_median_0",colnames(Run_set))]
+  edata_control=t(edata_control)
+  modcombat = model.matrix(~1, data= metadata) 
+  Batch_C= Run_set$Radiation_Batch
+  Modified_ComBat = ComBat(dat=edata_control, batch=Batch_C, mod=modcombat)
+
+  Run_Set_Corrected_Controls_temp = t(Modified_ComBat)
+  assign(paste("Corrected_Controls_4h_batch",i,sep=""),cbind(Run_Set_Corrected_Controls_temp, metadata_save))
+  }
+  
+  if (i %in% c(1,2,7,8)){ #No 24h timepoint for all 19A sets
+  Run_set = Raw_os %>% filter(Raw_os$Run_set_batch == i & Raw_os$Timepoint == "24h")
+  Run_set <- Run_set[!is.na(Run_set$Live_CR_mean_0) & !is.na(Run_set$Live_CR_median_0),]
+  metadata_save=Run_set[,grep("Sample_ID|Run_set_well|Run_set|Radiation_type|Timepoint|Age|BMI|Gender|BMI_group|CMV|Collection_Date",colnames(Run_set))]
+  metadata=Run_set[,grep("Sample_ID|Age|BMI|Gender",colnames(Run_set))]
+  edata_control=Run_set[,grep("Live_CR_mean_0|Live_CR_median_0",colnames(Run_set))]
+  edata_control=t(edata_control)
+  modcombat = model.matrix(~1, data= metadata) 
+  Batch_C= Run_set$Radiation_Batch
+  Modified_ComBat = ComBat(dat=edata_control, batch=Batch_C, mod=modcombat)
+
+  Run_Set_Corrected_Controls_temp = t(Modified_ComBat)
+  assign(paste("Corrected_Controls_24h_batch",i,sep=""),cbind(Run_Set_Corrected_Controls_temp, metadata_save))
+  }
+} 
+
+######### regroup corrected controls 
+Corrected_controls_os= bind_rows(Corrected_Controls_4h_batch3,Corrected_Controls_4h_batch4,Corrected_Controls_4h_batch5,Corrected_Controls_4h_batch6,Corrected_Controls_4h_batch7,Corrected_Controls_4h_batch8,Corrected_Controls_24h_batch1,Corrected_Controls_24h_batch2,Corrected_Controls_24h_batch7,Corrected_Controls_24h_batch8)
+
+colnames(Corrected_controls_os)[colnames(Corrected_controls_os)=="Live_CR_mean_0"] <- "Live_CR_mean_0_corr"
+Corrected_controls_tmp = select(Corrected_controls_os,Sample_ID,Run_set,Radiation_type,Timepoint,Live_CR_mean_0_corr)
+Raw_os <- merge(Raw_os,Corrected_controls_tmp,by=c("Sample_ID","Timepoint","Radiation_type","Run_set"),all=TRUE)
+
+# Gamma 18B 4h is not corrected: values of CellROX remain unchanged after Step1 correction
+Raw_os[Raw_os$Radiation_type == "Gamma" & Raw_os$Timepoint == "4h" & (Raw_os$Run_set == "18B_Set1" | Raw_os$Run_set == "18B_Set2"),]$Live_CR_mean_0_corr = Raw_os[Raw_os$Radiation_type == "Gamma" & Raw_os$Timepoint == "4h" & (Raw_os$Run_set == "18B_Set1" | Raw_os$Run_set == "18B_Set2"),]$Live_CR_mean_0
+
+
+#graphs to check correction step1 of 0Gy samples-----------------------------------------------------------------------------------------------------
+
+Raw_os$Timepoint = factor(Raw_os$Timepoint, levels = c("4h", "24h"))
+Raw_os$Radiation_type = factor(Raw_os$Radiation_type, levels = c("Gamma", "Si","Ar","Fe"))
+raw_data <- ggplot(Raw_os, aes(x=Run_set, y=Live_CR_mean_0)) + geom_boxplot(aes(fill=Radiation_type)) + facet_grid(. ~ Timepoint)
+
+corrected_data <- ggplot(Raw_os, aes(x=Run_set, y=Live_CR_mean_0_corr)) + geom_boxplot(aes(fill=Radiation_type)) + facet_grid(. ~ Timepoint)
+#----------------------------------------------------------------------------------------------------------------------------------------------------
+
+### Step1: all samples-------------------------------------------------------------------------------------------------------------------
+
+rad <- c("Fe","Ar","Si","Gamma")
+
+for (i in 1:8){ #screen for run & set
+  for (r in 1:4){ #screen for radiation type
+    
+  if (i %in% c(3,4,5,6,7,8)){
+    Run_set_4h = Raw_os %>% filter(Raw_os$Run_set_batch == i & Raw_os$Timepoint == "4h" & Raw_os$Radiation_type == rad[r])
+  
+  mu_0Gy = mean(NaRV.omit(Run_set_4h$Live_CR_mean_0))
+  mu_0Gy_corr = mean(NaRV.omit(Run_set_4h$Live_CR_mean_0_corr))
+  sd_0Gy = sd(NaRV.omit(Run_set_4h$Live_CR_mean_0))
+  sd_0Gy_corr = sd(NaRV.omit(Run_set_4h$Live_CR_mean_0_corr))
+  
+  Run_set_4h$Live_CR_mean_LD_corr <- (Run_set_4h$Live_CR_mean_low_dose-mu_0Gy)*(sd_0Gy_corr/sd_0Gy)+mu_0Gy_corr
+  Run_set_4h$Live_CR_mean_HD_corr <- (Run_set_4h$Live_CR_mean_high_dose-mu_0Gy)*(sd_0Gy_corr/sd_0Gy)+mu_0Gy_corr
+  
+  assign(paste("Corrected_4h_batch",i,rad[r],sep="_"),Run_set_4h)
+  }
+  
+  if (i %in% c(1,2,7,8)){
+    Run_set_24h = Raw_os %>% filter(Raw_os$Run_set_batch == i & Raw_os$Timepoint == "24h" & Raw_os$Radiation_type == rad[r])
+  
+  mu_0Gy = mean(NaRV.omit(Run_set_24h$Live_CR_mean_0))
+  mu_0Gy_corr = mean(NaRV.omit(Run_set_24h$Live_CR_mean_0_corr))
+  sd_0Gy = sd(NaRV.omit(Run_set_24h$Live_CR_mean_0))
+  sd_0Gy_corr = sd(NaRV.omit(Run_set_24h$Live_CR_mean_0_corr))
+  
+  Run_set_24h$Live_CR_mean_LD_corr <- (Run_set_24h$Live_CR_mean_low_dose-mu_0Gy)*(sd_0Gy_corr/sd_0Gy)+mu_0Gy_corr
+  Run_set_24h$Live_CR_mean_HD_corr <- (Run_set_24h$Live_CR_mean_high_dose-mu_0Gy)*(sd_0Gy_corr/sd_0Gy)+mu_0Gy_corr
+  
+  assign(paste("Corrected_24h_batch",i,rad[r],sep="_"),Run_set_24h)
+  }
+  }
+} 
+
+#Gamma 4h 18B remains unchanged:
+Corrected_4h_batch_1_Gamma <- Raw_os %>% filter(Raw_os$Run_set_batch == 1 & Raw_os$Timepoint == "4h" & Raw_os$Radiation_type == "Gamma")
+Corrected_4h_batch_1_Gamma$Live_CR_mean_LD_corr <- Corrected_4h_batch_1_Gamma$Live_CR_mean_low_dose
+Corrected_4h_batch_1_Gamma$Live_CR_mean_HD_corr <- Corrected_4h_batch_1_Gamma$Live_CR_mean_high_dose
+
+Corrected_4h_batch_2_Gamma <- Raw_os %>% filter(Raw_os$Run_set_batch == 2 & Raw_os$Timepoint == "4h" & Raw_os$Radiation_type == "Gamma")
+Corrected_4h_batch_2_Gamma$Live_CR_mean_LD_corr <- Corrected_4h_batch_2_Gamma$Live_CR_mean_low_dose
+Corrected_4h_batch_2_Gamma$Live_CR_mean_HD_corr <- Corrected_4h_batch_2_Gamma$Live_CR_mean_high_dose
+
+Corrected_all_os <- rbind(Corrected_4h_batch_1_Gamma,Corrected_4h_batch_2_Gamma,Corrected_4h_batch_3_Ar,Corrected_4h_batch_3_Fe,Corrected_4h_batch_3_Gamma,Corrected_4h_batch_3_Si,Corrected_4h_batch_4_Ar,Corrected_4h_batch_4_Fe,Corrected_4h_batch_4_Gamma,Corrected_4h_batch_4_Si,Corrected_4h_batch_5_Ar,Corrected_4h_batch_5_Fe,Corrected_4h_batch_5_Gamma,Corrected_4h_batch_5_Si,Corrected_4h_batch_6_Ar,Corrected_4h_batch_6_Fe,Corrected_4h_batch_6_Gamma,Corrected_4h_batch_6_Si,Corrected_4h_batch_7_Ar,Corrected_4h_batch_7_Fe,Corrected_4h_batch_7_Gamma,Corrected_4h_batch_7_Si,Corrected_4h_batch_8_Ar,Corrected_4h_batch_8_Fe,Corrected_4h_batch_8_Gamma,Corrected_4h_batch_8_Si,Corrected_24h_batch_1_Ar,Corrected_24h_batch_1_Fe,Corrected_24h_batch_1_Gamma,Corrected_24h_batch_1_Si,Corrected_24h_batch_2_Ar,Corrected_24h_batch_2_Fe,Corrected_24h_batch_2_Gamma,Corrected_24h_batch_2_Si,Corrected_24h_batch_7_Ar,Corrected_24h_batch_7_Fe,Corrected_24h_batch_7_Gamma,Corrected_24h_batch_7_Si,Corrected_24h_batch_8_Ar,Corrected_24h_batch_8_Fe,Corrected_24h_batch_8_Gamma,Corrected_24h_batch_8_Si)
+
+#### The correction may generate negative value => we fix those negative value to 0 
+Corrected_all_os$Live_CR_mean_0_corr[Corrected_all_os$Live_CR_mean_0_corr < 0] <- 0 
+Corrected_all_os$Live_CR_mean_LD_corr[Corrected_all_os$Live_CR_mean_LD_corr < 0] <- 0 
+Corrected_all_os$Live_CR_mean_HD_corr[Corrected_all_os$Live_CR_mean_HD_corr < 0] <- 0 
+
+#graphs to check correction step1 of irradiated samples------------------------------------------------------------------------------------------------
+
+### Gamma
+corr_gamma <- Corrected_all_os[Corrected_all_os$Radiation_type=="Gamma",]
+corr_gamma_0 <- corr_gamma[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_0_corr", colnames(corr_gamma))]
+corr_gamma_0$dose = 0
+colnames(corr_gamma_0)[colnames(corr_gamma_0)=="Live_CR_mean_0_corr"]<-"Live_CR_mean_corr"
+corr_gamma_LD <- corr_gamma[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_LD_corr", colnames(corr_gamma))]
+corr_gamma_LD$dose = low_dose_Gamma
+colnames(corr_gamma_LD)[colnames(corr_gamma_LD)=="Live_CR_mean_LD_corr"]<-"Live_CR_mean_corr"
+corr_gamma_HD <- corr_gamma[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_HD_corr", colnames(corr_gamma))]
+corr_gamma_HD$dose = high_dose_Gamma
+colnames(corr_gamma_HD)[colnames(corr_gamma_HD)=="Live_CR_mean_HD_corr"]<-"Live_CR_mean_corr"
+corr_gamma = rbind(corr_gamma_0,corr_gamma_LD,corr_gamma_HD)
+corr_gamma$Timepoint = factor(corr_gamma$Timepoint, levels = c("4h", "24h"))
+
+corr_data_plot_gamma <- ggplot(corr_gamma, aes(x=Run_set, y=Live_CR_mean_corr)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Gamma")
+
+### Silicon
+corr_si <- Corrected_all_os[Corrected_all_os$Radiation_type=="Si",]
+corr_si_0 <- corr_si[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_0_corr", colnames(corr_si))]
+corr_si_0$dose = 0
+colnames(corr_si_0)[colnames(corr_si_0)=="Live_CR_mean_0_corr"]<-"Live_CR_mean_corr"
+corr_si_LD <- corr_si[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_LD_corr", colnames(corr_si))]
+corr_si_LD$dose = low_dose_Si
+colnames(corr_si_LD)[colnames(corr_si_LD)=="Live_CR_mean_LD_corr"]<-"Live_CR_mean_corr"
+corr_si_HD <- corr_si[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_HD_corr", colnames(corr_si))]
+corr_si_HD$dose = high_dose_Si
+colnames(corr_si_HD)[colnames(corr_si_HD)=="Live_CR_mean_HD_corr"]<-"Live_CR_mean_corr"
+corr_si = rbind(corr_si_0,corr_si_LD,corr_si_HD)
+corr_si$Timepoint = factor(corr_si$Timepoint, levels = c("4h", "24h"))
+
+corr_data_plot_si <- ggplot(corr_si, aes(x=Run_set, y=Live_CR_mean_corr)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Si")
+
+### Argon
+corr_ar <- Corrected_all_os[Corrected_all_os$Radiation_type=="Ar",]
+corr_ar_0 <- corr_ar[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_0_corr", colnames(corr_ar))]
+corr_ar_0$dose = 0
+colnames(corr_ar_0)[colnames(corr_ar_0)=="Live_CR_mean_0_corr"]<-"Live_CR_mean_corr"
+corr_ar_LD <- corr_ar[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_LD_corr", colnames(corr_ar))]
+corr_ar_LD$dose = low_dose_Ar
+colnames(corr_ar_LD)[colnames(corr_ar_LD)=="Live_CR_mean_LD_corr"]<-"Live_CR_mean_corr"
+corr_ar_HD <- corr_ar[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_HD_corr", colnames(corr_ar))]
+corr_ar_HD$dose = high_dose_Ar
+colnames(corr_ar_HD)[colnames(corr_ar_HD)=="Live_CR_mean_HD_corr"]<-"Live_CR_mean_corr"
+corr_ar = rbind(corr_ar_0,corr_ar_LD,corr_ar_HD)
+corr_ar$Timepoint = factor(corr_ar$Timepoint, levels = c("4h", "24h"))
+
+corr_data_plot_ar <- ggplot(corr_ar, aes(x=Run_set, y=Live_CR_mean_corr)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Ar")
+
+### Iron
+corr_fe <- Corrected_all_os[Corrected_all_os$Radiation_type=="Fe",]
+corr_fe_0 <- corr_fe[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_0_corr", colnames(corr_fe))]
+corr_fe_0$dose = 0
+colnames(corr_fe_0)[colnames(corr_fe_0)=="Live_CR_mean_0_corr"]<-"Live_CR_mean_corr"
+corr_fe_LD <- corr_fe[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_LD_corr", colnames(corr_fe))]
+corr_fe_LD$dose = low_dose_Fe
+colnames(corr_fe_LD)[colnames(corr_fe_LD)=="Live_CR_mean_LD_corr"]<-"Live_CR_mean_corr"
+corr_fe_HD <- corr_fe[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_HD_corr", colnames(corr_fe))]
+corr_fe_HD$dose = high_dose_Fe
+colnames(corr_fe_HD)[colnames(corr_fe_HD)=="Live_CR_mean_HD_corr"]<-"Live_CR_mean_corr"
+corr_fe = rbind(corr_fe_0,corr_fe_LD,corr_fe_HD)
+corr_fe$Timepoint = factor(corr_fe$Timepoint, levels = c("4h", "24h"))
+
+corr_data_plot_fe <- ggplot(corr_fe, aes(x=Run_set, y=Live_CR_mean_corr)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Fe")
+```
+
+```{r}
+### Step2: repeats between runs-------------------------------------------------------------------------
+
+# Select the repeats that overlap between 18B/19A and between 19A/19C
+Subject_18BS2_19AS1 = c(1214, 1215,1216,1217,1218,1219,1220,1221,1222,1223)
+OS_correct_19A_18B_10p = Corrected_all_os %>% filter(Corrected_all_os$Sample_ID %in% Subject_18BS2_19AS1 )
+Samp_19A_10p = OS_correct_19A_18B_10p %>% filter(OS_correct_19A_18B_10p$Run_set =="19A_Set1")
+Samp_18B_10p = OS_correct_19A_18B_10p %>% filter(OS_correct_19A_18B_10p$Run_set =="18B_Set2")
+
+# For Fe and Si
+Subject_19AS4_19CS1_Fe_Si = c(1580,1581,1582,1583,1584,1585,1586,1587,1588)
+OS_correct_19A_19C_10p_Fe_Si = Corrected_all_os %>% filter(Corrected_all_os$Sample_ID %in% Subject_19AS4_19CS1_Fe_Si)
+Samp_19A_10p_Fe_Si = OS_correct_19A_19C_10p_Fe_Si %>% filter(OS_correct_19A_19C_10p_Fe_Si$Run_set =="19A_Set4")
+Samp_19C_10p_Fe_Si = OS_correct_19A_19C_10p_Fe_Si %>% filter(OS_correct_19A_19C_10p_Fe_Si$Run_set =="19C_Set1")
+
+# For Gamma and Ar
+Subject_19AS4_19CS1_Gam_Ar = c(1589,1590,1591,1592,1593,1594,1595,1596,1597)
+OS_correct_19A_19C_10p_Gam_Ar = Corrected_all_os %>% filter(Corrected_all_os$Sample_ID %in% Subject_19AS4_19CS1_Gam_Ar)
+Samp_19A_10p_Gam_Ar = OS_correct_19A_19C_10p_Gam_Ar %>% filter(OS_correct_19A_19C_10p_Gam_Ar$Run_set =="19A_Set4")
+Samp_19C_10p_Gam_Ar = OS_correct_19A_19C_10p_Gam_Ar %>% filter(OS_correct_19A_19C_10p_Gam_Ar$Run_set =="19C_Set1")
+
+# Correct each condition of BNL18B and BNL19C: at 24h for all irradiation types we have only 18B and 19C (no repeats, no step2 correction). At 4h for all irradiation types we have 19A and 19C (step2 correction). At 4h for gamma we also have 18B and 19A (additional step2 correction).
+Corrected_all_os_2 <- Corrected_all_os
+
+for (r in 1:4){
+  if (r == 4){
+    temp <- Corrected_all_os[(Corrected_all_os$Run_set == "18B_Set1" | Corrected_all_os$Run_set == "18B_Set2") & Corrected_all_os$Radiation_type == rad[r] & Corrected_all_os$Timepoint == "4h",]
+    
+    #Controls
+  mu_18B_10p = mean(NaRV.omit(Samp_18B_10p[Samp_18B_10p$Radiation_type == rad[r] & Samp_18B_10p$Timepoint == "4h",]$Live_CR_mean_0_corr))
+  mu_19A_10p = mean(NaRV.omit(Samp_19A_10p[Samp_19A_10p$Radiation_type == rad[r] & Samp_19A_10p$Timepoint == "4h",]$Live_CR_mean_0_corr))
+  sig_18B_10p = sd(NaRV.omit(Samp_18B_10p[Samp_18B_10p$Radiation_type == rad[r] & Samp_18B_10p$Timepoint == "4h",]$Live_CR_mean_0_corr))
+  sig_19A_10p = sd(NaRV.omit(Samp_19A_10p[Samp_19A_10p$Radiation_type == rad[r] & Samp_19A_10p$Timepoint == "4h",]$Live_CR_mean_0_corr))
+  
+    temp$Live_CR_mean_0_corr_2 <- (temp$Live_CR_mean_0_corr - mu_18B_10p)*(sig_19A_10p/sig_18B_10p)+mu_19A_10p
+    
+    #Low dose
+  mu_18B_10p = mean(NaRV.omit(Samp_18B_10p[Samp_18B_10p$Radiation_type == rad[r] & Samp_18B_10p$Timepoint == "4h",]$Live_CR_mean_LD_corr))
+  mu_19A_10p = mean(NaRV.omit(Samp_19A_10p[Samp_19A_10p$Radiation_type == rad[r] & Samp_19A_10p$Timepoint == "4h",]$Live_CR_mean_LD_corr))
+  sig_18B_10p = sd(NaRV.omit(Samp_18B_10p[Samp_18B_10p$Radiation_type == rad[r] & Samp_18B_10p$Timepoint == "4h",]$Live_CR_mean_LD_corr))
+  sig_19A_10p = sd(NaRV.omit(Samp_19A_10p[Samp_19A_10p$Radiation_type == rad[r] & Samp_19A_10p$Timepoint == "4h",]$Live_CR_mean_LD_corr))
+  
+  temp$Live_CR_mean_LD_corr_2 <- (temp$Live_CR_mean_LD_corr - mu_18B_10p)*(sig_19A_10p/sig_18B_10p)+mu_19A_10p
+  
+  #High dose
+  mu_18B_10p = mean(NaRV.omit(Samp_18B_10p[Samp_18B_10p$Radiation_type == rad[r] & Samp_18B_10p$Timepoint == "4h",]$Live_CR_mean_HD_corr))
+  mu_19A_10p = mean(NaRV.omit(Samp_19A_10p[Samp_19A_10p$Radiation_type == rad[r] & Samp_19A_10p$Timepoint == "4h",]$Live_CR_mean_HD_corr))
+  sig_18B_10p = sd(NaRV.omit(Samp_18B_10p[Samp_18B_10p$Radiation_type == rad[r] & Samp_18B_10p$Timepoint == "4h",]$Live_CR_mean_HD_corr))
+  sig_19A_10p = sd(NaRV.omit(Samp_19A_10p[Samp_19A_10p$Radiation_type == rad[r] & Samp_19A_10p$Timepoint == "4h",]$Live_CR_mean_HD_corr))
+  
+    temp$Live_CR_mean_HD_corr_2 <- (temp$Live_CR_mean_HD_corr - mu_18B_10p)*(sig_19A_10p/sig_18B_10p)+mu_19A_10p
+    
+  #### The correction may generate negative value => we fix those negative value to 0 
+  temp$Live_CR_mean_0_corr_2[temp$Live_CR_mean_0_corr_2 < 0] <- 0 
+  temp$Live_CR_mean_LD_corr_2[temp$Live_CR_mean_LD_corr_2 < 0] <- 0 
+  temp$Live_CR_mean_HD_corr_2[temp$Live_CR_mean_HD_corr_2 < 0] <- 0 
+  
+  temp_all <- rbind(temp_all,temp)
+  }
+    
+    temp_2 <- Corrected_all_os[(Corrected_all_os$Run_set == "19C_Set1" | Corrected_all_os$Run_set == "19C_Set2") & Corrected_all_os$Radiation_type == rad[r] & Corrected_all_os$Timepoint == "4h",]
+    
+    if (r == 1 | r == 3){
+      Samp_19C_10p <- Samp_19C_10p_Fe_Si
+      Samp_19A_10p_2 <- Samp_19A_10p_Fe_Si
+    }
+    if (r == 2 | r == 4){
+      Samp_19C_10p <- Samp_19C_10p_Gam_Ar
+      Samp_19A_10p_2 <- Samp_19A_10p_Gam_Ar
+    }
+    
+    #Controls
+  mu_19C_10p = mean(NaRV.omit(Samp_19C_10p[Samp_19C_10p$Radiation_type == rad[r] & Samp_19C_10p$Timepoint == "4h",]$Live_CR_mean_0_corr))
+  mu_19A_10p_2 = mean(NaRV.omit(Samp_19A_10p_2[Samp_19A_10p_2$Radiation_type == rad[r] & Samp_19A_10p_2$Timepoint == "4h",]$Live_CR_mean_0_corr))
+  sig_19C_10p = sd(NaRV.omit(Samp_19C_10p[Samp_19C_10p$Radiation_type == rad[r] & Samp_19C_10p$Timepoint == "4h",]$Live_CR_mean_0_corr))
+  sig_19A_10p_2 = sd(NaRV.omit(Samp_19A_10p_2[Samp_19A_10p$Radiation_type == rad[r] & Samp_19A_10p_2$Timepoint == "4h",]$Live_CR_mean_0_corr))
+  
+  temp_2$Live_CR_mean_0_corr_2 <- (temp_2$Live_CR_mean_0_corr - mu_19C_10p)*(sig_19A_10p_2/sig_19C_10p)+mu_19A_10p_2
+  
+  #Low dose
+  mu_19C_10p = mean(NaRV.omit(Samp_19C_10p[Samp_19C_10p$Radiation_type == rad[r] & Samp_19C_10p$Timepoint == "4h",]$Live_CR_mean_LD_corr))
+  mu_19A_10p_2 = mean(NaRV.omit(Samp_19A_10p_2[Samp_19A_10p_2$Radiation_type == rad[r] & Samp_19A_10p_2$Timepoint == "4h",]$Live_CR_mean_LD_corr))
+  sig_19C_10p = sd(NaRV.omit(Samp_19C_10p[Samp_19C_10p$Radiation_type == rad[r] & Samp_19C_10p$Timepoint == "4h",]$Live_CR_mean_LD_corr))
+  sig_19A_10p_2 = sd(NaRV.omit(Samp_19A_10p_2[Samp_19A_10p$Radiation_type == rad[r] & Samp_19A_10p_2$Timepoint == "4h",]$Live_CR_mean_LD_corr))
+  
+  temp_2$Live_CR_mean_LD_corr_2 <- (temp_2$Live_CR_mean_LD_corr - mu_19C_10p)*(sig_19A_10p_2/sig_19C_10p)+mu_19A_10p_2
+  
+  #High dose
+  mu_19C_10p = mean(NaRV.omit(Samp_19C_10p[Samp_19C_10p$Radiation_type == rad[r] & Samp_19C_10p$Timepoint == "4h",]$Live_CR_mean_HD_corr))
+  mu_19A_10p_2 = mean(NaRV.omit(Samp_19A_10p_2[Samp_19A_10p_2$Radiation_type == rad[r] & Samp_19A_10p_2$Timepoint == "4h",]$Live_CR_mean_HD_corr))
+  sig_19C_10p = sd(NaRV.omit(Samp_19C_10p[Samp_19C_10p$Radiation_type == rad[r] & Samp_19C_10p$Timepoint == "4h",]$Live_CR_mean_HD_corr))
+  sig_19A_10p_2 = sd(NaRV.omit(Samp_19A_10p_2[Samp_19A_10p$Radiation_type == rad[r] & Samp_19A_10p_2$Timepoint == "4h",]$Live_CR_mean_HD_corr))
+  
+  temp_2$Live_CR_mean_HD_corr_2 <- (temp_2$Live_CR_mean_HD_corr - mu_19C_10p)*(sig_19A_10p_2/sig_19C_10p)+mu_19A_10p_2
+  
+  #### The correction may generate negative value => we fix those negative value to 0 
+  temp_2$Live_CR_mean_0_corr_2[temp_2$Live_CR_mean_0_corr_2 < 0] <- 0 
+  temp_2$Live_CR_mean_LD_corr_2[temp_2$Live_CR_mean_LD_corr_2 < 0] <- 0 
+  temp_2$Live_CR_mean_HD_corr_2[temp_2$Live_CR_mean_HD_corr_2 < 0] <- 0 
+  
+  if (!exists("temp_all")){
+    temp_all <- temp_2
+  } else {
+    temp_all <- rbind(temp_all,temp_2)
+  }
+}
+
+temp_no_step2 <- Corrected_all_os[Corrected_all_os$Run_set == "19A_Set1" | Corrected_all_os$Run_set == "19A_Set2" | Corrected_all_os$Run_set == "19A_Set3" | Corrected_all_os$Run_set == "19A_Set4" | Corrected_all_os$Timepoint == "24h" | ((Corrected_all_os$Run_set == "18B_Set1" | Corrected_all_os$Run_set == "18B_Set2") & (Corrected_all_os$Radiation_type == "Si" | Corrected_all_os$Radiation_type == "Ar" | Corrected_all_os$Radiation_type == "Fe")),]
+temp_no_step2$Live_CR_mean_0_corr_2 <- temp_no_step2$Live_CR_mean_0_corr
+temp_no_step2$Live_CR_mean_LD_corr_2 <- temp_no_step2$Live_CR_mean_LD_corr
+temp_no_step2$Live_CR_mean_HD_corr_2 <- temp_no_step2$Live_CR_mean_HD_corr
+
+temp_18B_19A_19C <- rbind(temp_all,temp_no_step2)
+
+temp_18B_19A_19C <- temp_18B_19A_19C[,grepl("Sample_ID|Timepoint|Radiation_type|Run_set|Live_CR_mean_0_corr_2|Live_CR_mean_LD_corr_2|Live_CR_mean_HD_corr_2",colnames(temp_18B_19A_19C))]
+
+Corrected_all_os_2 <- merge(Corrected_all_os_2,temp_18B_19A_19C,all=TRUE)
+
+#graphs to check correction step2------------------------------------------------------------------------------------------------
+
+### Gamma
+corr_gamma <- Corrected_all_os_2[Corrected_all_os_2$Radiation_type=="Gamma",]
+corr_gamma_0 <- corr_gamma[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_0_corr_2", colnames(corr_gamma))]
+corr_gamma_0$dose = 0
+colnames(corr_gamma_0)[colnames(corr_gamma_0)=="Live_CR_mean_0_corr_2"]<-"Live_CR_mean_corr_2"
+corr_gamma_LD <- corr_gamma[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_LD_corr_2", colnames(corr_gamma))]
+corr_gamma_LD$dose = low_dose_Gamma
+colnames(corr_gamma_LD)[colnames(corr_gamma_LD)=="Live_CR_mean_LD_corr_2"]<-"Live_CR_mean_corr_2"
+corr_gamma_HD <- corr_gamma[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_HD_corr_2", colnames(corr_gamma))]
+corr_gamma_HD$dose = high_dose_Gamma
+colnames(corr_gamma_HD)[colnames(corr_gamma_HD)=="Live_CR_mean_HD_corr_2"]<-"Live_CR_mean_corr_2"
+corr_gamma = rbind(corr_gamma_0,corr_gamma_LD,corr_gamma_HD)
+corr_gamma$Timepoint = factor(corr_gamma$Timepoint, levels = c("4h", "24h"))
+
+corr_data_plot_gamma <- ggplot(corr_gamma, aes(x=Run_set, y=Live_CR_mean_corr_2)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Gamma")
+
+### Silicon
+corr_si <- Corrected_all_os_2[Corrected_all_os_2$Radiation_type=="Si",]
+corr_si_0 <- corr_si[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_0_corr_2", colnames(corr_si))]
+corr_si_0$dose = 0
+colnames(corr_si_0)[colnames(corr_si_0)=="Live_CR_mean_0_corr_2"]<-"Live_CR_mean_corr_2"
+corr_si_LD <- corr_si[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_LD_corr_2", colnames(corr_si))]
+corr_si_LD$dose = low_dose_Si
+colnames(corr_si_LD)[colnames(corr_si_LD)=="Live_CR_mean_LD_corr_2"]<-"Live_CR_mean_corr_2"
+corr_si_HD <- corr_si[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_HD_corr_2", colnames(corr_si))]
+corr_si_HD$dose = high_dose_Si
+colnames(corr_si_HD)[colnames(corr_si_HD)=="Live_CR_mean_HD_corr_2"]<-"Live_CR_mean_corr_2"
+corr_si = rbind(corr_si_0,corr_si_LD,corr_si_HD)
+corr_si$Timepoint = factor(corr_si$Timepoint, levels = c("4h", "24h"))
+
+corr_data_plot_si <- ggplot(corr_si, aes(x=Run_set, y=Live_CR_mean_corr_2)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Si")
+
+### Argon
+corr_ar <- Corrected_all_os_2[Corrected_all_os_2$Radiation_type=="Ar",]
+corr_ar_0 <- corr_ar[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_0_corr_2", colnames(corr_ar))]
+corr_ar_0$dose = 0
+colnames(corr_ar_0)[colnames(corr_ar_0)=="Live_CR_mean_0_corr_2"]<-"Live_CR_mean_corr_2"
+corr_ar_LD <- corr_ar[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_LD_corr_2", colnames(corr_ar))]
+corr_ar_LD$dose = low_dose_Ar
+colnames(corr_ar_LD)[colnames(corr_ar_LD)=="Live_CR_mean_LD_corr_2"]<-"Live_CR_mean_corr_2"
+corr_ar_HD <- corr_ar[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_HD_corr_2", colnames(corr_ar))]
+corr_ar_HD$dose = high_dose_Ar
+colnames(corr_ar_HD)[colnames(corr_ar_HD)=="Live_CR_mean_HD_corr_2"]<-"Live_CR_mean_corr_2"
+corr_ar = rbind(corr_ar_0,corr_ar_LD,corr_ar_HD)
+corr_ar$Timepoint = factor(corr_ar$Timepoint, levels = c("4h", "24h"))
+
+corr_data_plot_ar <- ggplot(corr_ar, aes(x=Run_set, y=Live_CR_mean_corr_2)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Ar")
+
+### Iron
+corr_fe <- Corrected_all_os_2[Corrected_all_os_2$Radiation_type=="Fe",]
+corr_fe_0 <- corr_fe[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_0_corr_2", colnames(corr_fe))]
+corr_fe_0$dose = 0
+colnames(corr_fe_0)[colnames(corr_fe_0)=="Live_CR_mean_0_corr_2"]<-"Live_CR_mean_corr_2"
+corr_fe_LD <- corr_fe[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_LD_corr_2", colnames(corr_fe))]
+corr_fe_LD$dose = low_dose_Fe
+colnames(corr_fe_LD)[colnames(corr_fe_LD)=="Live_CR_mean_LD_corr_2"]<-"Live_CR_mean_corr_2"
+corr_fe_HD <- corr_fe[,grepl("Sample_ID|Run_set|Timepoint|Live_CR_mean_HD_corr_2", colnames(corr_fe))]
+corr_fe_HD$dose = high_dose_Fe
+colnames(corr_fe_HD)[colnames(corr_fe_HD)=="Live_CR_mean_HD_corr_2"]<-"Live_CR_mean_corr_2"
+corr_fe = rbind(corr_fe_0,corr_fe_LD,corr_fe_HD)
+corr_fe$Timepoint = factor(corr_fe$Timepoint, levels = c("4h", "24h"))
+
+corr_data_plot_fe <- ggplot(corr_fe, aes(x=Run_set, y=Live_CR_mean_corr_2)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Fe")
+
+corr_data_plot_fe <- ggplot(corr_fe[corr_fe$Sample_ID %in% Subject_19AS4_19CS1_Fe_Si & corr_fe$Timepoint == "4h",], aes(x=Run_set, y=Live_CR_mean_corr_2)) + geom_boxplot(aes(fill=as.factor(dose))) + facet_grid(. ~ Timepoint) + ggtitle("Fe")
+```
