@@ -1,0 +1,43 @@
+% Move all color images from individual well directory into Color_images directory.
+%
+% S. Costes, NASA, June 2019
+
+
+%% INITIALIZE ALL PATHS
+global mic;
+global shiftDAPI_FITC;
+global microscope_portNumber;
+global ASIDir;
+global FIXED_INTENSITIES;
+global max_num_nuc;
+max_num_nuc = 200;
+FIXED_INTENSITIES = 1;
+shiftDAPI_FITC = -12;
+microscope_portNumber = 5;
+warning('OFF','MATLAB:nargchk:deprecated');
+addpath('C:\Program Files\DIPimage 2.9\common\dipimage');
+dip_initialise;
+warning('off')
+
+
+%% INPUT
+plate_dir = 'I:\BNL18B\Ar_reimaged\P400\'; % Where tiff from Zeiss CD7 have been put
+
+%% Read images and let user decide
+color_dir = [plate_dir '\A0_Color_images\'];
+mkdir(color_dir);
+list_dir = dir(plate_dir);
+num_dir = length(list_dir);
+
+for i_dir = 2:num_dir %skip . and .. directory
+    if (list_dir(i_dir).isdir)
+        fprintf('Moving color images for directory %s\n',list_dir(i_dir).name)
+        dir_path = [plate_dir '\' list_dir(i_dir).name];
+        list_file = dir([dir_path '\*color_fitc.jpg']);
+        num_img = length(list_file);
+        for i_img = 1:num_img
+            movefile([dir_path '\' list_file(i_img).name],[color_dir list_file(i_img).name]);
+        end
+    end
+end
+fclose('all')

@@ -1,0 +1,29 @@
+mode	spot
+
+main_spot	fitc
+
+dapi	1
+
+fitc    2
+
+txred   []
+
+nuc_rad	10
+
+nuc_th	1.15
+
+max_foci_size	1
+
+k_val	9
+
+dim 3
+
+min 15000
+
+fitc_min_stretch	5000
+
+fitc_max_stretch	55000
+
+txred_min_stretch	[]
+
+txred_max_stretch	[]

@@ -1,0 +1,20 @@
+mode	spot
+tif_dir /data/859_Fe_2welltest_2023-03-31/859_Fe_0_24h_Set2_B_21B_2welltest/859_Fe_0_24h_Set2_B_21B_2welltest
+out_dir		/data/Processed/859_2welltest	
+main_spot	AF488
+plate_name	859_Fe_0_24h_Set2_B_21B_2welltest
+dapi	C00(DAPI)
+Zdapi   Z0010
+num_ch  3
+AF488 AF594 AF647
+C01(AF488)_M0000_ORG.tif C02(AF594)_M0000_ORG.tif C03(AF647)_M0000_ORG.tif
+400 400 400
+6000 4000 4000
+nuc_rad	12
+nuc_th	1.7
+max_foci_size	1
+k_val	4
+dim 3
+min 1500
+p2a 1.5
+dxy 0.4

@@ -1,0 +1,20 @@
+mode	spot
+tif_dir	/data/human_PBMC_radiosensitivity/raw_TIFFS/21B_TIFFS/2021-08-31/908_Gamma_0_24h_High_low_A_21B
+out_dir /data/Processed/908_Gamma_0_24h_High_low_A_21B_test2
+main_spot	AF488
+plate_name	908_Gamma_0_24h_High_low_A_21B
+dapi	C01(DAPI)
+Zdapi   Z0010
+num_ch  1
+AF488
+C00(AF488)_M0000_ORG.tif
+400
+6000
+nuc_rad	10
+nuc_th	2.0
+max_foci_size	1
+k_val	4
+dim 3
+min 6000
+p2a 1.5
+dxy 0.4

@@ -1,0 +1,10 @@
+mode	spot
+nuc_rad	10
+nuc_th	2.0
+max_foci_size	1
+k_val_53bp1	7
+k_val_h2ax 4
+dim 3
+min 1000
+min_stretch	1000
+max_stretch	5000
